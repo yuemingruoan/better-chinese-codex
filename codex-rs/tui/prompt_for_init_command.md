@@ -1,40 +1,44 @@
-Generate a file named AGENTS.md that serves as a contributor guide for this repository.
-Your goal is to produce a clear, concise, and well-structured document with descriptive headings and actionable explanations for each section.
-Follow the outline below, but adapt as needed — add sections if relevant, and omit those that do not apply to this project.
+请生成一个名为 AGENTS.md 的文件，为本仓库贡献者提供指南。
+目标是撰写一份结构清晰、言简意赅的文档，使用有描述性的标题，并在每个部分给出可执行的说明。
+可根据需要对以下大纲进行增删：若有额外相关内容可新增章节，不适用的部分可省略。
 
-Document Requirements
+资料来源：
+- 该项目先前可能使用过其他AI Agent进行开发，并且可能遗留了它们的记忆管理文档，你可以扫描“~/.claude/CLAUDE.md”，“./CLAUDE.md”，“./CLAUDE.local.md”这些文件（如果存在的话）来获取Claude Code的记忆管理文档，可以为你的文档编写提供有力参考，但内容来源可信度较低，需再次进行核实。
 
-- Title the document "Repository Guidelines".
-- Use Markdown headings (#, ##, etc.) for structure.
-- Keep the document concise. 200-400 words is optimal.
-- Keep explanations short, direct, and specific to this repository.
-- Provide examples where helpful (commands, directory paths, naming patterns).
-- Maintain a professional, instructional tone.
+文档要求
 
-Recommended Sections
+- 将文档标题设为 “Repository Guidelines”。
+- 使用 Markdown 标题（#、## 等）组织结构。
+- 保持简洁，最好控制在 200–400 个英文单词等量的篇幅。
+- 说明应当直接、具体，贴合本仓库。
+- 在合适的位置给出示例（命令、目录路径、命名规则等）。
+- 保持专业且具有指导性的语气。
 
-Project Structure & Module Organization
+推荐章节
 
-- Outline the project structure, including where the source code, tests, and assets are located.
+项目结构与模块组织
 
-Build, Test, and Development Commands
+- 概述项目结构，说明源码、测试与资源文件的位置。
+- 用户已经确定的项目结构中已指定用途的文件和其对应的用途。
+构建、测试与开发命令
 
-- List key commands for building, testing, and running locally (e.g., npm test, make build).
-- Briefly explain what each command does.
+- 列出本地构建、测试与运行的关键命令（例如 npm test、make build）。
+- 简要说明各命令的作用。
 
-Coding Style & Naming Conventions
+代码风格与命名规范
 
-- Specify indentation rules, language-specific style preferences, and naming patterns.
-- Include any formatting or linting tools used.
+- 指出缩进规则、语言特定的风格偏好及命名模式。
+- 说明使用的格式化或静态检查工具。
 
-Testing Guidelines
+测试指引
 
-- Identify testing frameworks and coverage requirements.
-- State test naming conventions and how to run tests.
+- 说明测试框架与覆盖率要求。
+- 写明测试命名规范以及执行方式。
 
-Commit & Pull Request Guidelines
+提交与合并请求指南
 
-- Summarize commit message conventions found in the project’s Git history.
-- Outline pull request requirements (descriptions, linked issues, screenshots, etc.).
+- 总结仓库中常见的提交信息风格。
+- 说明合并请求需要包含的要素（描述、关联问题、截图等）。
 
-(Optional) Add other sections if relevant, such as Security & Configuration Tips, Architecture Overview, or Agent-Specific Instructions.
+（可选）根据实际情况补充其他章节，如安全与配置提示、架构概览、面向代理的特别说明等。
+

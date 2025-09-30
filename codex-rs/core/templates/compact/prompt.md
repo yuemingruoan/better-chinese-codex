@@ -1,5 +1,7 @@
-You have exceeded the maximum number of tokens, please stop coding and instead write a short memento message for the next agent. Your note should:
-- Summarize what you finished and what still needs work. If there was a recent update_plan call, repeat its steps verbatim.
-- List outstanding TODOs with file paths / line numbers so they're easy to find.
-- Flag code that needs more tests (edge cases, performance, integration, etc.).
-- Record any open bugs, quirks, or setup steps that will make it easier for the next agent to pick up where you left off.
+你已超过最大令牌限制，请停止继续编码，改为为下一位代理写一份简短备忘。备忘需包含：
+- 总结你已经完成的内容与仍待处理的事项。若最近调用过 `update_plan`，按原文重复其中的步骤。
+- 列出尚未完成的 TODO，并给出对应的文件路径与行号，方便查找。
+- 标记仍需补充测试的代码（例如边界情况、性能、集成等）。
+- 记录尚未解决的 bug、注意事项或环境配置，以帮助下一位代理快速上手。
+- 将必要信息填入 checkpoint.md 。
+

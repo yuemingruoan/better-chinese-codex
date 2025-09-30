@@ -1,43 +1,43 @@
 ## `apply_patch`
 
-Use the `apply_patch` shell command to edit files.
-Your patch language is a stripped‑down, file‑oriented diff format designed to be easy to parse and safe to apply. You can think of it as a high‑level envelope:
+使用 `apply_patch` 终端命令来编辑文件。
+补丁语言是一种精简的、面向文件的 diff 格式，易于解析且应用安全。可以将其理解为一个高层级的封套：
 
 *** Begin Patch
-[ one or more file sections ]
+[ 一个或多个文件区块 ]
 *** End Patch
 
-Within that envelope, you get a sequence of file operations.
-You MUST include a header to specify the action you are taking.
-Each operation starts with one of three headers:
+封套内部由一组文件操作组成。
+你必须通过头部指明要执行的动作。
+每个操作都以以下三个头之一开头：
 
-*** Add File: <path> - create a new file. Every following line is a + line (the initial contents).
-*** Delete File: <path> - remove an existing file. Nothing follows.
-*** Update File: <path> - patch an existing file in place (optionally with a rename).
+*** Add File: <path> —— 创建新文件。后续每行都以 `+` 开头，表示文件初始内容。
+*** Delete File: <path> —— 删除已有文件。之后不再跟任何内容。
+*** Update File: <path> —— 就地修改现有文件（可选地配合重命名）。
 
-May be immediately followed by *** Move to: <new path> if you want to rename the file.
-Then one or more “hunks”, each introduced by @@ (optionally followed by a hunk header).
-Within a hunk each line starts with:
+若需重命名，可紧跟一行 *** Move to: <new path>。
+随后是一个或多个“补丁块”（hunk），每个块以 @@ 开头（可附带块头信息）。
+在补丁块中，每行的前缀含义如下：
 
-For instructions on [context_before] and [context_after]:
-- By default, show 3 lines of code immediately above and 3 lines immediately below each change. If a change is within 3 lines of a previous change, do NOT duplicate the first change’s [context_after] lines in the second change’s [context_before] lines.
-- If 3 lines of context is insufficient to uniquely identify the snippet of code within the file, use the @@ operator to indicate the class or function to which the snippet belongs. For instance, we might have:
+关于 [context_before] 与 [context_after] 的规则：
+- 默认在每个变更的上下方各展示 3 行代码。若两次变更间隔不超过 3 行，第二个变更的 [context_before] 不要重复上一处的 [context_after]。
+- 如果 3 行上下文不足以唯一定位代码片段，可用 @@ 指明所属的类或函数。例如：
 @@ class BaseClass
-[3 lines of pre-context]
+[3 行前置上下文]
 - [old_code]
 + [new_code]
-[3 lines of post-context]
+[3 行后置上下文]
 
-- If a code block is repeated so many times in a class or function such that even a single `@@` statement and 3 lines of context cannot uniquely identify the snippet of code, you can use multiple `@@` statements to jump to the right context. For instance:
+- 若某段代码在类或函数中出现多次，即便使用一次 @@ 和 3 行上下文仍无法唯一定位，可以串联多个 @@ 来逐级定位。例如：
 
 @@ class BaseClass
 @@ 	 def method():
-[3 lines of pre-context]
+[3 行前置上下文]
 - [old_code]
 + [new_code]
-[3 lines of post-context]
+[3 行后置上下文]
 
-The full grammar definition is below:
+完整语法定义如下：
 Patch := Begin { FileOp } End
 Begin := "*** Begin Patch" NEWLINE
 End := "*** End Patch" NEWLINE
@@ -49,7 +49,7 @@ MoveTo := "*** Move to: " newPath NEWLINE
 Hunk := "@@" [ header ] NEWLINE { HunkLine } [ "*** End of File" NEWLINE ]
 HunkLine := (" " | "-" | "+") text NEWLINE
 
-A full patch can combine several operations:
+一个补丁可同时包含多个操作：
 
 *** Begin Patch
 *** Add File: hello.txt
@@ -62,14 +62,15 @@ A full patch can combine several operations:
 *** Delete File: obsolete.txt
 *** End Patch
 
-It is important to remember:
+务必牢记：
 
-- You must include a header with your intended action (Add/Delete/Update)
-- You must prefix new lines with `+` even when creating a new file
-- File references can only be relative, NEVER ABSOLUTE.
+- 必须使用头部表明动作为 Add/Delete/Update。
+- 即便创建新文件，也要在新增行前加 `+`。
+- 文件路径必须是相对路径，绝不能使用绝对路径。
 
-You can invoke apply_patch like:
+调用示例如下：
 
 ```
 shell {"command":["apply_patch","*** Begin Patch\n*** Add File: hello.txt\n+Hello, world!\n*** End Patch\n"]}
 ```
+

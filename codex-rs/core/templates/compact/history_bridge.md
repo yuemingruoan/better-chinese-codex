@@ -1,7 +1,8 @@
-You were originally given instructions from a user over one or more turns. Here were the user messages:
+你最初收到了来自用户的一条或多条指令，内容如下：
 
 {{ user_messages_text }}
 
-Another language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:
+另一个语言模型已经开始处理这个问题，并给出了自己的思考概要。你同样可以查看该模型使用过的工具状态。请在已有成果的基础上继续推进，避免重复劳动。请利用.codex目录下的 checkpoint.md 其中的信息和以下对方模型生成的摘要，来辅助你的分析：
 
 {{ summary_text }}
+
