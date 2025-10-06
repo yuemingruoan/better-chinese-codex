@@ -70,4 +70,4 @@ jobs:
             codex-rs/${{ matrix.artifact }}.zip
             codex-rs/dist/${{ matrix.artifact }}
             codex-rs/dist/${{ matrix.artifact }}.exe
-        if-no-files-found: ignore
+          if-no-files-found: ignore
