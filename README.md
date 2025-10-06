@@ -7,9 +7,6 @@ Codex CLI 是一套跨平台的开发辅助工具链，内含命令行界面、T
 - `.codex/AGENTS.md`：AI 协作者在当前项目中的行为记录与说明
 - `.codex/checkpoint.md`：Codex自动维护的开发日志，用于记录·每一步操作的结果、待办事项与风险提示。
 - `.codex/PROMPT.md`:执行init时额外给予AI的提示词，包含想要实现的需求，注意事项，甚至项目结构
-- `codex-rs/`：Rust 工作空间，包含 `codex-core`、`codex-tui` 等 crate。
-- `codex-cli/`：DotSlash 脚本及辅助工具，确保团队成员使用统一版本的可执行程序。
-- 对于先前使用Claude Code
 
 ## 环境准备
 1. 安装 Git ≥ 2.23（建议）。
