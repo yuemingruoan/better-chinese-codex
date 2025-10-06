@@ -18,7 +18,7 @@ Codex CLI 是一套跨平台的开发辅助工具链，内含命令行界面、T
 
 ## 安装指南
 
-在每次更新前，请先从 Release 页面下载对应平台的最新 `codex` 可执行文件，然后按下述步骤替换。
+在每次更新前，请先从 Release 页面下载对应平台的最新 `codex` 可执行文件，将其改名为`codex`(macOS/Limux)或`codex.exe`(Windows)然后按下述步骤替换。
 
 ### Windows（全局固定使用 npm 安装）
 ```powershell
