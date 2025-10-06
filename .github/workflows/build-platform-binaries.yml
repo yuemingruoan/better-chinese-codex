@@ -1,0 +1,73 @@
+name: build-platform-binaries
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+    defaults:
+      run:
+        working-directory: codex-rs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: codex-linux
+          - os: macos-14
+            artifact: codex-macos
+          - os: windows-latest
+            artifact: codex-windows
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ github.workspace }}/codex-rs/target/
+          key: cargo-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build codex binary
+        run: cargo build --release --bin codex
+
+      - name: Package artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          src="target/release/codex"
+          dest="dist/${{ matrix.artifact }}"
+          cp "$src" "$dest"
+          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}"
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target\release\codex.exe" "dist\${{ matrix.artifact }}.exe" -Force
+          Compress-Archive -Path "dist\${{ matrix.artifact }}.exe" -DestinationPath "${{ matrix.artifact }}.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            codex-rs/${{ matrix.artifact }}.tar.gz
+            codex-rs/${{ matrix.artifact }}.zip
+            codex-rs/dist/${{ matrix.artifact }}
+            codex-rs/dist/${{ matrix.artifact }}.exe
+        if-no-files-found: ignore
