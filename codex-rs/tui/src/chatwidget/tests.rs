@@ -1130,10 +1130,21 @@ async fn binary_size_transcript_snapshot() {
     // Consider content only after the last session banner marker. Skip the transient
     // 'thinking' header if present, and start from the first non-empty content line
     // that follows. This keeps the snapshot stable across sessions.
-    const MARKER_PREFIX: &str = "To get started, describe a task or try one of these commands:";
+    const MARKER_PREFIX: &str = "开始之前，可以描述任务或试试这些指令：";
+    let marker_prefix_normalized: String = MARKER_PREFIX
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
     let last_marker_line_idx = lines
         .iter()
-        .rposition(|l| l.trim_start().starts_with(MARKER_PREFIX))
+        .rposition(|l| {
+            let normalized: String = l
+                .trim_start()
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect();
+            normalized.starts_with(&marker_prefix_normalized)
+        })
         .expect("marker not found in visible output");
     // Prefer the first assistant content line (blockquote '>' prefix) after the marker;
     // fallback to the first non-empty, non-'thinking' line.

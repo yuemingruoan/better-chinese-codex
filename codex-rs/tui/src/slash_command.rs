@@ -17,6 +17,7 @@ pub enum SlashCommand {
     Review,
     New,
     Init,
+    Checkpoint,
     Compact,
     Undo,
     Diff,
@@ -33,21 +34,22 @@ impl SlashCommand {
     /// User-visible description shown in the popup.
     pub fn description(self) -> &'static str {
         match self {
-            SlashCommand::New => "start a new chat during a conversation",
-            SlashCommand::Init => "create an AGENTS.md file with instructions for Codex",
-            SlashCommand::Compact => "summarize conversation to prevent hitting the context limit",
-            SlashCommand::Review => "review my current changes and find issues",
-            SlashCommand::Undo => "restore the workspace to the last Codex snapshot",
-            SlashCommand::Quit => "exit Codex",
-            SlashCommand::Diff => "show git diff (including untracked files)",
-            SlashCommand::Mention => "mention a file",
-            SlashCommand::Status => "show current session configuration and token usage",
-            SlashCommand::Model => "choose what model and reasoning effort to use",
-            SlashCommand::Approvals => "choose what Codex can do without approval",
-            SlashCommand::Mcp => "list configured MCP tools",
-            SlashCommand::Logout => "log out of Codex",
+            SlashCommand::New => "在对话中开始新的聊天",
+            SlashCommand::Init => "创建包含 Codex 指南的 AGENTS.md 文件",
+            SlashCommand::Checkpoint => "阶段性记录 AI 所执行的操作",
+            SlashCommand::Compact => "总结当前对话以避免上下文超限",
+            SlashCommand::Review => "审查当前改动并查找问题",
+            SlashCommand::Undo => "恢复到上一次 Codex 快照",
+            SlashCommand::Quit => "退出 Codex",
+            SlashCommand::Diff => "显示 git diff（包含未跟踪文件）",
+            SlashCommand::Mention => "在消息中提及文件",
+            SlashCommand::Status => "显示会话配置与令牌使用情况",
+            SlashCommand::Model => "选择模型及推理强度",
+            SlashCommand::Approvals => "配置 Codex 无需审批即可执行的操作",
+            SlashCommand::Mcp => "列出已配置的 MCP 工具",
+            SlashCommand::Logout => "注销 Codex 登录",
             #[cfg(debug_assertions)]
-            SlashCommand::TestApproval => "test approval request",
+            SlashCommand::TestApproval => "测试审批请求",
         }
     }
 
@@ -62,6 +64,7 @@ impl SlashCommand {
         match self {
             SlashCommand::New
             | SlashCommand::Init
+            | SlashCommand::Checkpoint
             | SlashCommand::Compact
             | SlashCommand::Undo
             | SlashCommand::Model

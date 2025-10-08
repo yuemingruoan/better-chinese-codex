@@ -390,34 +390,37 @@ pub(crate) fn new_session_info(
 
         // Help lines below the header (new copy and list)
         let help_lines: Vec<Line<'static>> = vec![
-            "  To get started, describe a task or try one of these commands:"
-                .dim()
-                .into(),
+            "  开始之前，可以描述任务或试试这些指令：".dim().into(),
             Line::from(""),
             Line::from(vec![
                 "  ".into(),
                 "/init".into(),
-                " - create an AGENTS.md file with instructions for Codex".dim(),
+                " - 创建包含 Codex 指南的 AGENTS.md".dim(),
+            ]),
+            Line::from(vec![
+                "  ".into(),
+                "/checkpoint".into(),
+                " - 阶段性记录 AI 的操作与待办".dim(),
             ]),
             Line::from(vec![
                 "  ".into(),
                 "/status".into(),
-                " - show current session configuration".dim(),
+                " - 查看当前会话配置".dim(),
             ]),
             Line::from(vec![
                 "  ".into(),
                 "/approvals".into(),
-                " - choose what Codex can do without approval".dim(),
+                " - 配置 Codex 的免审批操作".dim(),
             ]),
             Line::from(vec![
                 "  ".into(),
                 "/model".into(),
-                " - choose what model and reasoning effort to use".dim(),
+                " - 选择模型与推理强度".dim(),
             ]),
             Line::from(vec![
                 "  ".into(),
                 "/review".into(),
-                " - review any changes and find issues".dim(),
+                " - 审查改动并查找问题".dim(),
             ]),
         ];
 

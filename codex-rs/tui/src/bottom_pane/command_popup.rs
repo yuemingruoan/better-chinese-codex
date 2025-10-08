@@ -164,7 +164,7 @@ impl CommandPopup {
                     }
                     CommandItem::UserPrompt(i) => (
                         format!("/{PROMPTS_CMD_PREFIX}:{}", self.prompts[i].name),
-                        "send saved prompt".to_string(),
+                        "发送已保存的提示词".to_string(),
                     ),
                 };
                 GenericDisplayRow {

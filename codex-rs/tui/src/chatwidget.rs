@@ -1084,6 +1084,10 @@ impl ChatWidget {
                 const INIT_PROMPT: &str = include_str!("../prompt_for_init_command.md");
                 self.submit_text_message(INIT_PROMPT.to_string());
             }
+            SlashCommand::Checkpoint => {
+                const CHECKPOINT_PROMPT: &str = include_str!("../prompt_for_checkpoint_command.md");
+                self.submit_text_message(CHECKPOINT_PROMPT.to_string());
+            }
             SlashCommand::Compact => {
                 self.clear_token_usage();
                 self.app_event_tx.send(AppEvent::CodexOp(Op::Compact));
