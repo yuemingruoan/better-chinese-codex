@@ -359,6 +359,6 @@ mod tests {
         }]);
         let rows = popup.rows_from_matches(vec![(CommandItem::UserPrompt(0), None, 0)]);
         let description = rows.first().and_then(|row| row.description.as_deref());
-        assert_eq!(description, Some("send saved prompt"));
+        assert_eq!(description, Some("发送已保存的提示词"));
     }
 }
