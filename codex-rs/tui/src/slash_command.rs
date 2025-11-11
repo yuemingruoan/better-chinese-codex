@@ -26,7 +26,9 @@ pub enum SlashCommand {
     Mcp,
     Logout,
     Quit,
-    #[cfg(debug_assertions)]
+    Exit,
+    Feedback,
+    Rollout,
     TestApproval,
 }
 
@@ -40,7 +42,7 @@ impl SlashCommand {
             SlashCommand::Compact => "总结当前对话以避免上下文超限",
             SlashCommand::Review => "审查当前改动并查找问题",
             SlashCommand::Undo => "恢复到上一次 Codex 快照",
-            SlashCommand::Quit => "退出 Codex",
+            SlashCommand::Quit | SlashCommand::Exit => "退出 Codex",
             SlashCommand::Diff => "显示 git diff（包含未跟踪文件）",
             SlashCommand::Mention => "在消息中提及文件",
             SlashCommand::Status => "显示会话配置与令牌使用情况",
@@ -48,8 +50,10 @@ impl SlashCommand {
             SlashCommand::Approvals => "配置 Codex 无需审批即可执行的操作",
             SlashCommand::Mcp => "列出已配置的 MCP 工具",
             SlashCommand::Logout => "注销 Codex 登录",
-            #[cfg(debug_assertions)]
             SlashCommand::TestApproval => "测试审批请求",
+            SlashCommand::Undo => "要求Codex回退一轮对话",
+            SlashCommand::Rollout => "打印部署文件路径",
+            SlashCommand::Feedback => "向开发者反馈问题",
         }
     }
 
@@ -75,30 +79,26 @@ impl SlashCommand {
             | SlashCommand::Mention
             | SlashCommand::Status
             | SlashCommand::Mcp
-            | SlashCommand::Quit => true,
-
-            #[cfg(debug_assertions)]
+            | SlashCommand::Feedback
+            | SlashCommand::Quit
+            | SlashCommand::Exit => true,
+            SlashCommand::Rollout => true,
             SlashCommand::TestApproval => true,
+        }
+    }
+
+    fn is_visible(self) -> bool {
+        match self {
+            SlashCommand::Rollout | SlashCommand::TestApproval => cfg!(debug_assertions),
+            _ => true,
         }
     }
 }
 
 /// Return all built-in commands in a Vec paired with their command string.
 pub fn built_in_slash_commands() -> Vec<(&'static str, SlashCommand)> {
-    let show_beta_features = beta_features_enabled();
-
     SlashCommand::iter()
-        .filter(|cmd| {
-            if *cmd == SlashCommand::Undo {
-                show_beta_features
-            } else {
-                true
-            }
-        })
+        .filter(|command| command.is_visible())
         .map(|c| (c.command(), c))
         .collect()
-}
-
-fn beta_features_enabled() -> bool {
-    std::env::var_os("BETA_FEATURE").is_some()
 }
