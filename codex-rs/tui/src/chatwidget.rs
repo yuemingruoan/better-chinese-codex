@@ -1250,7 +1250,7 @@ impl ChatWidget {
             }
             SlashCommand::Checkpoint => {
                 const CHECKPOINT_PROMPT: &str = include_str!("../prompt_for_checkpoint_command.md");
-                self.submit_user_message(CHECKPOINT_PROMPT.to_string());
+                self.submit_user_message(CHECKPOINT_PROMPT.to_string().into());
             }
             SlashCommand::Compact => {
                 self.clear_token_usage();
