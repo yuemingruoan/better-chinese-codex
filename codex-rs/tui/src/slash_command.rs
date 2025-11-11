@@ -51,7 +51,6 @@ impl SlashCommand {
             SlashCommand::Mcp => "列出已配置的 MCP 工具",
             SlashCommand::Logout => "注销 Codex 登录",
             SlashCommand::TestApproval => "测试审批请求",
-            SlashCommand::Undo => "要求Codex回退一轮对话",
             SlashCommand::Rollout => "打印部署文件路径",
             SlashCommand::Feedback => "向开发者反馈问题",
         }
