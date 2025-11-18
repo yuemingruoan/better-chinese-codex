@@ -75,7 +75,7 @@ async fn run_git_capture_stdout(args: &[&str]) -> io::Result<String> {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
         Err(io::Error::other(format!(
-            "git {:?} failed with status {}",
+            "git {:?} 执行失败，状态码 {}",
             args, output.status
         )))
     }
@@ -95,7 +95,7 @@ async fn run_git_capture_diff(args: &[&str]) -> io::Result<String> {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
         Err(io::Error::other(format!(
-            "git {:?} failed with status {}",
+            "git {:?} 执行失败，状态码 {}",
             args, output.status
         )))
     }

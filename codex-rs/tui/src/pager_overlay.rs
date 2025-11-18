@@ -79,9 +79,9 @@ const KEY_CTRL_C: KeyBinding = key_hint::ctrl(KeyCode::Char('c'));
 
 // Common pager navigation hints rendered on the first line
 const PAGER_KEY_HINTS: &[(&[KeyBinding], &str)] = &[
-    (&[KEY_UP, KEY_DOWN], "to scroll"),
-    (&[KEY_PAGE_UP, KEY_PAGE_DOWN], "to page"),
-    (&[KEY_HOME, KEY_END], "to jump"),
+    (&[KEY_UP, KEY_DOWN], "滚动"),
+    (&[KEY_PAGE_UP, KEY_PAGE_DOWN], "翻页"),
+    (&[KEY_HOME, KEY_END], "跳转"),
 ];
 
 // Render a single line of key hints from (key(s), description) pairs.
@@ -382,7 +382,7 @@ impl TranscriptOverlay {
         Self {
             view: PagerView::new(
                 Self::render_cells(&transcript_cells, None),
-                "T R A N S C R I P T".to_string(),
+                "会话记录".to_string(),
                 usize::MAX,
             ),
             cells: transcript_cells,
@@ -450,9 +450,9 @@ impl TranscriptOverlay {
         render_key_hints(line1, buf, PAGER_KEY_HINTS);
 
         let mut pairs: Vec<(&[KeyBinding], &str)> =
-            vec![(&[KEY_Q], "to quit"), (&[KEY_ESC], "to edit prev")];
+            vec![(&[KEY_Q], "退出"), (&[KEY_ESC], "编辑上一条")];
         if self.highlight_cell.is_some() {
-            pairs.push((&[KEY_ENTER], "to edit message"));
+            pairs.push((&[KEY_ENTER], "编辑消息"));
         }
         render_key_hints(line2, buf, &pairs);
     }
@@ -512,7 +512,7 @@ impl StaticOverlay {
         let line1 = Rect::new(area.x, area.y, area.width, 1);
         let line2 = Rect::new(area.x, area.y.saturating_add(1), area.width, 1);
         render_key_hints(line1, buf, PAGER_KEY_HINTS);
-        let pairs: Vec<(&[KeyBinding], &str)> = vec![(&[KEY_Q], "to quit")];
+        let pairs: Vec<(&[KeyBinding], &str)> = vec![(&[KEY_Q], "退出")];
         render_key_hints(line2, buf, &pairs);
     }
 
@@ -632,16 +632,17 @@ mod tests {
         overlay.render(area, &mut buf);
 
         // Flatten buffer to a string and check for the hint text
-        let mut s = String::new();
+        let mut raw = String::new();
         for y in area.y..area.bottom() {
             for x in area.x..area.right() {
-                s.push(buf[(x, y)].symbol().chars().next().unwrap_or(' '));
+                raw.push(buf[(x, y)].symbol().chars().next().unwrap_or(' '));
             }
-            s.push('\n');
+            raw.push('\n');
         }
+        let s: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
         assert!(
-            s.contains("edit prev"),
-            "expected 'edit prev' hint in overlay footer, got: {s:?}"
+            s.contains("编辑上一条"),
+            "expected '编辑上一条' hint in overlay footer, got: {s:?}"
         );
     }
 

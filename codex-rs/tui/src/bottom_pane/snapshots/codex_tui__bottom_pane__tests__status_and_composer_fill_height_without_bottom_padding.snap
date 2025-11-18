@@ -2,7 +2,7 @@
 source: tui/src/bottom_pane/mod.rs
 expression: "render_snapshot(&pane, area)"
 ---
-• Working (0s • esc to interru
+• 运 行 中  （ 0秒  • 按  esc 以 中 断 
                               
                               
 › Ask Codex to do anything    

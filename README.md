@@ -14,18 +14,24 @@ Codex CLI 是一套跨平台的开发辅助工具链，内含命令行界面、T
 3. 内存至少 4 GB（推荐 8 GB）。
 4. 若需参与开发，可酌情安装 Rust 工具链与 `just`、`rg` 等辅助工具；仅使用发布版二进制时无需这些依赖。
 
-## 安装指南
+## 安装 / 更新指南
 
-在每次更新前，请先从 Release 页面下载对应平台的最新 `codex` 可执行文件，将其改名为`codex`(macOS/Limux)或`codex.exe`(Windows)然后按下述步骤替换。
+### 1. 获取最新版本
+- 打开本仓库的[发布页面](https://github.com/yuemingruoan/better-chinese-codex/releases)，Release 标题通常为 `v1.3.0`、`v1.2.1` 这类语义化版本号。
+- 在最新 Release 的 **Assets** 区域中，根据平台下载对应压缩包或可执行文件（Windows、macOS、Linux 皆会提供，各文件名已在说明中标注）。
+- 解压得到的二进制文件后：
+  - Windows 重命名为 `codex.exe`；
+  - macOS / Linux 重命名为 `codex`。
+- 后续按平台指南替换旧版本即可完成升级。
 
-### Windows（全局固定使用 npm 安装）
+### 2. Windows（搭配 npm 全局安装）
 ```powershell
 npm install -g @openai/codex-cli
 ```
 - npm 全局目录通常位于 `%APPDATA%\npm`。
-- 将 Release 中的 `codex.exe` 替换 `%APPDATA%\npm\codex.cmd` 同级目录中的 `codex`（注意保留 `.cmd` 启动脚本）。
+- 将下载得到的 `codex.exe` 放入 `%APPDATA%\npm` 目录，并替换与 `codex.cmd` 同级的旧版本（务必保留 `.cmd` 启动脚本）。
 
-### macOS / Linux
+### 3. macOS / Linux
 1. 先安装 CLI（可选择 npm、Homebrew 或其他渠道）：
    ```bash
    npm install -g @openai/codex-cli
@@ -42,4 +48,4 @@ npm install -g @openai/codex-cli
    readlink -f "$(which codex)"         # Linux
    readlink "$(which codex)"            # macOS 需逐级解析
    ```
-4. 将 Release 中的 `codex` 二进制替换目标文件（保留权限位），完成升级。
+4. 使用从发布页下载的最新 `codex` 可执行文件替换目标路径中的旧版本，并保持原有权限位即可完成升级。

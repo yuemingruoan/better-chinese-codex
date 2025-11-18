@@ -609,7 +609,7 @@ fn head_to_row(item: &ConversationItem) -> Row {
     let preview = preview_from_head(&item.head)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| String::from("(no message yet)"));
+        .unwrap_or_else(|| String::from("（暂无消息）"));
 
     Row {
         path: item.path.clone(),
@@ -657,16 +657,13 @@ fn draw_picker(tui: &mut Tui, state: &PickerState) -> std::io::Result<()> {
         .areas(area);
 
         // Header
-        frame.render_widget_ref(
-            Line::from(vec!["Resume a previous session".bold().cyan()]),
-            header,
-        );
+        frame.render_widget_ref(Line::from(vec!["恢复之前的会话".bold().cyan()]), header);
 
         // Search line
         let q = if state.query.is_empty() {
-            "Type to search".dim().to_string()
+            "输入以搜索".dim().to_string()
         } else {
-            format!("Search: {}", state.query)
+            format!("搜索：{}", state.query)
         };
         frame.render_widget_ref(Line::from(q), search);
 
@@ -679,18 +676,18 @@ fn draw_picker(tui: &mut Tui, state: &PickerState) -> std::io::Result<()> {
         // Hint line
         let hint_line: Line = vec![
             key_hint::plain(KeyCode::Enter).into(),
-            " to resume ".dim(),
+            " 恢复会话".dim(),
             "    ".dim(),
             key_hint::plain(KeyCode::Esc).into(),
-            " to start new ".dim(),
+            " 开启新会话".dim(),
             "    ".dim(),
             key_hint::ctrl(KeyCode::Char('c')).into(),
-            " to quit ".dim(),
+            " 退出".dim(),
             "    ".dim(),
             key_hint::plain(KeyCode::Up).into(),
             "/".dim(),
             key_hint::plain(KeyCode::Down).into(),
-            " to browse".dim(),
+            " 浏览列表".dim(),
         ]
         .into();
         frame.render_widget_ref(hint_line, hint);
@@ -775,7 +772,7 @@ fn render_list(
     }
 
     if state.pagination.loading.is_pending() && y < area.y.saturating_add(area.height) {
-        let loading_line: Line = vec!["  ".into(), "Loading older sessions…".italic().dim()].into();
+        let loading_line: Line = vec!["  ".into(), "正在加载更早的会话…".italic().dim()].into();
         let rect = Rect::new(area.x, y, area.width, 1);
         frame.render_widget_ref(loading_line, rect);
     }
@@ -786,27 +783,27 @@ fn render_empty_state_line(state: &PickerState) -> Line<'static> {
         if state.search_state.is_active()
             || (state.pagination.loading.is_pending() && state.pagination.next_cursor.is_some())
         {
-            return vec!["Searching…".italic().dim()].into();
+            return vec!["正在搜索…".italic().dim()].into();
         }
         if state.pagination.reached_scan_cap {
             let msg = format!(
-                "Search scanned first {} sessions; more may exist",
+                "搜索仅扫描了前 {} 个会话，可能还有更多结果",
                 state.pagination.num_scanned_files
             );
             return vec![Span::from(msg).italic().dim()].into();
         }
-        return vec!["No results for your search".italic().dim()].into();
+        return vec!["未找到匹配的搜索结果".italic().dim()].into();
     }
 
     if state.all_rows.is_empty() && state.pagination.num_scanned_files == 0 {
-        return vec!["No sessions yet".italic().dim()].into();
+        return vec!["尚无会话记录".italic().dim()].into();
     }
 
     if state.pagination.loading.is_pending() {
-        return vec!["Loading older sessions…".italic().dim()].into();
+        return vec!["正在加载更早的会话…".italic().dim()].into();
     }
 
-    vec!["No sessions yet".italic().dim()].into()
+    vec!["尚无会话记录".italic().dim()].into()
 }
 
 fn human_time_ago(ts: DateTime<Utc>) -> String {
@@ -815,32 +812,16 @@ fn human_time_ago(ts: DateTime<Utc>) -> String {
     let secs = delta.num_seconds();
     if secs < 60 {
         let n = secs.max(0);
-        if n == 1 {
-            format!("{n} second ago")
-        } else {
-            format!("{n} seconds ago")
-        }
+        format!("{n} 秒前")
     } else if secs < 60 * 60 {
         let m = secs / 60;
-        if m == 1 {
-            format!("{m} minute ago")
-        } else {
-            format!("{m} minutes ago")
-        }
+        format!("{m} 分钟前")
     } else if secs < 60 * 60 * 24 {
         let h = secs / 3600;
-        if h == 1 {
-            format!("{h} hour ago")
-        } else {
-            format!("{h} hours ago")
-        }
+        format!("{h} 小时前")
     } else {
         let d = secs / (60 * 60 * 24);
-        if d == 1 {
-            format!("{d} day ago")
-        } else {
-            format!("{d} days ago")
-        }
+        format!("{d} 天前")
     }
 }
 
@@ -871,7 +852,7 @@ fn render_column_headers(
     if metrics.max_created_width > 0 {
         let label = format!(
             "{text:<width$}",
-            text = "Created",
+            text = "创建时间",
             width = metrics.max_created_width
         );
         spans.push(Span::from(label).bold());
@@ -880,13 +861,13 @@ fn render_column_headers(
     if metrics.max_updated_width > 0 {
         let label = format!(
             "{text:<width$}",
-            text = "Updated",
+            text = "更新时间",
             width = metrics.max_updated_width
         );
         spans.push(Span::from(label).bold());
         spans.push("  ".into());
     }
-    spans.push("Conversation".bold());
+    spans.push("会话内容".bold());
     frame.render_widget_ref(Line::from(spans), area);
 }
 
@@ -898,8 +879,8 @@ struct ColumnMetrics {
 
 fn calculate_column_metrics(rows: &[Row]) -> ColumnMetrics {
     let mut labels: Vec<(String, String)> = Vec::with_capacity(rows.len());
-    let mut max_created_width = UnicodeWidthStr::width("Created");
-    let mut max_updated_width = UnicodeWidthStr::width("Updated");
+    let mut max_created_width = UnicodeWidthStr::width("创建时间");
+    let mut max_updated_width = UnicodeWidthStr::width("更新时间");
 
     for row in rows {
         let created = format_created_label(row);

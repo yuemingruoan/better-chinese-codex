@@ -21,7 +21,7 @@ use crate::shimmer::shimmer_spans;
 use crate::tui::FrameRequester;
 
 pub(crate) struct StatusIndicatorWidget {
-    /// Animated header text (defaults to "Working").
+    /// Animated header text (defaults to "运行中").
     header: String,
     show_interrupt_hint: bool,
 
@@ -36,23 +36,23 @@ pub(crate) struct StatusIndicatorWidget {
 // Examples: 0s, 59s, 1m 00s, 59m 59s, 1h 00m 00s, 2h 03m 09s
 pub fn fmt_elapsed_compact(elapsed_secs: u64) -> String {
     if elapsed_secs < 60 {
-        return format!("{elapsed_secs}s");
+        return format!("{elapsed_secs}秒");
     }
     if elapsed_secs < 3600 {
         let minutes = elapsed_secs / 60;
         let seconds = elapsed_secs % 60;
-        return format!("{minutes}m {seconds:02}s");
+        return format!("{minutes}分 {seconds:02}秒");
     }
     let hours = elapsed_secs / 3600;
     let minutes = (elapsed_secs % 3600) / 60;
     let seconds = elapsed_secs % 60;
-    format!("{hours}h {minutes:02}m {seconds:02}s")
+    format!("{hours}小时 {minutes:02}分 {seconds:02}秒")
 }
 
 impl StatusIndicatorWidget {
     pub(crate) fn new(app_event_tx: AppEventSender, frame_requester: FrameRequester) -> Self {
         Self {
-            header: String::from("Working"),
+            header: String::from("运行中"),
             show_interrupt_hint: true,
             elapsed_running: Duration::ZERO,
             last_resume_at: Instant::now(),
@@ -153,12 +153,12 @@ impl Renderable for StatusIndicatorWidget {
         spans.push(" ".into());
         if self.show_interrupt_hint {
             spans.extend(vec![
-                format!("({pretty_elapsed} • ").dim(),
+                format!("（{pretty_elapsed} • 按 ").dim(),
                 key_hint::plain(KeyCode::Esc).into(),
-                " to interrupt)".dim(),
+                " 以中断）".dim(),
             ]);
         } else {
-            spans.push(format!("({pretty_elapsed})").dim());
+            spans.push(format!("（{pretty_elapsed}）").dim());
         }
 
         Line::from(spans).render_ref(area, buf);
@@ -180,16 +180,19 @@ mod tests {
 
     #[test]
     fn fmt_elapsed_compact_formats_seconds_minutes_hours() {
-        assert_eq!(fmt_elapsed_compact(0), "0s");
-        assert_eq!(fmt_elapsed_compact(1), "1s");
-        assert_eq!(fmt_elapsed_compact(59), "59s");
-        assert_eq!(fmt_elapsed_compact(60), "1m 00s");
-        assert_eq!(fmt_elapsed_compact(61), "1m 01s");
-        assert_eq!(fmt_elapsed_compact(3 * 60 + 5), "3m 05s");
-        assert_eq!(fmt_elapsed_compact(59 * 60 + 59), "59m 59s");
-        assert_eq!(fmt_elapsed_compact(3600), "1h 00m 00s");
-        assert_eq!(fmt_elapsed_compact(3600 + 60 + 1), "1h 01m 01s");
-        assert_eq!(fmt_elapsed_compact(25 * 3600 + 2 * 60 + 3), "25h 02m 03s");
+        assert_eq!(fmt_elapsed_compact(0), "0秒");
+        assert_eq!(fmt_elapsed_compact(1), "1秒");
+        assert_eq!(fmt_elapsed_compact(59), "59秒");
+        assert_eq!(fmt_elapsed_compact(60), "1分 00秒");
+        assert_eq!(fmt_elapsed_compact(61), "1分 01秒");
+        assert_eq!(fmt_elapsed_compact(3 * 60 + 5), "3分 05秒");
+        assert_eq!(fmt_elapsed_compact(59 * 60 + 59), "59分 59秒");
+        assert_eq!(fmt_elapsed_compact(3600), "1小时 00分 00秒");
+        assert_eq!(fmt_elapsed_compact(3600 + 60 + 1), "1小时 01分 01秒");
+        assert_eq!(
+            fmt_elapsed_compact(25 * 3600 + 2 * 60 + 3),
+            "25小时 02分 03秒"
+        );
     }
 
     #[test]

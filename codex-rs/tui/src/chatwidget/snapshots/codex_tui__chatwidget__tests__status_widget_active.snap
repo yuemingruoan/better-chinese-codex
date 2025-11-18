@@ -1,10 +1,9 @@
 ---
 source: tui/src/chatwidget/tests.rs
-assertion_line: 1577
 expression: terminal.backend()
 ---
 "                                                                                "
-"• Analyzing (0s • esc to interrupt)                                             "
+"• Analyzing （0秒 • 按 esc 以中断）                                             " Hidden by multi-width symbols: [(13, " "), (16, " "), (21, " "), (28, " "), (30, " "), (32, " "), (34, " ")]
 "                                                                                "
 "                                                                                "
 "› Ask Codex to do anything                                                      "

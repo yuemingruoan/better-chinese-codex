@@ -218,9 +218,7 @@ impl App {
                         auth_manager.clone(),
                     )
                     .await
-                    .wrap_err_with(|| {
-                        format!("Failed to resume session from {}", path.display())
-                    })?;
+                    .wrap_err_with(|| format!("无法从 {} 恢复会话", path.display()))?;
                 let init = crate::chatwidget::ChatWidgetInit {
                     config: config.clone(),
                     frame_requester: tui.frame_requester(),
@@ -442,13 +440,13 @@ impl App {
                 // Enter alternate screen using TUI helper and build pager lines
                 let _ = tui.enter_alt_screen();
                 let pager_lines: Vec<ratatui::text::Line<'static>> = if text.trim().is_empty() {
-                    vec!["No changes detected.".italic().into()]
+                    vec!["未检测到任何更改。".italic().into()]
                 } else {
                     text.lines().map(ansi_escape_line).collect()
                 };
                 self.overlay = Some(Overlay::new_static_with_lines(
                     pager_lines,
-                    "D I F F".to_string(),
+                    "差异".to_string(),
                 ));
                 tui.frame_requester().schedule_frame();
             }
@@ -511,18 +509,16 @@ impl App {
                 {
                     Ok(()) => {
                         let effort_label = effort
-                            .map(|eff| format!(" with {eff} reasoning"))
-                            .unwrap_or_else(|| " with default reasoning".to_string());
+                            .map(|eff| format!("，推理强度：{eff}"))
+                            .unwrap_or_else(|| "，推理强度：默认".to_string());
                         if let Some(profile) = profile {
                             self.chat_widget.add_info_message(
-                                format!(
-                                    "Model changed to {model}{effort_label} for {profile} profile"
-                                ),
+                                format!("模型已切换为 {model}{effort_label}（配置档：{profile}）"),
                                 None,
                             );
                         } else {
                             self.chat_widget.add_info_message(
-                                format!("Model changed to {model}{effort_label}"),
+                                format!("模型已切换为 {model}{effort_label}"),
                                 None,
                             );
                         }
@@ -534,11 +530,11 @@ impl App {
                         );
                         if let Some(profile) = profile {
                             self.chat_widget.add_error_message(format!(
-                                "Failed to save model for profile `{profile}`: {err}"
+                                "为配置档 `{profile}` 保存模型失败：{err}"
                             ));
                         } else {
                             self.chat_widget
-                                .add_error_message(format!("Failed to save default model: {err}"));
+                                .add_error_message(format!("保存默认模型失败：{err}"));
                         }
                     }
                 }
@@ -601,9 +597,8 @@ impl App {
                         error = %err,
                         "failed to persist full access warning acknowledgement"
                     );
-                    self.chat_widget.add_error_message(format!(
-                        "Failed to save full access confirmation preference: {err}"
-                    ));
+                    self.chat_widget
+                        .add_error_message(format!("保存完全访问模式确认偏好失败：{err}"));
                 }
             }
             AppEvent::PersistWorldWritableWarningAcknowledged => {
@@ -616,9 +611,8 @@ impl App {
                         error = %err,
                         "failed to persist world-writable warning acknowledgement"
                     );
-                    self.chat_widget.add_error_message(format!(
-                        "Failed to save Auto mode warning preference: {err}"
-                    ));
+                    self.chat_widget
+                        .add_error_message(format!("保存自动模式警告偏好失败：{err}"));
                 }
             }
             AppEvent::PersistRateLimitSwitchPromptHidden => {
@@ -631,9 +625,8 @@ impl App {
                         error = %err,
                         "failed to persist rate limit switch prompt preference"
                     );
-                    self.chat_widget.add_error_message(format!(
-                        "Failed to save rate limit reminder preference: {err}"
-                    ));
+                    self.chat_widget
+                        .add_error_message(format!("保存速率限制提醒偏好失败：{err}"));
                 }
             }
             AppEvent::PersistModelMigrationPromptAcknowledged { migration_config } => {
@@ -643,9 +636,8 @@ impl App {
                     .await
                 {
                     tracing::error!(error = %err, "failed to persist model migration prompt acknowledgement");
-                    self.chat_widget.add_error_message(format!(
-                        "Failed to save model migration prompt preference: {err}"
-                    ));
+                    self.chat_widget
+                        .add_error_message(format!("保存模型迁移提示偏好失败：{err}"));
                 }
             }
             AppEvent::OpenApprovalsPopup => {
@@ -666,7 +658,7 @@ impl App {
                     let diff_summary = DiffSummary::new(changes, cwd);
                     self.overlay = Some(Overlay::new_static_with_renderables(
                         vec![diff_summary.into()],
-                        "P A T C H".to_string(),
+                        "补丁".to_string(),
                     ));
                 }
                 ApprovalRequest::Exec { command, .. } => {
@@ -675,7 +667,7 @@ impl App {
                     let full_cmd_lines = highlight_bash_to_lines(&full_cmd);
                     self.overlay = Some(Overlay::new_static_with_lines(
                         full_cmd_lines,
-                        "E X E C".to_string(),
+                        "命令".to_string(),
                     ));
                 }
             },

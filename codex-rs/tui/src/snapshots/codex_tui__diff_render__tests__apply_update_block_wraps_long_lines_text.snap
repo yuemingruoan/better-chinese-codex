@@ -2,7 +2,7 @@
 source: tui/src/diff_render.rs
 expression: text
 ---
-• Edited wrap_demo.txt (+2 -2)
+• 修改 wrap_demo.txt (+2 -2)
     1  1
     2 -2
     2 +added long line which

@@ -1,9 +1,8 @@
 ---
 source: tui/src/history_cell.rs
-assertion_line: 1891
 expression: rendered
 ---
-• Called
+• 已调用
   └ metrics.get_nearby_metric({"query":"
         very_long_query_that_needs_wrapp
         ing_to_display_properly_in_the_h

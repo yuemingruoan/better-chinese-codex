@@ -9,6 +9,6 @@ expression: term.backend()
 "~                                       "
 "~                                       "
 "───────────────────────────────── 100% ─"
-" ↑/↓ to scroll   pgup/pgdn to page   hom"
-" q to quit                              "
+" ↑/↓ 滚动   pgup/pgdn 翻页   home/end 跳" Hidden by multi-width symbols: [(6, " "), (8, " "), (23, " "), (25, " "), (39, " ")]
+" q 退出                                 " Hidden by multi-width symbols: [(4, " "), (6, " ")]
 "                                        "

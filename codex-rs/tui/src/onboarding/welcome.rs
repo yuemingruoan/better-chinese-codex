@@ -67,9 +67,9 @@ impl WidgetRef for &WelcomeWidget {
         }
         lines.push(Line::from(vec![
             "  ".into(),
-            "Welcome to ".into(),
+            "欢迎使用 ".into(),
             "Codex".bold(),
-            ", OpenAI's command-line coding agent".into(),
+            "，OpenAI 的命令行编程助手".into(),
         ]));
 
         Paragraph::new(lines)

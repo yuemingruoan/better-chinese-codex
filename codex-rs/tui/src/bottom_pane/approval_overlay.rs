@@ -519,10 +519,10 @@ mod tests {
             })
             .collect();
         let expected = vec![
-            "✔ You approved codex to run".to_string(),
+            "✔ 您已允许 Codex 运行".to_string(),
             "  git add tui/src/render/".to_string(),
             "  mod.rs tui/src/render/".to_string(),
-            "  renderable.rs this time".to_string(),
+            "  renderable.rs（仅此一次）".to_string(),
         ];
         assert_eq!(rendered, expected);
     }

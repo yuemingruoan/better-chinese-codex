@@ -454,7 +454,7 @@ impl ChatWidget {
         self.bottom_pane.set_task_running(true);
         self.retry_status_header = None;
         self.bottom_pane.set_interrupt_hint_visible(true);
-        self.set_status_header(String::from("Working"));
+        self.set_status_header(String::from("运行中"));
         self.full_reasoning_buffer.clear();
         self.reasoning_buffer.clear();
         self.request_redraw();
@@ -1044,7 +1044,7 @@ impl ChatWidget {
             interrupts: InterruptManager::new(),
             reasoning_buffer: String::new(),
             full_reasoning_buffer: String::new(),
-            current_status_header: String::from("Working"),
+            current_status_header: String::from("运行中"),
             retry_status_header: None,
             conversation_id: None,
             queued_user_messages: VecDeque::new(),
@@ -1111,7 +1111,7 @@ impl ChatWidget {
             interrupts: InterruptManager::new(),
             reasoning_buffer: String::new(),
             full_reasoning_buffer: String::new(),
-            current_status_header: String::from("Working"),
+            current_status_header: String::from("运行中"),
             retry_status_header: None,
             conversation_id: None,
             queued_user_messages: VecDeque::new(),

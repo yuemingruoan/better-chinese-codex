@@ -19,24 +19,24 @@ use crate::onboarding::onboarding_screen::StepStateProvider;
 
 use super::onboarding_screen::StepState;
 
-pub(crate) const WSL_INSTRUCTIONS: &str = r#"Install WSL2 by opening PowerShell as Administrator and running:
-    # Install WSL using the default Linux distribution (Ubuntu).
-    # See https://learn.microsoft.com/en-us/windows/wsl/install for more info
+pub(crate) const WSL_INSTRUCTIONS: &str = r#"以管理员身份打开 PowerShell 并运行以下命令来安装 WSL2：
+    # 使用默认的 Linux 发行版（Ubuntu）安装 WSL。
+    # 了解更多信息：https://learn.microsoft.com/en-us/windows/wsl/install
     wsl --install
 
-    # Restart your computer, then start a shell inside of Windows Subsystem for Linux
+    # 重启电脑，然后在 Windows Subsystem for Linux 中启动一个 shell
     wsl
 
-    # Install Node.js in WSL via nvm
-    # Documentation: https://learn.microsoft.com/en-us/windows/dev-environment/javascript/nodejs-on-wsl
+    # 在 WSL 中通过 nvm 安装 Node.js
+    # 文档：https://learn.microsoft.com/en-us/windows/dev-environment/javascript/nodejs-on-wsl
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash && export NVM_DIR="$HOME/.nvm" && \. "$NVM_DIR/nvm.sh"
     nvm install 22
 
-    # Install and run Codex in WSL
+    # 在 WSL 中安装并运行 Codex
     npm install --global @openai/codex
     codex
 
-    # Additional details and instructions for how to install and run Codex in WSL:
+    # 关于如何在 WSL 中安装并运行 Codex 的更多细节与指南：
     https://developers.openai.com/codex/windows"#;
 
 pub(crate) struct WindowsSetupWidget {
@@ -77,7 +77,7 @@ impl WindowsSetupWidget {
             }
             Err(err) => {
                 tracing::error!("Failed to persist Windows onboarding acknowledgement: {err:?}");
-                self.error = Some(format!("Failed to update config: {err}"));
+                self.error = Some(format!("更新配置失败：{err}"));
                 self.selection = None;
             }
         }
@@ -99,10 +99,17 @@ impl WidgetRef for &WindowsSetupWidget {
         let mut lines: Vec<Line> = vec![
             Line::from(vec![
                 "> ".into(),
-                "To use all Codex features, we recommend running Codex in Windows Subsystem for Linux (WSL2)".bold(),
+                "若要使用 Codex 的全部功能，建议在 Windows Subsystem for Linux (WSL2) 中运行 Codex"
+                    .bold(),
             ]),
-            Line::from(vec!["  ".into(), "WSL allows Codex to run Agent mode in a sandboxed environment with better data protections in place.".into()]),
-            Line::from(vec!["  ".into(), "Learn more: https://developers.openai.com/codex/windows".into()]),
+            Line::from(vec![
+                "  ".into(),
+                "WSL 让 Codex 能够在沙箱环境中运行 Agent 模式，并提供更完善的数据保护。".into(),
+            ]),
+            Line::from(vec![
+                "  ".into(),
+                "了解更多：https://developers.openai.com/codex/windows".into(),
+            ]),
             Line::from(""),
         ];
 
@@ -118,12 +125,12 @@ impl WidgetRef for &WindowsSetupWidget {
         lines.push(create_option(
             0,
             WindowsSetupSelection::Install,
-            "Exit and install WSL2",
+            "退出并安装 WSL2",
         ));
         lines.push(create_option(
             1,
             WindowsSetupSelection::Continue,
-            "Continue anyway",
+            "继续使用当前环境",
         ));
         lines.push("".into());
 
@@ -132,7 +139,7 @@ impl WidgetRef for &WindowsSetupWidget {
             lines.push("".into());
         }
 
-        lines.push(Line::from(vec!["  Press Enter to continue".dim()]));
+        lines.push(Line::from(vec!["  按 Enter 继续".dim()]));
 
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
