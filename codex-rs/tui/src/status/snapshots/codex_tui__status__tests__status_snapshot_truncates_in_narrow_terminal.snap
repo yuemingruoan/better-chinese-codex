@@ -7,18 +7,18 @@ expression: sanitized
 ╭────────────────────────────────────────────╮
 │  >_ OpenAI Codex (v0.0.0)                  │
 │                                            │
-│ Visit https://chatgpt.com/codex/settings/  │
-│ usage for up-to-date                       │
-│ information on rate limits and credits     │
+│ 访问 https://chatgpt.com/codex/settings/   │
+│ usage 获取最新的                           │
+│ 速率限制与额度信息                         │
 │                                            │
-│  Model:            gpt-5-codex (reasoning  │
-│  Directory: [[workspace]]                  │
-│  Approval:         on-request              │
-│  Sandbox:          read-only               │
-│  Agents.md:        <none>                  │
+│  模型:         gpt-5-codex (推理 high, 摘  │
+│  目录:         /workspace/tests            │
+│  审批:         on-request                  │
+│  沙箱:         read-only                   │
+│  Agents.md:    无                          │
 │                                            │
-│  Token usage:      1.9K total  (1K input + │
-│  Context window:   100% left (2.25K used / │
-│  5h limit:         [██████░░░░░░░░░░░░░░]  │
-│                    (resets 03:14)          │
+│  Token 使用:   1.9K 总计 （1K 输入 + 900   │
+│  上下文窗口:   剩余 100%（2.25K 已用 / 272 │
+│  5h 限额:      [██████░░░░░░░░░░░░░░] 剩余 │
+│                （03:14 重置）              │
 ╰────────────────────────────────────────────╯

@@ -2,7 +2,7 @@
 source: tui/src/diff_render.rs
 expression: terminal.backend()
 ---
-"• Deleted tmp_delete_example.txt (+0 -3)                                        "
+"• 删除 tmp_delete_example.txt (+0 -3)                                           " Hidden by multi-width symbols: [(3, " "), (5, " ")]
 "    1 -first                                                                    "
 "    2 -second                                                                   "
 "    3 -third                                                                    "

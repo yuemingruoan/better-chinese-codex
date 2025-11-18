@@ -149,13 +149,13 @@ fn render_changes_block(rows: Vec<Row>, wrap_cols: usize, cwd: &Path) -> Vec<RtL
     let total_added: usize = rows.iter().map(|r| r.added).sum();
     let total_removed: usize = rows.iter().map(|r| r.removed).sum();
     let file_count = rows.len();
-    let noun = if file_count == 1 { "file" } else { "files" };
+    let noun = "个文件";
     let mut header_spans: Vec<RtSpan<'static>> = vec!["• ".dim()];
     if let [row] = &rows[..] {
         let verb = match &row.change {
-            FileChange::Add { .. } => "Added",
-            FileChange::Delete { .. } => "Deleted",
-            _ => "Edited",
+            FileChange::Add { .. } => "新增",
+            FileChange::Delete { .. } => "删除",
+            _ => "修改",
         };
         header_spans.push(verb.bold());
         header_spans.push(" ".into());
@@ -163,7 +163,7 @@ fn render_changes_block(rows: Vec<Row>, wrap_cols: usize, cwd: &Path) -> Vec<RtL
         header_spans.push(" ".into());
         header_spans.extend(render_line_count_summary(row.added, row.removed));
     } else {
-        header_spans.push("Edited".bold());
+        header_spans.push("已修改".bold());
         header_spans.push(format!(" {file_count} {noun} ").into());
         header_spans.extend(render_line_count_summary(total_added, total_removed));
     }

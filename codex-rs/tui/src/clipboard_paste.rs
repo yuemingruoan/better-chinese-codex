@@ -13,10 +13,12 @@ pub enum PasteImageError {
 impl std::fmt::Display for PasteImageError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PasteImageError::ClipboardUnavailable(msg) => write!(f, "clipboard unavailable: {msg}"),
-            PasteImageError::NoImage(msg) => write!(f, "no image on clipboard: {msg}"),
-            PasteImageError::EncodeFailed(msg) => write!(f, "could not encode image: {msg}"),
-            PasteImageError::IoError(msg) => write!(f, "io error: {msg}"),
+            PasteImageError::ClipboardUnavailable(msg) => {
+                write!(f, "剪贴板不可用：{msg}")
+            }
+            PasteImageError::NoImage(msg) => write!(f, "剪贴板中没有图像：{msg}"),
+            PasteImageError::EncodeFailed(msg) => write!(f, "无法编码图像：{msg}"),
+            PasteImageError::IoError(msg) => write!(f, "I/O 错误：{msg}"),
         }
     }
 }
@@ -81,7 +83,7 @@ pub fn paste_image_as_png() -> Result<(Vec<u8>, PastedImageInfo), PasteImageErro
         tracing::debug!("clipboard image opened from image: {}x{}", w, h);
 
         let Some(rgba_img) = image::RgbaImage::from_raw(w, h, img.bytes.into_owned()) else {
-            return Err(PasteImageError::EncodeFailed("invalid RGBA buffer".into()));
+            return Err(PasteImageError::EncodeFailed("无效的 RGBA 缓冲区".into()));
         };
 
         image::DynamicImage::ImageRgba8(rgba_img)
@@ -112,7 +114,7 @@ pub fn paste_image_as_png() -> Result<(Vec<u8>, PastedImageInfo), PasteImageErro
 #[cfg(target_os = "android")]
 pub fn paste_image_as_png() -> Result<(Vec<u8>, PastedImageInfo), PasteImageError> {
     Err(PasteImageError::ClipboardUnavailable(
-        "clipboard image paste is unsupported on Android".into(),
+        "Android 上暂不支持粘贴剪贴板图像".into(),
     ))
 }
 
@@ -138,7 +140,7 @@ pub fn paste_image_to_temp_png() -> Result<(PathBuf, PastedImageInfo), PasteImag
 pub fn paste_image_to_temp_png() -> Result<(PathBuf, PastedImageInfo), PasteImageError> {
     // Keep error consistent with paste_image_as_png.
     Err(PasteImageError::ClipboardUnavailable(
-        "clipboard image paste is unsupported on Android".into(),
+        "Android 上暂不支持粘贴剪贴板图像".into(),
     ))
 }
 

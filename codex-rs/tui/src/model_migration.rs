@@ -133,15 +133,12 @@ impl WidgetRef for &ModelMigrationScreen {
         let mut column = ColumnRenderable::new();
 
         column.push("");
-        column.push(Line::from(vec![
-            "> ".into(),
-            "Introducing our gpt-5.1 models".bold(),
-        ]));
+        column.push(Line::from(vec!["> ".into(), "全新 gpt-5.1 模型".bold()]));
         column.push(Line::from(""));
 
         column.push(
             Paragraph::new(Line::from(
-                "We've upgraded our family of models supported in Codex to gpt-5.1, gpt-5.1-codex and gpt-5.1-codex-mini.",
+                "Codex 现已支持并默认使用 gpt-5.1、gpt-5.1-codex 与 gpt-5.1-codex-mini。",
             ))
             .wrap(Wrap { trim: false })
             .inset(Insets::tlbr(0, 2, 0, 0)),
@@ -149,7 +146,7 @@ impl WidgetRef for &ModelMigrationScreen {
         column.push(Line::from(""));
         column.push(
             Paragraph::new(Line::from(
-                "You can continue using legacy models by specifying them directly with the -m option or in your config.toml.",
+                "如需继续使用旧模型，可通过 -m 参数或 config.toml 中的配置进行指定。",
             ))
             .wrap(Wrap { trim: false })
             .inset(Insets::tlbr(0, 2, 0, 0)),
@@ -157,16 +154,14 @@ impl WidgetRef for &ModelMigrationScreen {
         column.push(Line::from(""));
         column.push(
             Line::from(vec![
-                "Learn more at ".into(),
+                "了解更多：".into(),
                 "www.openai.com/index/gpt-5-1".cyan().underlined(),
                 ".".into(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.push(Line::from(""));
-        column.push(
-            Line::from(vec!["Press enter to continue".dim()]).inset(Insets::tlbr(0, 2, 0, 0)),
-        );
+        column.push(Line::from(vec!["按 Enter 继续".dim()]).inset(Insets::tlbr(0, 2, 0, 0)));
 
         column.render(area, buf);
     }

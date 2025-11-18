@@ -7,11 +7,11 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(version)]
 pub struct Cli {
-    /// Optional user prompt to start the session.
+    /// 可选，启动会话时的初始提示词。
     #[arg(value_name = "PROMPT", value_hint = clap::ValueHint::Other)]
     pub prompt: Option<String>,
 
-    /// Optional image(s) to attach to the initial prompt.
+    /// 可选，附加到初始提示中的图片。
     #[arg(long = "image", short = 'i', value_name = "FILE", value_delimiter = ',', num_args = 1..)]
     pub images: Vec<PathBuf>,
 
@@ -28,35 +28,33 @@ pub struct Cli {
     #[clap(skip)]
     pub resume_session_id: Option<String>,
 
-    /// Model the agent should use.
+    /// 指定代理要使用的模型。
     #[arg(long, short = 'm')]
     pub model: Option<String>,
 
-    /// Convenience flag to select the local open source model provider.
-    /// Equivalent to -c model_provider=oss; verifies a local Ollama server is
-    /// running.
+    /// 选择本地开源模型提供者的便捷开关。
+    /// 等效于 -c model_provider=oss，并会校验本地 Ollama 服务是否运行。
     #[arg(long = "oss", default_value_t = false)]
     pub oss: bool,
 
-    /// Configuration profile from config.toml to specify default options.
+    /// 使用 config.toml 中的配置档来指定默认选项。
     #[arg(long = "profile", short = 'p')]
     pub config_profile: Option<String>,
 
-    /// Select the sandbox policy to use when executing model-generated shell
-    /// commands.
+    /// 指定在执行模型生成的 shell 命令时使用的沙箱策略。
     #[arg(long = "sandbox", short = 's')]
     pub sandbox_mode: Option<codex_common::SandboxModeCliArg>,
 
-    /// Configure when the model requires human approval before executing a command.
+    /// 配置模型在执行命令前需要人工审批的时机。
     #[arg(long = "ask-for-approval", short = 'a')]
     pub approval_policy: Option<ApprovalModeCliArg>,
 
-    /// Convenience alias for low-friction sandboxed automatic execution (-a on-request, --sandbox workspace-write).
+    /// 低阻力沙箱自动执行的便捷别名（-a on-request，--sandbox workspace-write）。
     #[arg(long = "full-auto", default_value_t = false)]
     pub full_auto: bool,
 
-    /// Skip all confirmation prompts and execute commands without sandboxing.
-    /// EXTREMELY DANGEROUS. Intended solely for running in environments that are externally sandboxed.
+    /// 跳过所有确认提示并在无沙箱下执行命令。
+    /// 极度危险，仅适用于外部环境已提供沙箱保护的情况。
     #[arg(
         long = "dangerously-bypass-approvals-and-sandbox",
         alias = "yolo",
@@ -65,15 +63,15 @@ pub struct Cli {
     )]
     pub dangerously_bypass_approvals_and_sandbox: bool,
 
-    /// Tell the agent to use the specified directory as its working root.
+    /// 将代理的工作根目录切换到指定路径。
     #[clap(long = "cd", short = 'C', value_name = "DIR")]
     pub cwd: Option<PathBuf>,
 
-    /// Enable web search (off by default). When enabled, the native Responses `web_search` tool is available to the model (no per‑call approval).
+    /// 启用联网搜索（默认关闭）。启用后模型可直接使用 Responses 的 `web_search` 工具（无需逐次审批）。
     #[arg(long = "search", default_value_t = false)]
     pub web_search: bool,
 
-    /// Additional directories that should be writable alongside the primary workspace.
+    /// 需要与主工作区一同放开的额外可写目录。
     #[arg(long = "add-dir", value_name = "DIR", value_hint = ValueHint::DirPath)]
     pub add_dir: Vec<PathBuf>,
 

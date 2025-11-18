@@ -82,7 +82,7 @@ impl Command for EnableAlternateScroll {
     #[cfg(windows)]
     fn execute_winapi(&self) -> Result<()> {
         Err(std::io::Error::other(
-            "tried to execute EnableAlternateScroll using WinAPI; use ANSI instead",
+            "尝试通过 WinAPI 执行 EnableAlternateScroll；请改用 ANSI 序列",
         ))
     }
 
@@ -103,7 +103,7 @@ impl Command for DisableAlternateScroll {
     #[cfg(windows)]
     fn execute_winapi(&self) -> Result<()> {
         Err(std::io::Error::other(
-            "tried to execute DisableAlternateScroll using WinAPI; use ANSI instead",
+            "尝试通过 WinAPI 执行 DisableAlternateScroll；请改用 ANSI 序列",
         ))
     }
 
@@ -128,7 +128,7 @@ pub fn restore() -> Result<()> {
 /// Initialize the terminal (inline viewport; history stays in normal scrollback)
 pub fn init() -> Result<Terminal> {
     if !stdout().is_terminal() {
-        return Err(std::io::Error::other("stdout is not a terminal"));
+        return Err(std::io::Error::other("stdout 不是终端"));
     }
     set_modes()?;
 
@@ -495,7 +495,7 @@ impl Command for PostNotification {
     #[cfg(windows)]
     fn execute_winapi(&self) -> Result<()> {
         Err(std::io::Error::other(
-            "tried to execute PostNotification using WinAPI; use ANSI instead",
+            "尝试通过 WinAPI 执行 PostNotification；请改用 ANSI 序列",
         ))
     }
 

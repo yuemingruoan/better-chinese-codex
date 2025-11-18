@@ -2,9 +2,9 @@
 source: tui/src/history_cell.rs
 expression: rendered
 ---
-• Ran seq 1 10 1>&2 && false
+• 已运行 seq 1 10 1>&2 && false
   └ 1
     2
-    … +6 lines
+    … +6 行
     9
     10

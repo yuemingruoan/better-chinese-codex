@@ -87,10 +87,10 @@ pub(crate) fn compose_rate_limit_data(
                 let label: String = primary
                     .window_minutes
                     .map(get_limits_duration)
-                    .unwrap_or_else(|| "5h".to_string());
+                    .unwrap_or_else(|| "5 小时".to_string());
                 let label = capitalize_first(&label);
                 rows.push(StatusRateLimitRow {
-                    label: format!("{label} limit"),
+                    label: format!("{label} 限额"),
                     percent_used: primary.used_percent,
                     resets_at: primary.resets_at.clone(),
                 });
@@ -100,10 +100,10 @@ pub(crate) fn compose_rate_limit_data(
                 let label: String = secondary
                     .window_minutes
                     .map(get_limits_duration)
-                    .unwrap_or_else(|| "weekly".to_string());
+                    .unwrap_or_else(|| "每周".to_string());
                 let label = capitalize_first(&label);
                 rows.push(StatusRateLimitRow {
-                    label: format!("{label} limit"),
+                    label: format!("{label} 限额"),
                     percent_used: secondary.used_percent,
                     resets_at: secondary.resets_at.clone(),
                 });
@@ -137,7 +137,7 @@ pub(crate) fn render_status_limit_progress_bar(percent_remaining: f64) -> String
 }
 
 pub(crate) fn format_status_limit_summary(percent_remaining: f64) -> String {
-    format!("{percent_remaining:.0}% left")
+    format!("剩余 {percent_remaining:.0}%")
 }
 
 fn capitalize_first(label: &str) -> String {

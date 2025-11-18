@@ -1,26 +1,25 @@
 ---
 source: tui/src/history_cell.rs
-assertion_line: 1540
 expression: rendered
 ---
 /mcp
 
-🔌  MCP Tools
+🔌  MCP 工具
 
   • docs
-    • Status: enabled
-    • Auth: Unsupported
-    • Command: docs-server
-    • Env: TOKEN=*****, APP_TOKEN=*****
+    • 状态：已启用
+    • 认证：Unsupported
+    • 命令：docs-server
+    • 环境变量：TOKEN=*****, APP_TOKEN=*****
     • Tools: list
     • Resources: (none)
     • Resource templates: (none)
 
   • http
-    • Status: enabled
-    • Auth: Unsupported
-    • URL: https://example.com/mcp
-    • HTTP headers: Authorization=*****
+    • 状态：已启用
+    • 认证：Unsupported
+    • URL：https://example.com/mcp
+    • HTTP 头：Authorization=*****
     • Env HTTP headers: X-API-Key=API_KEY_ENV
     • Tools: ping
     • Resources: (none)

@@ -2,7 +2,7 @@
 source: tui/src/resume_picker.rs
 expression: snapshot
 ---
-  Created         Updated         Conversation
-  16 minutes ago  42 seconds ago  Fix resume picker timestamps
-> 1 hour ago      35 minutes ago  Investigate lazy pagination cap
-  2 hours ago     2 hours ago     Explain the codebase
+  创建时间       更新时间       会话内容
+  16 分钟前     42 秒前      Fix resume picker timestamps
+> 1 小时前      35 分钟前     Investigate lazy pagination cap
+  2 小时前      2 小时前      Explain the codebase

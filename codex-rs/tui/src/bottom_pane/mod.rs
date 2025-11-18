@@ -227,7 +227,7 @@ impl BottomPane {
     }
 
     /// Update the animated header shown to the left of the brackets in the
-    /// status indicator (defaults to "Working"). No-ops if the status
+    /// status indicator (默认显示“运行中”). No-ops if the status
     /// indicator is not active.
     pub(crate) fn update_status_header(&mut self, header: String) {
         if let Some(status) = self.status.as_mut() {
@@ -580,8 +580,9 @@ mod tests {
         for x in 0..area.width {
             r0.push(buf[(x, 0)].symbol().chars().next().unwrap_or(' '));
         }
+        let r0_normalized: String = r0.chars().filter(|c| !c.is_whitespace()).collect();
         assert!(
-            !r0.contains("Working"),
+            !r0_normalized.contains("运行中"),
             "overlay should not render above modal"
         );
     }
@@ -618,7 +619,7 @@ mod tests {
             "no active modal view after denial"
         );
 
-        // Render and ensure the top row includes the Working header and a composer line below.
+        // Render and ensure the top row includes the status header and a composer line below.
         // Give the animation thread a moment to tick.
         std::thread::sleep(Duration::from_millis(120));
         let area = Rect::new(0, 0, 40, 6);
@@ -628,9 +629,10 @@ mod tests {
         for x in 0..area.width {
             row0.push(buf[(x, 0)].symbol().chars().next().unwrap_or(' '));
         }
+        let row0_normalized: String = row0.chars().filter(|c| !c.is_whitespace()).collect();
         assert!(
-            row0.contains("Working"),
-            "expected Working header after denial on row 0: {row0:?}"
+            row0_normalized.contains("运行中"),
+            "expected status header after denial on row 0: {row0:?}"
         );
 
         // Composer placeholder should be visible somewhere below.
@@ -673,7 +675,11 @@ mod tests {
         pane.render(area, &mut buf);
 
         let bufs = snapshot_buffer(&buf);
-        assert!(bufs.contains("• Working"), "expected Working header");
+        let bufs_normalized: String = bufs.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            bufs_normalized.contains("•运行中"),
+            "expected status header"
+        );
     }
 
     #[test]

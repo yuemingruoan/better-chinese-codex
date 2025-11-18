@@ -2,14 +2,14 @@
 source: tui/src/pager_overlay.rs
 expression: snapshot
 ---
-/ T R A N S C R I P T / / / / / / / / / / / / / / / / / / / / / / / / / / / / /
-• Added foo.txt (+2 -0)
+/ 会 话 记 录 / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /
+• 新 增  foo.txt (+2 -0)
     1 +hello
     2 +world
 
-• Added foo.txt (+2 -0)
+• 新 增  foo.txt (+2 -0)
     1 +hello
     2 +world
 ─────────────────────────────────────────────────────────────────────────── 0% ─
- ↑/↓ to scroll   pgup/pgdn to page   home/end to jump
- q to quit   esc to edit prev
+ ↑/↓ 滚 动    pgup/pgdn 翻 页    home/end 跳 转
+ q 退 出    esc 编 辑 上 一 条

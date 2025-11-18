@@ -21,14 +21,14 @@ pub(crate) fn compose_model_display(
 ) -> (String, Vec<String>) {
     let mut details: Vec<String> = Vec::new();
     if let Some((_, effort)) = entries.iter().find(|(k, _)| *k == "reasoning effort") {
-        details.push(format!("reasoning {}", effort.to_ascii_lowercase()));
+        details.push(format!("推理 {}", effort.to_ascii_lowercase()));
     }
     if let Some((_, summary)) = entries.iter().find(|(k, _)| *k == "reasoning summaries") {
         let summary = summary.trim();
         if summary.eq_ignore_ascii_case("none") || summary.eq_ignore_ascii_case("off") {
-            details.push("summaries off".to_string());
+            details.push("概述已关闭".to_string());
         } else if !summary.is_empty() {
-            details.push(format!("summaries {}", summary.to_ascii_lowercase()));
+            details.push(format!("摘要 {}", summary.to_ascii_lowercase()));
         }
     }
 
@@ -43,7 +43,7 @@ pub(crate) fn compose_agents_summary(config: &Config) -> String {
                 let file_name = p
                     .file_name()
                     .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "<unknown>".to_string());
+                    .unwrap_or_else(|| "未知".to_string());
                 let display = if let Some(parent) = p.parent() {
                     if parent == config.cwd {
                         file_name.clone()
@@ -74,12 +74,12 @@ pub(crate) fn compose_agents_summary(config: &Config) -> String {
                 rels.push(display);
             }
             if rels.is_empty() {
-                "<none>".to_string()
+                "无".to_string()
             } else {
                 rels.join(", ")
             }
         }
-        Err(_) => "<none>".to_string(),
+        Err(_) => "无".to_string(),
     }
 }
 
@@ -165,7 +165,7 @@ pub(crate) fn format_reset_timestamp(dt: DateTime<Local>, captured_at: DateTime<
     if dt.date_naive() == captured_at.date_naive() {
         time
     } else {
-        format!("{time} on {}", dt.format("%-d %b"))
+        format!("{time} · {}", dt.format("%-d %b"))
     }
 }
 

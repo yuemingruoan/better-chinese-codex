@@ -2,12 +2,13 @@
 source: tui/src/update_prompt.rs
 expression: terminal.backend()
 ---
-  ✨ Update available! 0.0.0 -> 9.9.9
+  ✨ 发现新版本！ 0.0.0 -> 9.9.9
 
-  Release notes: https://github.com/openai/codex/releases/latest
+  请打开发布页面下载最新版：https://github.com/yuemingruoan/better-chinese-codex/releases
+  页面包含 Windows / macOS / Linux 的安装说明。
 
-› 1. Update now (runs `npm install -g @openai/codex@latest`)                    
-  2. Skip
-  3. Skip until next version
+› 1. 立即打开发布页（默认浏览器）                                        
+  2. 暂时跳过
+  3. 本版本内不再提醒
 
-  Press enter to continue
+  按 enter 继续

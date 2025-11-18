@@ -56,7 +56,7 @@ switch (platform) {
 }
 
 if (!targetTriple) {
-  throw new Error(`Unsupported platform: ${platform} (${arch})`);
+  throw new Error(`暂不支持的平台：${platform} (${arch})`);
 }
 
 const vendorRoot = path.join(__dirname, "..", "vendor");

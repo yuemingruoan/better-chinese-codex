@@ -5,5 +5,5 @@ expression: terminal.backend()
 "                                                            "
 "› /mo                                                       "
 "                                                            "
-"  /model    choose what model and reasoning effort to use   "
-"  /mention  mention a file                                  "
+"  /model    选择模型及推理强度                              " Hidden by multi-width symbols: [(13, " "), (15, " "), (17, " "), (19, " "), (21, " "), (23, " "), (25, " "), (27, " "), (29, " ")]
+"  /mention  在消息中提及文件                                " Hidden by multi-width symbols: [(13, " "), (15, " "), (17, " "), (19, " "), (21, " "), (23, " "), (25, " "), (27, " ")]
