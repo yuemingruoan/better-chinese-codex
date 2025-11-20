@@ -1,31 +1,31 @@
-# Config
+# 配置（Config）
 
-Codex configuration gives you fine-grained control over the model, execution environment, and integrations available to the CLI. Use this guide alongside the workflows in [`codex exec`](./exec.md), the guardrails in [Sandbox & approvals](./sandbox.md), and project guidance from [AGENTS.md discovery](./agents_md.md).
+Codex 的配置系统可以精细控制模型、执行环境与 CLI 可用的各类集成。使用本文档时，可结合 [`codex exec`](./exec.md) 中的工作流示例、[Sandbox & approvals](./sandbox.md) 介绍的安全限制，以及 [AGENTS.md 指南](./agents_md.md) 中的项目协作建议。
 
-## Quick navigation
+## 快速导航
 
-- [Feature flags](#feature-flags)
-- [Model selection](#model-selection)
-- [Execution environment](#execution-environment)
-- [MCP integration](#mcp-integration)
-- [Observability and telemetry](#observability-and-telemetry)
-- [Profiles and overrides](#profiles-and-overrides)
-- [Reference table](#config-reference)
+- [特性开关](#feature-flags)
+- [模型选择](#model-selection)
+- [执行环境](#execution-environment)
+- [MCP 集成](#mcp-integration)
+- [可观测性与遥测](#observability-and-telemetry)
+- [配置档与覆盖顺序](#profiles-and-overrides)
+- [参考表](#config-reference)
 
-Codex supports several mechanisms for setting config values:
+设置配置项有多种途径：
 
-- Config-specific command-line flags, such as `--model o3` (highest precedence).
-- A generic `-c`/`--config` flag that takes a `key=value` pair, such as `--config model="o3"`.
-  - The key can contain dots to set a value deeper than the root, e.g. `--config model_providers.openai.wire_api="chat"`.
-  - For consistency with `config.toml`, values are a string in TOML format rather than JSON format, so use `key='{a = 1, b = 2}'` rather than `key='{"a": 1, "b": 2}'`.
-    - The quotes around the value are necessary, as without them your shell would split the config argument on spaces, resulting in `codex` receiving `-c key={a` with (invalid) additional arguments `=`, `1,`, `b`, `=`, `2}`.
-  - Values can contain any TOML object, such as `--config shell_environment_policy.include_only='["PATH", "HOME", "USER"]'`.
-  - If `value` cannot be parsed as a valid TOML value, it is treated as a string value. This means that `-c model='"o3"'` and `-c model=o3` are equivalent.
-    - In the first case, the value is the TOML string `"o3"`, while in the second the value is `o3`, which is not valid TOML and therefore treated as the TOML string `"o3"`.
-    - Because quotes are interpreted by one's shell, `-c key="true"` will be correctly interpreted in TOML as `key = true` (a boolean) and not `key = "true"` (a string). If for some reason you needed the string `"true"`, you would need to use `-c key='"true"'` (note the two sets of quotes).
-- The `$CODEX_HOME/config.toml` configuration file where the `CODEX_HOME` environment value defaults to `~/.codex`. (Note `CODEX_HOME` will also be where logs and other Codex-related information are stored.)
+- 针对单个配置的命令行参数，例如优先级最高的 `--model o3`。
+- 通用的 `-c` / `--config` 语法，可传入 `key=value` 键值对，例如 `--config model="o3"`。
+  - `key` 支持使用点号表示层级，如 `--config model_providers.openai.wire_api="chat"`。
+  - 与 `config.toml` 保持一致，值使用 TOML 字面量而非 JSON，例如 `key='{a = 1, b = 2}'`、而不是 `key='{"a": 1, "b": 2}'`。
+    - 外层引号必不可少，否则 shell 会按空格拆分，导致 `codex` 只收到 `-c key={a` 以及额外的无效参数 `=、1,、b, …`。
+  - 值可以是任意 TOML 对象，例如 `--config shell_environment_policy.include_only='["PATH", "HOME", "USER"]'`。
+  - 若传入的内容无法解析为合法 TOML，会被视作普通字符串；因此 `-c model='"o3"'` 与 `-c model=o3` 等价。
+    - 第一种写法直接得到字符串 `"o3"`；第二种写法虽然缺少引号，但由于 `o3` 不是合法 TOML，将被自动视作字符串 `"o3"`。
+    - 类似地，`-c key="true"` 会正确解析为布尔值 `true` 而非字符串；若确实需要字面文本 `"true"`，请写作 `-c key='"true"'`（注意双重引号）。
+- `$CODEX_HOME/config.toml` 文件；`CODEX_HOME` 默认为 `~/.codex`，同样也是 Codex 生成日志与缓存的根目录。
 
-Both the `--config` flag and the `config.toml` file support the following options:
+`--config` 参数与 `config.toml` 文件均支持下列选项：
 
 ## Feature flags
 
@@ -38,67 +38,63 @@ web_search_request = true        # allow the model to request web searches
 # view_image_tool defaults to true; omit to keep defaults
 ```
 
-Supported features:
+支持的特性如下：
 
-| Key                                       | Default | Stage        | Description                                          |
-| ----------------------------------------- | :-----: | ------------ | ---------------------------------------------------- |
-| `unified_exec`                            |  false  | Experimental | Use the unified PTY-backed exec tool                 |
-| `streamable_shell`                        |  false  | Experimental | Use the streamable exec-command/write-stdin pair     |
-| `rmcp_client`                             |  false  | Experimental | Enable oauth support for streamable HTTP MCP servers |
-| `apply_patch_freeform`                    |  false  | Beta         | Include the freeform `apply_patch` tool              |
-| `view_image_tool`                         |  true   | Stable       | Include the `view_image` tool                        |
-| `web_search_request`                      |  false  | Stable       | Allow the model to issue web searches                |
-| `experimental_sandbox_command_assessment` |  false  | Experimental | Enable model-based sandbox risk assessment           |
-| `ghost_commit`                            |  false  | Experimental | Create a ghost commit each turn                      |
-| `enable_experimental_windows_sandbox`     |  false  | Experimental | Use the Windows restricted-token sandbox             |
+| Key                                       | 默认值 | 阶段        | 描述                                                         |
+| ----------------------------------------- | :----: | ----------- | ------------------------------------------------------------ |
+| `unified_exec`                            | false  | Experimental | 启用统一的 PTY 执行器                                        |
+| `streamable_shell`                        | false  | Experimental | 使用可流式传输的 `exec-command`/`write-stdin` 组合           |
+| `rmcp_client`                             | false  | Experimental | 允许通过 HTTP 流式 MCP 服务器使用 OAuth                      |
+| `apply_patch_freeform`                    | false  | Beta        | 暴露自由格式的 `apply_patch` 工具                           |
+| `view_image_tool`                         |  true  | Stable      | 暴露 `view_image` 工具                                       |
+| `web_search_request`                      | false  | Stable      | 允许模型主动发起 Web 搜索                                    |
+| `experimental_sandbox_command_assessment` | false  | Experimental | 启用模型辅助的沙箱风险评估                                   |
+| `ghost_commit`                            | false  | Experimental | 为每个回合创建一次“幽灵提交”                                 |
+| `enable_experimental_windows_sandbox`     | false  | Experimental | 使用受限令牌版的 Windows 沙箱                                |
 
-Notes:
+提示：
 
-- Omit a key to accept its default.
-- Legacy booleans such as `experimental_use_exec_command_tool`, `experimental_use_unified_exec_tool`, `include_apply_patch_tool`, and similar `experimental_use_*` keys are deprecated; setting the corresponding `[features].<key>` avoids repeated warnings.
+- 未显式配置的键会沿用默认值。
+- 旧版布尔开关（例如 `experimental_use_exec_command_tool`、`experimental_use_unified_exec_tool`、`include_apply_patch_tool` 以及类似的 `experimental_use_*`）已废弃；请改用 `[features].<key>`，以免不断看到弃用警告。
 
-## Model selection
+## 模型选择
 
 ### model
 
-The model that Codex should use.
+指定 Codex 要使用的模型：
 
 ```toml
-model = "gpt-5.1"  # overrides the default ("gpt-5.1-codex-max" across platforms)
+model = "gpt-5.1"  # 覆盖默认值（默认是跨平台的 "gpt-5.1-codex-max"）
 ```
 
 ### model_providers
 
-This option lets you add to the default set of model providers bundled with Codex. The map key becomes the value you use with `model_provider` to select the provider.
+用于扩展 Codex 内置的模型提供者列表。你在此表中使用的键名，也是 `model_provider` 字段可选的值。
 
 > [!NOTE]
-> Built-in providers are not overwritten when you reuse their key. Entries you add only take effect when the key is **new**; for example `[model_providers.openai]` leaves the original OpenAI definition untouched. To customize the bundled OpenAI provider, prefer the dedicated knobs (for example the `OPENAI_BASE_URL` environment variable) or register a new provider key and point `model_provider` at it.
+> 如果键名与内置提供者相同，原有定义不会被覆盖；只有全新的键才会生效。比如你声明 `[model_providers.openai]`，也只是再添加一个同名条目，Codex 会继续使用默认的 OpenAI 配置。若想调整官方 OpenAI 提供者，优先考虑相关环境变量（如 `OPENAI_BASE_URL`），或是注册一个新键然后在 `model_provider` 中引用它。
 
-For example, if you wanted to add a provider that uses the OpenAI 4o model via the chat completions API, then you could add the following configuration:
+例如想通过 Chat Completions API 使用 OpenAI 4o，可以写成：
 
 ```toml
-# Recall that in TOML, root keys must be listed before tables.
+# TOML 根级别必须先写键再写表。
 model = "gpt-4o"
 model_provider = "openai-chat-completions"
 
 [model_providers.openai-chat-completions]
-# Name of the provider that will be displayed in the Codex UI.
+# 将显示在 Codex UI 中的名称。
 name = "OpenAI using Chat Completions"
-# The path `/chat/completions` will be amended to this URL to make the POST
-# request for the chat completions.
+# Codex 会在 base_url 后附加 `/chat/completions` 并发送 POST 请求。
 base_url = "https://api.openai.com/v1"
-# If `env_key` is set, identifies an environment variable that must be set when
-# using Codex with this provider. The value of the environment variable must be
-# non-empty and will be used in the `Bearer TOKEN` HTTP header for the POST request.
+# env_key 指定调用该提供者时需要设置的环境变量，其值会作为 Bearer Token 写入 HTTP 头。
 env_key = "OPENAI_API_KEY"
-# Valid values for wire_api are "chat" and "responses". Defaults to "chat" if omitted.
+# wire_api 可选 "chat" 或 "responses"，默认 "chat"。
 wire_api = "chat"
-# If necessary, extra query params that need to be added to the URL.
-# See the Azure example below.
+# 若有需要，可附加额外的查询参数，Azure 示例见下文。
 query_params = {}
 ```
 
-Note this makes it possible to use Codex CLI with non-OpenAI models, so long as they use a wire API that is compatible with the OpenAI chat completions API. For example, you could define the following provider to use Codex CLI with Ollama running locally:
+借助这种机制，可以让 Codex CLI 连接第三方模型，只要它们兼容 OpenAI Chat Completions 协议即可。比如使用本地 Ollama：
 
 ```toml
 [model_providers.ollama]
@@ -106,7 +102,7 @@ name = "Ollama"
 base_url = "http://localhost:11434/v1"
 ```
 
-Or a third-party provider (using a distinct environment variable for the API key):
+或接入 Mistral（使用独立的 API Key 环境变量）：
 
 ```toml
 [model_providers.mistral]
@@ -115,25 +111,22 @@ base_url = "https://api.mistral.ai/v1"
 env_key = "MISTRAL_API_KEY"
 ```
 
-It is also possible to configure a provider to include extra HTTP headers with a request. These can be hardcoded values (`http_headers`) or values read from environment variables (`env_http_headers`):
+也可以为某个 provider 附加额外的 HTTP 请求头，可直接写常量（`http_headers`），也可引用环境变量（`env_http_headers`）：
 
 ```toml
 [model_providers.example]
 # name, base_url, ...
 
-# This will add the HTTP header `X-Example-Header` with value `example-value`
-# to each request to the model provider.
+# 为每个请求附加固定的 HTTP 头。
 http_headers = { "X-Example-Header" = "example-value" }
 
-# This will add the HTTP header `X-Example-Features` with the value of the
-# `EXAMPLE_FEATURES` environment variable to each request to the model provider
-# _if_ the environment variable is set and its value is non-empty.
+# 或者从环境变量读取要注入的头。
 env_http_headers = { "X-Example-Features" = "EXAMPLE_FEATURES" }
 ```
 
 #### Azure model provider example
 
-Note that Azure requires `api-version` to be passed as a query parameter, so be sure to specify it as part of `query_params` when defining the Azure provider:
+Azure 需要在查询参数中带上 `api-version`，因此在配置 Azure provider 时必须写到 `query_params` 中：
 
 ```toml
 [model_providers.azure]
@@ -145,13 +138,11 @@ query_params = { api-version = "2025-04-01-preview" }
 wire_api = "responses"
 ```
 
-Export your key before launching Codex: `export AZURE_OPENAI_API_KEY=…`
+启动 Codex 前请先设置密钥：`export AZURE_OPENAI_API_KEY=…`
 
-#### Per-provider network tuning
+#### 针对不同提供者的网络调优
 
-The following optional settings control retry behaviour and streaming idle timeouts **per model provider**. They must be specified inside the corresponding `[model_providers.<id>]` block in `config.toml`. (Older releases accepted top‑level keys; those are now ignored.)
-
-Example:
+下面这些可选项可以 **按 provider 维度** 控制重试策略与流式超时，必须写在对应的 `[model_providers.<id>]` 表中。（旧版本曾支持顶层键，现已忽略。）示例：
 
 ```toml
 [model_providers.openai]
@@ -166,23 +157,21 @@ stream_idle_timeout_ms = 300000    # 5m idle timeout
 
 ##### request_max_retries
 
-How many times Codex will retry a failed HTTP request to the model provider. Defaults to `4`.
+HTTP 请求失败后的最大重试次数，默认 `4`。
 
 ##### stream_max_retries
 
-Number of times Codex will attempt to reconnect when a streaming response is interrupted. Defaults to `5`.
+流式响应中断后，Codex 会尝试重连的次数，默认 `5`。
 
 ##### stream_idle_timeout_ms
 
-How long Codex will wait for activity on a streaming response before treating the connection as lost. Defaults to `300_000` (5 minutes).
+流式响应在被视为断开前允许的最大空闲时间，单位毫秒；默认 `300_000`（5 分钟）。
 
 ### model_provider
 
-Identifies which provider to use from the `model_providers` map. Defaults to `"openai"`. You can override the `base_url` for the built-in `openai` provider via the `OPENAI_BASE_URL` environment variable.
+指定要使用的 provider 键名，默认 `"openai"`。如果想替换内置 OpenAI 的 `base_url`，可以设置 `OPENAI_BASE_URL` 环境变量。
 
-Note that if you override `model_provider`, then you likely want to override
-`model`, as well. For example, if you are running ollama with Mistral locally,
-then you would need to add the following to your config in addition to the new entry in the `model_providers` map:
+通常在切换 `model_provider` 的同时，也要调整 `model`。例如你在本地的 ollama 里运行 Mistral，除了提供者条目外还需要：
 
 ```toml
 model_provider = "ollama"
@@ -191,14 +180,14 @@ model = "mistral"
 
 ### model_reasoning_effort
 
-If the selected model is known to support reasoning (for example: `o3`, `o4-mini`, `codex-*`, `gpt-5.1-codex-max`, `gpt-5.1`, `gpt-5.1-codex`), reasoning is enabled by default when using the Responses API. As explained in the [OpenAI Platform documentation](https://platform.openai.com/docs/guides/reasoning?api-mode=responses#get-started-with-reasoning), this can be set to:
+当所选模型支持推理（例如 `o3`、`o4-mini`、`codex-*`、`gpt-5.1-codex-max`、`gpt-5.1`、`gpt-5.1-codex`）时，使用 Responses API 会默认开启推理能力。参考 [OpenAI Platform 文档](https://platform.openai.com/docs/guides/reasoning?api-mode=responses#get-started-with-reasoning)，可选值包括：
 
 - `"minimal"`
 - `"low"`
-- `"medium"` (default)
+- `"medium"`（默认）
 - `"high"`
 
-Note: to minimize reasoning, choose `"minimal"`.
+若希望尽可能降低推理成本，可设置为 `"minimal"`。
 
 ### model_reasoning_summary
 
@@ -208,34 +197,32 @@ If the model name starts with `"o"` (as in `"o3"` or `"o4-mini"`) or `"codex"`, 
 - `"concise"`
 - `"detailed"`
 
-To disable reasoning summaries, set `model_reasoning_summary` to `"none"` in your config:
+如需关闭推理摘要，在配置中写 `model_reasoning_summary = "none"`：
 
 ```toml
-model_reasoning_summary = "none"  # disable reasoning summaries
+model_reasoning_summary = "none"  # 关闭推理摘要
 ```
 
 ### model_verbosity
 
-Controls output length/detail on GPT‑5 family models when using the Responses API. Supported values:
+使用 Responses API 调用 GPT‑5 系列模型时，可通过该项控制输出长度/细节。可选值：
 
 - `"low"`
-- `"medium"` (default when omitted)
+- `"medium"`（默认）
 - `"high"`
 
-When set, Codex includes a `text` object in the request payload with the configured verbosity, for example: `"text": { "verbosity": "low" }`.
-
-Example:
+设置后，请求体中会包含形如 `"text": { "verbosity": "low" }` 的字段。例如：
 
 ```toml
 model = "gpt-5.1"
 model_verbosity = "low"
 ```
 
-Note: This applies only to providers using the Responses API. Chat Completions providers are unaffected.
+注意：仅对使用 Responses API 的 provider 生效，Chat Completions 不受影响。
 
 ### model_supports_reasoning_summaries
 
-By default, `reasoning` is only set on requests to OpenAI models that are known to support them. To force `reasoning` to set on requests to the current model, you can force this behavior by setting the following in `config.toml`:
+默认情况下，只有已知支持推理的 OpenAI 模型才会自动携带 `reasoning` 字段。如果你希望对当前模型强制启用，可写：
 
 ```toml
 model_supports_reasoning_summaries = true
@@ -243,177 +230,151 @@ model_supports_reasoning_summaries = true
 
 ### model_context_window
 
-The size of the context window for the model, in tokens.
-
-In general, Codex knows the context window for the most common OpenAI models, but if you are using a new model with an old version of the Codex CLI, then you can use `model_context_window` to tell Codex what value to use to determine how much context is left during a conversation.
+指定模型的上下文窗口大小（token 数）。大部分 OpenAI 模型 Codex 都内置了该值；若你在旧版 CLI 中使用了新模型，可通过此项告知 Codex 剩余上下文的计算方式。
 
 ### model_max_output_tokens
 
-This is analogous to `model_context_window`, but for the maximum number of output tokens for the model.
+与 `model_context_window` 类似，但用于限制单次输出 token 数。
 
-> See also [`codex exec`](./exec.md) to see how these model settings influence non-interactive runs.
+> 参见 [`codex exec`](./exec.md)，了解这些模型配置如何影响非交互式运行。
 
 ### oss_provider
 
-Specifies the default OSS provider to use when running Codex. This is used when the `--oss` flag is provided without a specific provider.
+指定 `--oss` 不带参数时的默认本地模型提供者：
 
-Valid values are:
-
-- `"lmstudio"` - Use LM Studio as the local model provider
-- `"ollama"` - Use Ollama as the local model provider
+- `"lmstudio"`：使用 LM Studio
+- `"ollama"`：使用 Ollama
 
 ```toml
-# Example: Set default OSS provider to LM Studio
+# 例：默认走 LM Studio
 oss_provider = "lmstudio"
 ```
 
-## Execution environment
+## 执行环境
 
 ### approval_policy
 
-Determines when the user should be prompted to approve whether Codex can execute a command:
+控制何时提示用户批准命令：
 
 ```toml
-# Codex has hardcoded logic that defines a set of "trusted" commands.
-# Setting the approval_policy to `untrusted` means that Codex will prompt the
-# user before running a command not in the "trusted" set.
+# Codex 内置了一组“可信”命令。
+# 当 approval_policy=untrusted 时，凡不在该列表内的命令都会弹窗确认。
 #
-# See https://github.com/openai/codex/issues/1260 for the plan to enable
-# end-users to define their own trusted commands.
+# 未来可自定义信任列表，详见 https://github.com/openai/codex/issues/1260
 approval_policy = "untrusted"
 ```
 
-If you want to be notified whenever a command fails, use "on-failure":
+若希望命令失败时再提醒，可用 `"on-failure"`：
 
 ```toml
-# If the command fails when run in the sandbox, Codex asks for permission to
-# retry the command outside the sandbox.
+# 命令在沙箱失败后，Codex 会询问是否在沙箱外重试。
 approval_policy = "on-failure"
 ```
 
-If you want the model to run until it decides that it needs to ask you for escalated permissions, use "on-request":
+若希望模型自己决定何时申请提权，可用 `"on-request"`：
 
 ```toml
-# The model decides when to escalate
+# 由模型自行判断是否升级权限
 approval_policy = "on-request"
 ```
 
-Alternatively, you can have the model run until it is done, and never ask to run a command with escalated permissions:
+若完全不想被打扰，可选择 `"never"`：
 
 ```toml
-# User is never prompted: if the command fails, Codex will automatically try
-# something out. Note the `exec` subcommand always uses this mode.
+# 从不弹窗；命令失败时 Codex 会尝试其他方案。`codex exec` 始终使用该模式。
 approval_policy = "never"
 ```
 
 ### sandbox_mode
 
-Codex executes model-generated shell commands inside an OS-level sandbox.
-
-In most cases you can pick the desired behaviour with a single option:
+Codex 默认在操作系统级沙箱中执行模型产生的命令。常见场景只需一个选项即可：
 
 ```toml
-# same as `--sandbox read-only`
+# 等同于 `--sandbox read-only`
 sandbox_mode = "read-only"
 ```
 
-The default policy is `read-only`, which means commands can read any file on
-disk, but attempts to write a file or access the network will be blocked.
+`read-only` 允许读取任意文件，但禁止写入和联网。
 
-A more relaxed policy is `workspace-write`. When specified, the current working directory for the Codex task will be writable (as well as `$TMPDIR` on macOS). Note that the CLI defaults to using the directory where it was spawned as `cwd`, though this can be overridden using `--cwd/-C`.
+更宽松的 `workspace-write` 允许写入当前工作目录（以及 macOS 的 `$TMPDIR`）。CLI 默认使用启动目录作为 `cwd`，可通过 `--cwd/-C` 覆盖。
 
-On macOS (and soon Linux), all writable roots (including `cwd`) that contain a `.git/` folder _as an immediate child_ will configure the `.git/` folder to be read-only while the rest of the Git repository will be writable. This means that commands like `git commit` will fail, by default (as it entails writing to `.git/`), and will require Codex to ask for permission.
+在 macOS（以及即将支持的 Linux）上，只要可写根目录的直接子级存在 `.git/`，就会将 `.git/` 设为只读，其余文件仍可写。因此 `git commit` 默认会失败，需要提权。
 
 ```toml
-# same as `--sandbox workspace-write`
+# 等同于 `--sandbox workspace-write`
 sandbox_mode = "workspace-write"
 
-# Extra settings that only apply when `sandbox = "workspace-write"`.
 [sandbox_workspace_write]
-# By default, the cwd for the Codex session will be writable as well as $TMPDIR
-# (if set) and /tmp (if it exists). Setting the respective options to `true`
-# will override those defaults.
+# 这些选项仅在 workspace-write 模式下生效，用于调整默认的可写目录。
 exclude_tmpdir_env_var = false
 exclude_slash_tmp = false
 
-# Optional list of _additional_ writable roots beyond $TMPDIR and /tmp.
+# 除 `/tmp` 与 `$TMPDIR` 外的额外可写根目录。
 writable_roots = ["/Users/YOU/.pyenv/shims"]
 
-# Allow the command being run inside the sandbox to make outbound network
-# requests. Disabled by default.
+# 是否允许沙箱内的命令访问网络，默认 false。
 network_access = false
 ```
 
-To disable sandboxing altogether, specify `danger-full-access` like so:
+若完全不需要沙箱（例如运行在 Docker 等受限环境中），可设置：
 
 ```toml
-# same as `--sandbox danger-full-access`
+# 等同于 `--sandbox danger-full-access`
 sandbox_mode = "danger-full-access"
 ```
 
-This is reasonable to use if Codex is running in an environment that provides its own sandboxing (such as a Docker container) such that further sandboxing is unnecessary.
+在旧内核或 Windows 等不支持原生沙箱的环境里，也可能需要该选项。
 
-Though using this option may also be necessary if you try to use Codex in environments where its native sandboxing mechanisms are unsupported, such as older Linux kernels or on Windows.
+### tools.*
 
-### tools.\*
-
-Use the optional `[tools]` table to toggle built-in tools that the agent may call. `web_search` stays off unless you opt in, while `view_image` is now enabled by default:
+可用 `[tools]` 表控制哪些内置工具可被代理调用。`web_search` 默认关闭、`view_image` 默认开启：
 
 ```toml
 [tools]
-web_search = true   # allow Codex to issue first-party web searches without prompting you (deprecated)
-view_image = false  # disable image uploads (they're enabled by default)
+web_search = true   # 允许 Codex 主动发起一方 Web 搜索（已废弃）
+view_image = false  # 关闭截图/示意图上传
 ```
 
-`web_search` is deprecated; use the `web_search_request` feature flag instead.
+`web_search` 已废弃，请改用 `web_search_request` 特性开关。
 
-The `view_image` toggle is useful when you want to include screenshots or diagrams from your repo without pasting them manually. Codex still respects sandboxing: it can only attach files inside the workspace roots you allow.
+`view_image` 有助于直接引用仓库中的截图或示意图；沙箱仍会生效，文件必须位于允许的工作区内。
 
 ### approval_presets
 
-Codex provides three main Approval Presets:
+Codex 预设了三种审批模式：
 
-- Read Only: Codex can read files and answer questions; edits, running commands, and network access require approval.
-- Auto: Codex can read files, make edits, and run commands in the workspace without approval; asks for approval outside the workspace or for network access.
-- Full Access: Full disk and network access without prompts; extremely risky.
+- Read Only：只能读文件、回答问题；写入/执行/联网需批准。
+- Auto：工作区内可自由读写与执行；跨目录或联网时再询问。
+- Full Access：完全访问磁盘与网络，不建议在生产环境使用。
 
-You can further customize how Codex runs at the command line using the `--ask-for-approval` and `--sandbox` options.
+你可以通过命令行的 `--ask-for-approval` 与 `--sandbox` 进一步微调。
 
-> See also [Sandbox & approvals](./sandbox.md) for in-depth examples and platform-specific behaviour.
+> 参阅 [Sandbox & approvals](./sandbox.md) 了解平台差异与示例。
 
 ### shell_environment_policy
 
-Codex spawns subprocesses (e.g. when executing a `local_shell` tool-call suggested by the assistant). By default it now passes **your full environment** to those subprocesses. You can tune this behavior via the **`shell_environment_policy`** block in `config.toml`:
+Codex 运行 `local_shell` 等工具时会启动子进程。默认会传递 **完整环境变量**。可在 `config.toml` 中通过 `shell_environment_policy` 进行细化：
 
 ```toml
 [shell_environment_policy]
-# inherit can be "all" (default), "core", or "none"
-inherit = "core"
-# set to true to *skip* the filter for `"*KEY*"` and `"*TOKEN*"`
+inherit = "core"             # 可选 all/core/none
 ignore_default_excludes = false
-# exclude patterns (case-insensitive globs)
 exclude = ["AWS_*", "AZURE_*"]
-# force-set / override values
 set = { CI = "1" }
-# if provided, *only* vars matching these patterns are kept
 include_only = ["PATH", "HOME"]
 ```
 
-| Field                     | Type                 | Default | Description                                                                                                                                     |
-| ------------------------- | -------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inherit`                 | string               | `all`   | Starting template for the environment:<br>`all` (clone full parent env), `core` (`HOME`, `PATH`, `USER`, …), or `none` (start empty).           |
-| `ignore_default_excludes` | boolean              | `false` | When `false`, Codex removes any var whose **name** contains `KEY`, `SECRET`, or `TOKEN` (case-insensitive) before other rules run.              |
-| `exclude`                 | array<string>        | `[]`    | Case-insensitive glob patterns to drop after the default filter.<br>Examples: `"AWS_*"`, `"AZURE_*"`.                                           |
-| `set`                     | table<string,string> | `{}`    | Explicit key/value overrides or additions – always win over inherited values.                                                                   |
-| `include_only`            | array<string>        | `[]`    | If non-empty, a whitelist of patterns; only variables that match _one_ pattern survive the final step. (Generally used with `inherit = "all"`.) |
+| 字段                     | 类型                  | 默认值 | 说明                                                                                                   |
+| ------------------------ | --------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
+| `inherit`                | string                | `all`  | 环境变量模板：`all` 继承全部、`core` 仅保留 `HOME/PATH/USER` 等核心项、`none` 从空环境开始。           |
+| `ignore_default_excludes`| boolean               | `false`| 为 `false` 时，Codex 会先移除名字包含 `KEY`/`SECRET`/`TOKEN` 的变量（不区分大小写）。                  |
+| `exclude`                | array<string>         | `[]`   | 自定义的忽略模式（大小写无关的 glob），例如 `"AWS_*"`、`"AZURE_*"`。                                   |
+| `set`                    | table<string,string>  | `{}`   | 明确写入或覆盖的键值，优先级最高。                                                                     |
+| `include_only`           | array<string>         | `[]`   | 白名单模式，仅当不为空时生效；只有匹配任意一个模式的变量才会保留，常与 `inherit = "all"` 搭配。        |
 
-The patterns are **glob style**, not full regular expressions: `*` matches any
-number of characters, `?` matches exactly one, and character classes like
-`[A-Z]`/`[^0-9]` are supported. Matching is always **case-insensitive**. This
-syntax is documented in code as `EnvironmentVariablePattern` (see
-`core/src/config_types.rs`).
+模式采用 **glob** 语法（`*` 任意长度，`?` 单字符，支持 `[A-Z]` / `[^0-9]` 等），且**不区分大小写**。实现细节可参考 `core/src/config_types.rs` 中的 `EnvironmentVariablePattern`。
 
-If you just need a clean slate with a few custom entries you can write:
+如果想完全手动指定环境，可这样写：
 
 ```toml
 [shell_environment_policy]
@@ -421,80 +382,62 @@ inherit = "none"
 set = { PATH = "/usr/bin", MY_FLAG = "1" }
 ```
 
-Currently, `CODEX_SANDBOX_NETWORK_DISABLED=1` is also added to the environment, assuming network is disabled. This is not configurable.
+此外，当沙箱禁网时，Codex 会自动注入 `CODEX_SANDBOX_NETWORK_DISABLED=1`，不可关闭。
 
-## MCP integration
+## MCP 集成
 
 ### mcp_servers
 
-You can configure Codex to use [MCP servers](https://modelcontextprotocol.io/about) to give Codex access to external applications, resources, or services.
+你可以通过 [MCP](https://modelcontextprotocol.io/about) 让 Codex 访问外部应用、资源或服务。
 
-#### Server configuration
+#### 服务器配置
 
 ##### STDIO
 
-[STDIO servers](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#stdio) are MCP servers that you can launch directly via commands on your computer.
+[STDIO 服务器](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#stdio) 通过本地命令直接启动：
 
 ```toml
-# The top-level table name must be `mcp_servers`
-# The sub-table name (`server-name` in this example) can be anything you would like.
 [mcp_servers.server_name]
 command = "npx"
-# Optional
-args = ["-y", "mcp-server"]
-# Optional: propagate additional env vars to the MCP server.
-# A default whitelist of env vars will be propagated to the MCP server.
-# https://github.com/openai/codex/blob/main/codex-rs/rmcp-client/src/utils.rs#L82
-env = { "API_KEY" = "value" }
-# or
-[mcp_servers.server_name.env]
-API_KEY = "value"
-# Optional: Additional list of environment variables that will be whitelisted in the MCP server's environment.
-env_vars = ["API_KEY2"]
-
-# Optional: cwd that the command will be run from
-cwd = "/Users/<user>/code/my-server"
+args = ["-y", "mcp-server"]          # 可选
+env = { "API_KEY" = "value" }        # 额外传递的环境变量（可改用子表写法）
+env_vars = ["API_KEY2"]               # 允许透传的环境变量白名单
+cwd = "/Users/<user>/code/my-server"  # 可选工作目录
 ```
 
 ##### Streamable HTTP
 
-[Streamable HTTP servers](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http) enable Codex to talk to resources that are accessed via a http url (either on localhost or another domain).
+[Streamable HTTP](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http) 允许 Codex 连接本地或远程的 HTTP 端点：
 
 ```toml
 [mcp_servers.figma]
 url = "https://mcp.figma.com/mcp"
-# Optional environment variable containing a bearer token to use for auth
-bearer_token_env_var = "ENV_VAR"
-# Optional map of headers with hard-coded values.
+bearer_token_env_var = "ENV_VAR"      # 可选，Bearer Token 所在的环境变量
 http_headers = { "HEADER_NAME" = "HEADER_VALUE" }
-# Optional map of headers whose values will be replaced with the environment variable.
 env_http_headers = { "HEADER_NAME" = "ENV_VAR" }
 ```
 
-Streamable HTTP connections always use the experimental Rust MCP client under the hood, so expect occasional rough edges. OAuth login flows are gated on the `experimental_use_rmcp_client = true` flag:
+流式 HTTP 通道使用实验性的 Rust MCP 客户端，OAuth 登录需打开 `experimental_use_rmcp_client = true`：
 
 ```toml
 experimental_use_rmcp_client = true
 ```
 
-After enabling it, run `codex mcp login <server-name>` when the server supports OAuth.
+启用后，可运行 `codex mcp login <server-name>` 完成授权。
 
-#### Other configuration options
+#### 其它选项
 
 ```toml
-# Optional: override the default 10s startup timeout
-startup_timeout_sec = 20
-# Optional: override the default 60s per-tool timeout
-tool_timeout_sec = 30
-# Optional: disable a server without removing it
-enabled = false
-# Optional: only expose a subset of tools from this server
+startup_timeout_sec = 20  # 默认 10s
+tool_timeout_sec = 30     # 默认 60s
+enabled = false           # 禁用该 server
+# 只暴露部分工具
 enabled_tools = ["search", "summarize"]
-# Optional: hide specific tools (applied after `enabled_tools`, if set)
+# 在白名单基础上进一步排除
 disabled_tools = ["search"]
 ```
 
-When both `enabled_tools` and `disabled_tools` are specified, Codex first restricts the server to the allow-list and then removes any tools that appear in the deny-list.
+若同时设置 `enabled_tools` 与 `disabled_tools`，Codex 会先套用白名单，再剔除黑名单。
 
 #### Experimental RMCP client
 
@@ -534,50 +477,35 @@ codex mcp login SERVER_NAME
 codex mcp logout SERVER_NAME
 ```
 
-### Examples of useful MCPs
+### 常用 MCP 例子
 
-There is an ever growing list of useful MCP servers that can be helpful while you are working with Codex.
+以下 MCP 服务器在实践中非常常见：
 
-Some of the most common MCPs we've seen are:
-
-- [Context7](https://github.com/upstash/context7) — connect to a wide range of up-to-date developer documentation
-- Figma [Local](https://developers.figma.com/docs/figma-mcp-server/local-server-installation/) and [Remote](https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/) - access to your Figma designs
-- [Playwright](https://www.npmjs.com/package/@playwright/mcp) - control and inspect a browser using Playwright
-- [Chrome Developer Tools](https://github.com/ChromeDevTools/chrome-devtools-mcp/) — control and inspect a Chrome browser
-- [Sentry](https://docs.sentry.io/product/sentry-mcp/#codex) — access to your Sentry logs
-- [GitHub](https://github.com/github/github-mcp-server) — Control over your GitHub account beyond what git allows (like controlling PRs, issues, etc.)
+- [Context7](https://github.com/upstash/context7)：连接最新的开发者文档
+- Figma [本地](https://developers.figma.com/docs/figma-mcp-server/local-server-installation/) / [远程](https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/)：直接访问 Figma 设计
+- [Playwright](https://www.npmjs.com/package/@playwright/mcp)：借助 Playwright 控制浏览器
+- [Chrome Developer Tools](https://github.com/ChromeDevTools/chrome-devtools-mcp/)：调试 Chrome
+- [Sentry](https://docs.sentry.io/product/sentry-mcp/#codex)：获取 Sentry 日志
+- [GitHub](https://github.com/github/github-mcp-server)：管理 PR、Issue 等
 
 ## Observability and telemetry
 
 ### otel
 
-Codex can emit [OpenTelemetry](https://opentelemetry.io/) **log events** that
-describe each run: outbound API requests, streamed responses, user input,
-tool-approval decisions, and the result of every tool invocation. Export is
-**disabled by default** so local runs remain self-contained. Opt in by adding an
-`[otel]` table and choosing an exporter.
+Codex 可以输出 [OpenTelemetry](https://opentelemetry.io/) **日志事件**，记录 API 请求、流式响应、用户输入、工具审批与执行结果。默认 **不开启导出**，如需上报请添加 `[otel]` 表并配置 exporter。
 
 ```toml
 [otel]
 environment = "staging"   # defaults to "dev"
-exporter = "none"          # defaults to "none"; set to otlp-http or otlp-grpc to send events
-log_user_prompt = false    # defaults to false; redact prompt text unless explicitly enabled
+exporter = "none"          # 可设为 otlp-http / otlp-grpc
+log_user_prompt = false    # 是否上报用户 prompt
 ```
 
-Codex tags every exported event with `service.name = $ORIGINATOR` (the same
-value sent in the `originator` header, `codex_cli_rs` by default), the CLI
-version, and an `env` attribute so downstream collectors can distinguish
-dev/staging/prod traffic. Only telemetry produced inside the `codex_otel`
-crate—the events listed below—is forwarded to the exporter.
+所有导出的事件都会携带 `service.name = $ORIGINATOR`（与 `originator` 头相同，默认 `codex_cli_rs`）、CLI 版本以及 `env` 字段，以便区分 dev/staging/prod。只有 `codex_otel` crate 产生的事件会被转发。
 
-### Event catalog
+### 事件目录
 
-Every event shares a common set of metadata fields: `event.timestamp`,
-`conversation.id`, `app.version`, `auth_mode` (when available),
-`user.account_id` (when available), `user.email` (when available), `terminal.type`, `model`, and `slug`.
-
-With OTEL enabled Codex emits the following event types (in addition to the
-metadata above):
+所有事件都有一组共同元数据：`event.timestamp`、`conversation.id`、`app.version`、`auth_mode`（如有）、`user.account_id`（如有）、`user.email`（如有）、`terminal.type`、`model`、`slug`。在此基础上还会额外输出：
 
 - `codex.conversation_starts`
   - `provider_name`
@@ -640,8 +568,7 @@ Set `otel.exporter` to control where events go:
   }}
   ```
 
-- `otlp-grpc` – streams OTLP log records over gRPC. Provide the endpoint and any
-  metadata headers:
+- `otlp-grpc` – 通过 gRPC 推送 OTLP 日志，请提供 endpoint 及需要的元数据头：
 
   ```toml
   [otel]
@@ -651,8 +578,7 @@ Set `otel.exporter` to control where events go:
   }}
   ```
 
-Both OTLP exporters accept an optional `tls` block so you can trust a custom CA
-or enable mutual TLS. Relative paths are resolved against `~/.codex/`:
+两个 OTLP exporter 都支持可选的 `tls` 配置，可自定义 CA 或启用双向 TLS；相对路径相对于 `~/.codex/`：
 
 ```toml
 [otel]
@@ -668,18 +594,13 @@ exporter = { otlp-http = {
 }}
 ```
 
-If the exporter is `none` nothing is written anywhere; otherwise you must run or point to your
-own collector. All exporters run on a background batch worker that is flushed on
-shutdown.
+若 exporter 为 `none`，不会写入任何地方；否则须准备 OTLP collector。导出在后台批任务执行，退出前会 flush。
 
-If you build Codex from source the OTEL crate is still behind an `otel` feature
-flag; the official prebuilt binaries ship with the feature enabled. When the
-feature is disabled the telemetry hooks become no-ops so the CLI continues to
-function without the extra dependencies.
+若自行从源码构建，`codex_otel` crate 仍受 `otel` feature 控制；官方发布版默认开启。禁用该 feature 时相关钩子为空实现，CLI 可在无附加依赖的情况下运行。
 
 ### notify
 
-Specify a program that will be executed to get notified about events generated by Codex. Note that the program will receive the notification argument as a string of JSON, e.g.:
+配置一个可执行程序，在 Codex 产生关键事件时调用。该程序会收到 JSON 字符串参数，例如：
 
 ```json
 {
@@ -692,13 +613,13 @@ Specify a program that will be executed to get notified about events generated b
 }
 ```
 
-The `"type"` property will always be set. Currently, `"agent-turn-complete"` is the only notification type that is supported.
+`"type"` 字段始终存在，目前仅支持 `"agent-turn-complete"`（回合完成）。
 
-`"thread-id"` contains a string that identifies the Codex session that produced the notification; you can use it to correlate multiple turns that belong to the same task.
+`"thread-id"` 标识触发通知的 Codex 会话，可用来对应同一任务下的多次回合。
 
-`"cwd"` reports the absolute working directory for the session so scripts can disambiguate which project triggered the notification.
+`"cwd"` 给出绝对工作目录，方便脚本判断是哪个项目触发。
 
-As an example, here is a Python script that parses the JSON and decides whether to show a desktop push notification using [terminal-notifier](https://github.com/julienXX/terminal-notifier) on macOS:
+下面是一个示例脚本，解析 JSON 并在 macOS 上调用 [terminal-notifier](https://github.com/julienXX/terminal-notifier) 推送桌面通知：
 
 ```python
 #!/usr/bin/env python3
@@ -756,20 +677,20 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-To have Codex use this script for notifications, you would configure it via `notify` in `~/.codex/config.toml` using the appropriate path to `notify.py` on your computer:
+若要让 Codex 调用此脚本，可在 `~/.codex/config.toml` 中配置：
 
 ```toml
 notify = ["python3", "/Users/mbolin/.codex/notify.py"]
 ```
 
 > [!NOTE]
-> Use `notify` for automation and integrations: Codex invokes your external program with a single JSON argument for each event, independent of the TUI. If you only want lightweight desktop notifications while using the TUI, prefer `tui.notifications`, which uses terminal escape codes and requires no external program. You can enable both; `tui.notifications` covers in‑TUI alerts (e.g., approval prompts), while `notify` is best for system‑level hooks or custom notifiers. Currently, `notify` emits only `agent-turn-complete`, whereas `tui.notifications` supports `agent-turn-complete` and `approval-requested` with optional filtering.
+> `notify` 适用于自动化/集成：每次触发事件都会向外部程序传递一段 JSON，和 TUI 无关。如果只需要轻量级桌面提醒，可用 `tui.notifications`（依赖终端转义序列）。两者可以同时启用：`tui.notifications` 负责 TUI 内的提醒（如审批），`notify` 更适合系统级 Hook 或自定义通知。当前 `notify` 仅发出 `agent-turn-complete`，而 `tui.notifications` 还能处理 `approval-requested` 并支持过滤。
 
 ### hide_agent_reasoning
 
 Codex intermittently emits "reasoning" events that show the model's internal "thinking" before it produces a final answer. Some users may find these events distracting, especially in CI logs or minimal terminal output.
 
-Setting `hide_agent_reasoning` to `true` suppresses these events in **both** the TUI as well as the headless `exec` sub-command:
+将 `hide_agent_reasoning` 置为 `true` 可同时在 TUI 与 `codex exec` 中隐藏这些“思考过程”事件：
 
 ```toml
 hide_agent_reasoning = true   # defaults to false
@@ -777,12 +698,12 @@ hide_agent_reasoning = true   # defaults to false
 
 ### show_raw_agent_reasoning
 
-Surfaces the model’s raw chain-of-thought ("raw reasoning content") when available.
+当模型提供原始链路推理内容时，可通过 `show_raw_agent_reasoning` 直接展示：
 
-Notes:
+提示：
 
-- Only takes effect if the selected model/provider actually emits raw reasoning content. Many models do not. When unsupported, this option has no visible effect.
-- Raw reasoning may include intermediate thoughts or sensitive context. Enable only if acceptable for your workflow.
+- 仅对会返回 raw reasoning 的模型生效，其他模型设置后也不会有输出。
+- 原始推理可能包含中间想法或敏感上下文，请按需启用。
 
 Example:
 
@@ -794,10 +715,9 @@ show_raw_agent_reasoning = true  # defaults to false
 
 ### profiles
 
-A _profile_ is a collection of configuration values that can be set together. Multiple profiles can be defined in `config.toml` and you can specify the one you
-want to use at runtime via the `--profile` flag.
+**Profile** 是一组可同时生效的配置。可以在 `config.toml` 中定义多个，并通过 `--profile` 选择其一。
 
-Here is an example of a `config.toml` that defines multiple profiles:
+示例：
 
 ```toml
 model = "o3"
@@ -830,18 +750,18 @@ model_provider = "openai"
 approval_policy = "on-failure"
 ```
 
-Users can specify config values at multiple levels. Order of precedence is as follows:
+配置可在多层定义，优先级依次为：
 
-1. custom command-line argument, e.g., `--model o3`
-2. as part of a profile, where the `--profile` is specified via a CLI (or in the config file itself)
-3. as an entry in `config.toml`, e.g., `model = "o3"`
-4. the default value that comes with Codex CLI (i.e., Codex CLI defaults to `gpt-5.1-codex-max`)
+1. 命令行参数（如 `--model o3`）
+2. `--profile` 指定的配置档
+3. `config.toml` 顶层值（如 `model = "o3"`）
+4. Codex CLI 内置默认值（默认模型为 `gpt-5.1-codex-max`）
 
 ### history
 
-By default, Codex CLI records messages sent to the model in `$CODEX_HOME/history.jsonl`. Note that on UNIX, the file permissions are set to `o600`, so it should only be readable and writable by the owner.
+Codex CLI 默认将会话记录到 `$CODEX_HOME/history.jsonl`，在类 UNIX 系统下文件权限为 `0600`，仅拥有者可读写。
 
-To disable this behavior, configure `[history]` as follows:
+要关闭持久化，可配置：
 
 ```toml
 [history]
@@ -850,11 +770,11 @@ persistence = "none"  # "save-all" is the default value
 
 ### file_opener
 
-Identifies the editor/URI scheme to use for hyperlinking citations in model output. If set, citations to files in the model output will be hyperlinked using the specified URI scheme so they can be ctrl/cmd-clicked from the terminal to open them.
+在模型输出中对引用的文件添加超链接。支持的 URI scheme 固定，便于在终端中 cmd/ctrl+点击直接打开。
 
-For example, if the model output includes a reference such as `【F:/home/user/project/main.py†L42-L50】`, then this would be rewritten to link to the URI `vscode://file/home/user/project/main.py:42`.
+例如输出 `【F:/home/user/project/main.py†L42-L50】`，若 `file_opener = "vscode"`，则会指向 `vscode://file/home/user/project/main.py:42`。
 
-Note this is **not** a general editor setting (like `$EDITOR`), as it only accepts a fixed set of values:
+注意这 **不是** `$EDITOR` 那种通用环境变量，只接受以下值：
 
 - `"vscode"` (default)
 - `"vscode-insiders"`
@@ -862,27 +782,25 @@ Note this is **not** a general editor setting (like `$EDITOR`), as it only accep
 - `"cursor"`
 - `"none"` to explicitly disable this feature
 
-Currently, `"vscode"` is the default, though Codex does not verify VS Code is installed. As such, `file_opener` may default to `"none"` or something else in the future.
+目前默认 `"vscode"`，但 Codex 不会检查 VS Code 是否存在；未来可能改为 `"none"`。
 
 ### project_doc_max_bytes
 
-Maximum number of bytes to read from an `AGENTS.md` file to include in the instructions sent with the first turn of a session. Defaults to 32 KiB.
+读取 `AGENTS.md` 时允许的最大字节数（默认 32 KiB），用于回合开始时注入提示。
 
 ### project_doc_fallback_filenames
 
-Ordered list of additional filenames to look for when `AGENTS.md` is missing at a given directory level. The CLI always checks `AGENTS.md` first; the configured fallbacks are tried in the order provided. This lets monorepos that already use alternate instruction files (for example, `CLAUDE.md`) work out of the box while you migrate to `AGENTS.md` over time.
+当某层目录缺少 `AGENTS.md` 时，按顺序尝试的备用文件名。CLI 始终先找 `AGENTS.md`，再依次查找这里列出的文件，可帮助已有 `CLAUDE.md` 等文件的项目逐步迁移。
 
 ```toml
 project_doc_fallback_filenames = ["CLAUDE.md", ".exampleagentrules.md"]
 ```
 
-We recommend migrating instructions to AGENTS.md; other filenames may reduce model performance.
-
-> See also [AGENTS.md discovery](./agents_md.md) for how Codex locates these files during a session.
+建议尽快统一到 AGENTS.md，否则可能影响模型效果。参见 [AGENTS.md discovery](./agents_md.md) 了解查找规则。
 
 ### tui
 
-Options that are specific to the TUI.
+TUI 相关配置：
 
 ```toml
 [tui]
@@ -896,15 +814,16 @@ notifications = [ "agent-turn-complete", "approval-requested" ]
 ```
 
 > [!NOTE]
-> Codex emits desktop notifications using terminal escape codes. Not all terminals support these (notably, macOS Terminal.app and VS Code's terminal do not support custom notifications. iTerm2, Ghostty and WezTerm do support these notifications).
+> 桌面通知依赖终端转义序列，macOS Terminal.app 与 VS Code 内置终端不支持，而 iTerm2 / Ghostty / WezTerm 支持。
 
-> [!NOTE] > `tui.notifications` is built‑in and limited to the TUI session. For programmatic or cross‑environment notifications—or to integrate with OS‑specific notifiers—use the top‑level `notify` option to run an external program that receives event JSON. The two settings are independent and can be used together.
+> [!NOTE]
+> `tui.notifications` 仅作用于 TUI；若需要跨平台脚本或系统级通知，请使用 `notify` 运行外部程序。两者可并行启用。
 
-## Authentication and authorization
+## 身份验证与授权
 
-### Forcing a login method
+### 登录方式限制
 
-To force users on a given machine to use a specific login method or workspace, use a combination of [managed configurations](https://developers.openai.com/codex/security#managed-configuration) as well as either or both of the following fields:
+若需在某台机器上强制指定登录方式或工作区，可结合[受管配置](https://developers.openai.com/codex/security#managed-configuration)与以下字段：
 
 ```toml
 # Force the user to log in with ChatGPT or via an api key.
@@ -914,49 +833,47 @@ forced_login_method = "chatgpt" or "api"
 forced_chatgpt_workspace_id = "00000000-0000-0000-0000-000000000000"
 ```
 
-If the active credentials don't match the config, the user will be logged out and Codex will exit.
+若当前凭据不符合要求，用户会被登出且 Codex 立即退出。如果仅设置 `forced_chatgpt_workspace_id` 而未设置 `forced_login_method`，API Key 登录仍可用。
 
-If `forced_chatgpt_workspace_id` is set but `forced_login_method` is not set, API key login will still work.
-
-### Control where login credentials are stored
+### 登录凭据存储位置
 
 ```toml
 cli_auth_credentials_store = "keyring"
 ```
 
-Valid values:
+取值：
 
-- `file` (default) – Store credentials in `auth.json` under `$CODEX_HOME`.
-- `keyring` – Store credentials in the operating system keyring via the [`keyring` crate](https://crates.io/crates/keyring); the CLI reports an error if secure storage is unavailable. Backends by OS:
-  - macOS: macOS Keychain
-  - Windows: Windows Credential Manager
-  - Linux: DBus‑based Secret Service, the kernel keyutils, or a combination
-  - FreeBSD/OpenBSD: DBus‑based Secret Service
-- `auto` – Save credentials to the operating system keyring when available; otherwise, fall back to `auth.json` under `$CODEX_HOME`.
+- `file`（默认）：保存在 `$CODEX_HOME/auth.json`。
+- `keyring`：使用操作系统的凭据存储（[`keyring` crate](https://crates.io/crates/keyring)）；若安全存储不可用会报错。
+  - macOS：Keychain
+  - Windows：Credential Manager
+  - Linux：DBus Secret Service / keyutils 等
+  - FreeBSD/OpenBSD：DBus Secret Service
+- `auto`：优先尝试 keyring，不可用时退回到 `auth.json`。
 
-## Config reference
+## 配置速查表
 
-| Key                                              | Type / Values                                                     | Notes                                                                                                                      |
-| ------------------------------------------------ | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `model`                                          | string                                                            | Model to use (e.g., `gpt-5.1-codex-max`).                                                                                  |
-| `model_provider`                                 | string                                                            | Provider id from `model_providers` (default: `openai`).                                                                    |
-| `model_context_window`                           | number                                                            | Context window tokens.                                                                                                     |
-| `model_max_output_tokens`                        | number                                                            | Max output tokens.                                                                                                         |
-| `tool_output_token_limit`                        | number                                                            | Token budget for stored function/tool outputs in history (default: 2,560 tokens).                                          |
-| `approval_policy`                                | `untrusted` \| `on-failure` \| `on-request` \| `never`            | When to prompt for approval.                                                                                               |
-| `sandbox_mode`                                   | `read-only` \| `workspace-write` \| `danger-full-access`          | OS sandbox policy.                                                                                                         |
-| `sandbox_workspace_write.writable_roots`         | array<string>                                                     | Extra writable roots in workspace‑write.                                                                                   |
-| `sandbox_workspace_write.network_access`         | boolean                                                           | Allow network in workspace‑write (default: false).                                                                         |
-| `sandbox_workspace_write.exclude_tmpdir_env_var` | boolean                                                           | Exclude `$TMPDIR` from writable roots (default: false).                                                                    |
-| `sandbox_workspace_write.exclude_slash_tmp`      | boolean                                                           | Exclude `/tmp` from writable roots (default: false).                                                                       |
-| `notify`                                         | array<string>                                                     | External program for notifications.                                                                                        |
-| `instructions`                                   | string                                                            | Currently ignored; use `experimental_instructions_file` or `AGENTS.md`.                                                    |
-| `features.<feature-flag>`                        | boolean                                                           | See [feature flags](#feature-flags) for details                                                                            |
-| `mcp_servers.<id>.command`                       | string                                                            | MCP server launcher command (stdio servers only).                                                                          |
-| `mcp_servers.<id>.args`                          | array<string>                                                     | MCP server args (stdio servers only).                                                                                      |
-| `mcp_servers.<id>.env`                           | map<string,string>                                                | MCP server env vars (stdio servers only).                                                                                  |
-| `mcp_servers.<id>.url`                           | string                                                            | MCP server url (streamable http servers only).                                                                             |
-| `mcp_servers.<id>.bearer_token_env_var`          | string                                                            | environment variable containing a bearer token to use for auth (streamable http servers only).                             |
+| 键                                              | 类型/取值                                                         | 说明                                                                                             |
+| ------------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `model`                                          | string                                                           | 使用的模型（如 `gpt-5.1-codex-max`）。                                                                     |
+| `model_provider`                                 | string                                                           | `model_providers` 中的 provider ID，默认 `openai`。                                               |
+| `model_context_window`                           | number                                                           | 上下文窗口大小（token 数）。                                                                |
+| `model_max_output_tokens`                        | number                                                           | 输出 token 上限。                                                                            |
+| `tool_output_token_limit`                        | number                                                           | 历史记录中保存工具输出的 token 预算（默认 2560）。                                          |
+| `approval_policy`                                | `untrusted` / `on-failure` / `on-request` / `never`            | 何时提示用户审批。                                                                                 |
+| `sandbox_mode`                                   | `read-only` / `workspace-write` / `danger-full-access`          | OS 沙箱策略。                                                                             |
+| `sandbox_workspace_write.writable_roots`         | array<string>                                                    | workspace-write 模式下额外可写根目录。                                                   |
+| `sandbox_workspace_write.network_access`         | boolean                                                          | workspace-write 模式是否允许联网（默认 false）。                      |
+| `sandbox_workspace_write.exclude_tmpdir_env_var` | boolean                                                          | 将 `$TMPDIR` 排除在可写列表之外（默认 false）。                           |
+| `sandbox_workspace_write.exclude_slash_tmp`      | boolean                                                          | 将 `/tmp` 排除在可写列表之外（默认 false）。                             |
+| `notify`                                         | array<string>                                                    | 外部通知程序。                                                                         |
+| `instructions`                                   | string                                                           | 已废弃；请使用 `experimental_instructions_file` 或 `AGENTS.md`。         |
+| `features.<feature-flag>`                        | boolean                                                          | 详见 [特性开关](#feature-flags)。                                           |
+| `mcp_servers.<id>.command`                       | string                                                           | STDIO MCP 服务器的启动命令。                                          |
+| `mcp_servers.<id>.args`                          | array<string>                                                    | STDIO MCP 服务器的参数。                                            |
+| `mcp_servers.<id>.env`                           | map<string,string>                                               | STDIO MCP 服务器的环境变量。                                           |
+| `mcp_servers.<id>.url`                           | string                                                           | Streamable HTTP MCP 的 URL。                                        |
+| `mcp_servers.<id>.bearer_token_env_var`          | string                                                           | Streamable HTTP MCP 使用的 Bearer Token 环境变量。                    |
 | `mcp_servers.<id>.enabled`                       | boolean                                                           | When false, Codex skips starting the server (default: true).                                                               |
 | `mcp_servers.<id>.startup_timeout_sec`           | number                                                            | Startup timeout in seconds (default: 10). Timeout is applied both for initializing MCP server and initially listing tools. |
 | `mcp_servers.<id>.tool_timeout_sec`              | number                                                            | Per-tool timeout in seconds (default: 60). Accepts fractional values; omit to use the default.                             |
@@ -980,19 +897,19 @@ Valid values:
 | `file_opener`                                    | `vscode` \| `vscode-insiders` \| `windsurf` \| `cursor` \| `none` | URI scheme for clickable citations (default: `vscode`).                                                                    |
 | `tui`                                            | table                                                             | TUI‑specific options.                                                                                                      |
 | `tui.notifications`                              | boolean \| array<string>                                          | Enable desktop notifications in the tui (default: true).                                                                   |
-| `hide_agent_reasoning`                           | boolean                                                           | Hide model reasoning events.                                                                                               |
-| `show_raw_agent_reasoning`                       | boolean                                                           | Show raw reasoning (when available).                                                                                       |
-| `model_reasoning_effort`                         | `minimal` \| `low` \| `medium` \| `high`                          | Responses API reasoning effort.                                                                                            |
-| `model_reasoning_summary`                        | `auto` \| `concise` \| `detailed` \| `none`                       | Reasoning summaries.                                                                                                       |
-| `model_verbosity`                                | `low` \| `medium` \| `high`                                       | GPT‑5 text verbosity (Responses API).                                                                                      |
-| `model_supports_reasoning_summaries`             | boolean                                                           | Force‑enable reasoning summaries.                                                                                          |
-| `model_reasoning_summary_format`                 | `none` \| `experimental`                                          | Force reasoning summary format.                                                                                            |
-| `chatgpt_base_url`                               | string                                                            | Base URL for ChatGPT auth flow.                                                                                            |
-| `experimental_instructions_file`                 | string (path)                                                     | Replace built‑in instructions (experimental).                                                                              |
-| `experimental_use_exec_command_tool`             | boolean                                                           | Use experimental exec command tool.                                                                                        |
-| `projects.<path>.trust_level`                    | string                                                            | Mark project/worktree as trusted (only `"trusted"` is recognized).                                                         |
-| `tools.web_search`                               | boolean                                                           | Enable web search tool (deprecated) (default: false).                                                                      |
-| `tools.view_image`                               | boolean                                                           | Enable or disable the `view_image` tool so Codex can attach local image files from the workspace (default: true).          |
-| `forced_login_method`                            | `chatgpt` \| `api`                                                | Only allow Codex to be used with ChatGPT or API keys.                                                                      |
-| `forced_chatgpt_workspace_id`                    | string (uuid)                                                     | Only allow Codex to be used with the specified ChatGPT workspace.                                                          |
-| `cli_auth_credentials_store`                     | `file` \| `keyring` \| `auto`                                     | Where to store CLI login credentials (default: `file`).                                                                    |
+| `hide_agent_reasoning`                           | boolean                                                          | 是否隐藏模型推理事件。                                                   |
+| `show_raw_agent_reasoning`                       | boolean                                                          | 是否展示原始推理内容（若模型支持）。                              |
+| `model_reasoning_effort`                         | `minimal` / `low` / `medium` / `high`                          | Responses API 的推理强度。                                       |
+| `model_reasoning_summary`                        | `auto` / `concise` / `detailed` / `none`                       | 推理摘要的粒度。                                               |
+| `model_verbosity`                                | `low` / `medium` / `high`                                       | GPT‑5 Responses 文本详略。                                       |
+| `model_supports_reasoning_summaries`             | boolean                                                          | 强制开启推理摘要。                                                |
+| `model_reasoning_summary_format`                 | `none` / `experimental`                                          | 指定推理摘要格式。                                               |
+| `chatgpt_base_url`                               | string                                                           | ChatGPT 登录流程使用的基础 URL。                                |
+| `experimental_instructions_file`                 | string (path)                                                    | 指定额外的指令文件（实验特性）。                              |
+| `experimental_use_exec_command_tool`             | boolean                                                          | 启用实验版 exec-command 工具。                                |
+| `projects.<path>.trust_level`                    | string                                                           | 标记某个路径为可信（目前仅识别 `"trusted"`）。                                  |
+| `tools.web_search`                               | boolean                                                          | 启用 web_search 工具（已废弃，默认 false）。                                          |
+| `tools.view_image`                               | boolean                                                          | 控制是否允许 `view_image` 工具上传工作区内的图片（默认 true）。      |
+| `forced_login_method`                            | `chatgpt` / `api`                                                | 强制只允许 ChatGPT 或 API Key 登录。                                |
+| `forced_chatgpt_workspace_id`                    | string (uuid)                                                    | 仅允许连接到指定的 ChatGPT Workspace。                             |
+| `cli_auth_credentials_store`                     | `file` / `keyring` / `auto`                                     | CLI 凭据存储位置（默认 `file`）。                                                        |

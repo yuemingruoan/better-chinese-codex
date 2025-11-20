@@ -64,13 +64,13 @@ static OSS_SELECT_OPTIONS: LazyLock<Vec<SelectOption>> = LazyLock::new(|| {
     vec![
         SelectOption {
             label: Line::from(vec!["L".underlined(), "M Studio".into()]),
-            description: "Local LM Studio server (default port 1234)",
+            description: "本地 LM Studio 服务（默认端口 1234）",
             key: KeyCode::Char('l'),
             provider_id: LMSTUDIO_OSS_PROVIDER_ID,
         },
         SelectOption {
             label: Line::from(vec!["O".underlined(), "llama".into()]),
-            description: "Local Ollama server (default port 11434)",
+            description: "本地 Ollama 服务（默认端口 11434）",
             key: KeyCode::Char('o'),
             provider_id: OLLAMA_OSS_PROVIDER_ID,
         },
@@ -105,12 +105,9 @@ impl OssSelectionWidget<'_> {
         ];
 
         let mut contents: Vec<Line> = vec![
-            Line::from(vec![
-                "? ".fg(Color::Blue),
-                "Select an open-source provider".bold(),
-            ]),
+            Line::from(vec!["? ".fg(Color::Blue), "选择开源模型提供者".bold()]),
             Line::from(""),
-            Line::from("  Choose which local AI server to use for your session."),
+            Line::from("  请选择本地 AI 服务，之后可以记住该偏好。"),
             Line::from(""),
         ];
 
@@ -124,12 +121,10 @@ impl OssSelectionWidget<'_> {
             ]));
         }
         contents.push(Line::from(""));
-        contents.push(Line::from("  ● Running  ○ Not Running").add_modifier(Modifier::DIM));
+        contents.push(Line::from("  ● 运行中  ○ 未运行").add_modifier(Modifier::DIM));
 
         contents.push(Line::from(""));
-        contents.push(
-            Line::from("  Press Enter to select • Ctrl+C to exit").add_modifier(Modifier::DIM),
-        );
+        contents.push(Line::from("  按 Enter 选择 • Ctrl+C 退出").add_modifier(Modifier::DIM));
 
         let confirmation_prompt = Paragraph::new(contents).wrap(Wrap { trim: false });
 
@@ -254,7 +249,7 @@ impl WidgetRef for &OssSelectionWidget<'_> {
         ])
         .areas(response_chunk.inner(Margin::new(1, 0)));
 
-        Line::from("Select provider?").render(title_area, buf);
+        Line::from("选择提供者？").render(title_area, buf);
 
         self.confirmation_prompt.clone().render(prompt_chunk, buf);
         let areas = Layout::horizontal(
@@ -332,7 +327,7 @@ pub async fn select_oss_provider(codex_home: &std::path::Path) -> io::Result<Str
     if let Ok(ref provider) = result
         && let Err(e) = set_default_oss_provider(codex_home, provider)
     {
-        tracing::warn!("Failed to save OSS provider preference: {e}");
+        tracing::warn!("保存 OSS 提供者偏好失败：{e}");
     }
 
     result

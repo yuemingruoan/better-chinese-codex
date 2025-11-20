@@ -1,8 +1,9 @@
 ---
 source: tui/src/chatwidget/tests.rs
+assertion_line: 2980
 expression: term.backend().vt100().screen().contents()
 ---
-• Working (0s • esc to interrupt)
+• 运行中 （0秒 • 按 esc 以中断）
   ↳ Hello, world! 0
   ↳ Hello, world! 1
   ↳ Hello, world! 2

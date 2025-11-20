@@ -1,12 +1,13 @@
 ---
 source: tui/src/model_migration.rs
+assertion_line: 358
 expression: terminal.backend()
 ---
 > Codex 再升级：gpt-5.1-codex-max
 
-  Codex 现已由 gpt-5.1-codex-max 驱动，这是我们最新
-  的旗舰级代理式编码模型，具备更强推理能力，也更
-  擅长处理长程项目。
+  Codex 现已由 gpt-5.1-codex-max
+  驱动，这是我们最新的旗舰级代理式编码模型，具备更强推理能力
+  ，也更擅长处理长程项目。
 
   了解更多：www.openai.com/index/gpt-5-1-codex-max.
 
@@ -15,4 +16,4 @@ expression: terminal.backend()
 › 1. 试用新模型
   2. 继续使用当前模型
 
-  使用 ↑/↓ 切换，按 Enter 确认
+  使用 ↑/↓ 切换，按 enter 确认

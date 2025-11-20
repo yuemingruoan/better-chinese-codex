@@ -1,22 +1,22 @@
-# Windows Sandbox Security Details
+# Windows 沙箱安全说明
 
-For overall context on sandboxing in Codex, see [sandbox.md](./sandbox.md).
+有关 Codex 沙箱机制的整体背景，请参阅 [sandbox.md](./sandbox.md)。
 
-## Implementation Overview
+## 实现概览
 
-When commands run via `codex sandbox windows …` (or when the CLI/TUI calls into the same crate in-process for sandboxed turns), the launcher configures a restricted Windows token and an allowlist policy scoped to the declared workspace roots. Writes are blocked everywhere except inside those roots (plus `%TEMP%` when workspace-write mode is requested), and common escape vectors such as alternate data streams, UNC paths, and device handles are denied proactively. The CLI also injects stub executables (for example, wrapping `ssh`) ahead of the host PATH so we can intercept dangerous tools before they ever leave the sandbox.
+当通过 `codex sandbox windows …` 运行命令（或 CLI/TUI 在同一进程中调用该 crate 进入沙箱回合）时，启动器会配置受限的 Windows 访问令牌，并基于工作区根目录建立白名单策略。除已声明的根目录（以及在 workspace-write 模式下的 `%TEMP%`）外，其余路径全部禁止写入，同时会主动拦截常见逃逸手段，例如备用数据流（ADS）、UNC 路径以及设备句柄。CLI 还会在宿主 PATH 之前注入桩程序（如包装 `ssh`），以便在危险工具离开沙箱前就将其截获。
 
-## Known Security Limitations
+## 已知安全局限
 
-Running `python windows-sandbox-rs/sandbox_smoketests.py` with full filesystem and network access currently results in **37/42** passing cases. The list below focuses on the four high-value failures numbered #32 and higher in the smoketests (earlier tests are less security-focused).
+在拥有完整文件系统与网络访问权限的情况下运行 `python windows-sandbox-rs/sandbox_smoketests.py`，目前 **42 项中仅 37 项通过**。下表聚焦于烟雾测试序号 #32 及之后的四个高优先级失败案例（此前的测试与安全关系较小）。
 
-| Test                                          | Purpose                                                                                                                                                                                                                                                                                                      |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ADS write denied (#32)                        | Ensures alternate data streams cannot be written inside the workspace, preventing tools from hiding payloads in ADS. The sandbox currently allows the write (process returns `rc=0`).                                                                                                                        |
-| protected path case-variation denied (#33)    | Confirms that protected directories such as `.git` remain blocked even when attackers use case tricks like `.GiT`. The current allowlist treats `.GiT` as distinct, so the write succeeds.                                                                                                                   |
-| PATH stub bypass denied (#35)                 | Verifies that a workspace-provided `ssh.bat` shim placed ahead of the host PATH runs instead of the real `ssh`. The sandbox exits early before emitting the shim's `stubbed` output, so we cannot prove the interception works.                                                                              |
-| Start-Process https denied (KNOWN FAIL) (#41) | Validates that read-only runs cannot launch the host's default browser via `Start-Process 'https://...'`. Today the command succeeds (exit code 0) because Explorer handles the ShellExecute request outside the sandbox. The failure is captured by `windows-sandbox-rs/sandbox_smoketests.py` (last case). |
+| 测试项                                      | 目的说明                                                                                                                                                                                                                                                                  |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ADS 写入被拒（#32）                         | 确保无法在工作区内写入备用数据流，防止工具把有效负载藏在 ADS 中。目前沙箱仍允许写入（进程返回 `rc=0`）。                                                                                                                                                                |
+| 保护路径大小写变体被拒（#33）               | 确认受保护目录（如 `.git`）在攻击者使用大小写技巧（例如 `.GiT`）时仍保持阻断。当前白名单会把 `.GiT` 视作不同路径，因此写入会成功。                                                                                                                                    |
+| PATH 桩程序绕过被拒（#35）                  | 验证工作区提供的 `ssh.bat` 桩脚本若被放在 PATH 前端，会优先运行而非真正的 `ssh`。目前沙箱会过早退出，无法输出桩脚本的 `stubbed`，因此无法证明拦截有效。                                                                                                             |
+| Start-Process https 被拒（KNOWN FAIL，#41） | 确认只读模式下不能通过 `Start-Process 'https://…'` 启动宿主默认浏览器。现阶段该命令会成功（退出码 0），因为 Explorer 会在沙箱外处理 ShellExecute 请求。此失败由 `windows-sandbox-rs/sandbox_smoketests.py`（最后一项）记录。 |
 
-## Want to Help?
+## 如何贡献？
 
-If you are a security-minded Windows user, help us get these tests passing! Improved implementations that make these smoke tests pass meaningfully reduce Codex's escape surface. After iterating, rerun `python windows-sandbox-rs/sandbox_smoketests.py` to validate the fixes and help us drive the suite toward 42/42.
+如果你是关注安全的 Windows 用户，欢迎帮助我们修复这些测试！让烟雾测试完全通过可以显著降低 Codex 的逃逸面。完成改进后，请重新运行 `python windows-sandbox-rs/sandbox_smoketests.py` 验证，帮助我们将结果提升到 42/42。

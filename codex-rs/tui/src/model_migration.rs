@@ -230,7 +230,7 @@ impl WidgetRef for &ModelMigrationScreen {
         let mut column = ColumnRenderable::new();
 
         column.push("");
-        
+
         let mut heading = vec![Span::raw("> ")];
         heading.extend(self.copy.heading.clone());
         column.push(Line::from(heading));
@@ -280,9 +280,7 @@ impl WidgetRef for &ModelMigrationScreen {
             );
         } else {
             column.push(Line::from(""));
-            column.push(
-                Line::from(vec!["按 Enter 继续".dim()]).inset(Insets::tlbr(0, 2, 0, 0)),
-            );
+            column.push(Line::from(vec!["按 Enter 继续".dim()]).inset(Insets::tlbr(0, 2, 0, 0)));
         }
 
         column.render(area, buf);
@@ -313,9 +311,7 @@ fn gpt5_migration_copy() -> ModelMigrationCopy {
             Line::from(
                 "Codex 已全面升级至 gpt-5.1 系列（含 gpt-5.1-codex 及 gpt-5.1-codex-mini），默认体验更稳更快。",
             ),
-            Line::from(
-                "如需继续使用旧模型，可通过 -m 参数或在 config.toml 中直接指定模型名称。",
-            ),
+            Line::from("如需继续使用旧模型，可通过 -m 参数或在 config.toml 中直接指定模型名称。"),
             Line::from(vec![
                 "了解更多：".into(),
                 "www.openai.com/index/gpt-5-1".cyan().underlined(),

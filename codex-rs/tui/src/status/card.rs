@@ -229,8 +229,7 @@ impl StatusHistoryCell {
                     let base_line = Line::from(base_spans.clone());
 
                     if let Some(resets_at) = resets_at.as_ref() {
-                        let resets_span =
-                            Span::from(format!("（{resets_at} 重置）")).dim();
+                        let resets_span = Span::from(format!("（{resets_at} 重置）")).dim();
                         let mut inline_spans = base_spans.clone();
                         inline_spans.push(Span::from(" ").dim());
                         inline_spans.push(resets_span.clone());

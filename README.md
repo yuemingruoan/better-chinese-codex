@@ -31,7 +31,6 @@ npm install -g @openai/codex-cli
 - npm 全局目录通常位于 `%APPDATA%\npm`。
 - 将下载得到的 `codex.exe` 放入 `%APPDATA%\npm` 目录，并替换与 `codex.cmd` 同级的旧版本（务必保留 `.cmd` 启动脚本）。
 
-<<<<<<< HEAD
 ### 3. macOS / Linux
 1. 先安装 CLI（可选择 npm、Homebrew 或其他渠道）：
    ```bash

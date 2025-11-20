@@ -1,0 +1,7 @@
+---
+source: tui/src/chatwidget/tests.rs
+assertion_line: 1772
+expression: active_blob(&chat)
+---
+• 已完成
+  └ 列出 ls -la
