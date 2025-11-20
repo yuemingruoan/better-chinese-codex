@@ -849,7 +849,9 @@ dependencies = [
  "codex-login",
  "codex-protocol",
  "codex-utils-json-to-toml",
+ "codex-windows-sandbox",
  "core_test_support",
+ "mcp-types",
  "opentelemetry-appender-tracing",
  "os_info",
  "pretty_assertions",
@@ -873,13 +875,25 @@ dependencies = [
  "clap",
  "codex-protocol",
  "mcp-types",
- "paste",
  "pretty_assertions",
  "schemars 0.8.22",
  "serde",
  "serde_json",
  "strum_macros 0.27.2",
  "ts-rs",
+ "uuid",
+]
+
+[[package]]
+name = "codex-app-server-test-client"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "codex-app-server-protocol",
+ "codex-protocol",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -1048,6 +1062,8 @@ dependencies = [
  "clap",
  "codex-app-server-protocol",
  "codex-core",
+ "codex-lmstudio",
+ "codex-ollama",
  "codex-protocol",
  "once_cell",
  "serde",
@@ -1071,6 +1087,7 @@ dependencies = [
  "codex-apply-patch",
  "codex-arg0",
  "codex-async-utils",
+ "codex-execpolicy2",
  "codex-file-search",
  "codex-git",
  "codex-keyring-store",
@@ -1146,7 +1163,6 @@ dependencies = [
  "codex-arg0",
  "codex-common",
  "codex-core",
- "codex-ollama",
  "codex-protocol",
  "core_test_support",
  "libc",
@@ -1170,6 +1186,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-exec-server"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "clap",
+ "codex-core",
+ "libc",
+ "path-absolutize",
+ "pretty_assertions",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "shlex",
+ "socket2 0.6.0",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "codex-execpolicy"
 version = "0.0.0"
 dependencies = [
@@ -1187,6 +1225,21 @@ dependencies = [
  "serde_with",
  "starlark",
  "tempfile",
+]
+
+[[package]]
+name = "codex-execpolicy2"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "multimap",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "shlex",
+ "starlark",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -1248,6 +1301,19 @@ dependencies = [
  "seccompiler",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "codex-lmstudio"
+version = "0.0.0"
+dependencies = [
+ "codex-core",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "which",
+ "wiremock",
 ]
 
 [[package]]
@@ -1325,6 +1391,7 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-protocol",
  "eventsource-stream",
+ "http",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",
@@ -1358,6 +1425,7 @@ dependencies = [
  "icu_provider",
  "mcp-types",
  "mime_guess",
+ "pretty_assertions",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -1414,6 +1482,7 @@ dependencies = [
  "tracing",
  "urlencoding",
  "webbrowser",
+ "which",
 ]
 
 [[package]]
@@ -1441,12 +1510,12 @@ dependencies = [
  "codex-ansi-escape",
  "codex-app-server-protocol",
  "codex-arg0",
+ "codex-backend-client",
  "codex-common",
  "codex-core",
  "codex-feedback",
  "codex-file-search",
  "codex-login",
- "codex-ollama",
  "codex-protocol",
  "codex-windows-sandbox",
  "color-eyre",
@@ -1469,6 +1538,7 @@ dependencies = [
  "ratatui",
  "ratatui-macros",
  "regex-lite",
+ "reqwest",
  "serde",
  "serde_json",
  "serial_test",
@@ -1551,9 +1621,11 @@ name = "codex-utils-tokenizer"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "codex-utils-cache",
  "pretty_assertions",
  "thiserror 2.0.17",
  "tiktoken-rs",
+ "tokio",
 ]
 
 [[package]]
@@ -1561,6 +1633,7 @@ name = "codex-windows-sandbox"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "codex-protocol",
  "dirs-next",
  "dunce",
  "rand 0.8.5",
@@ -5129,6 +5202,7 @@ version = "0.23.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2491382039b29b9b11ff08b76ff6c97cf287671dbb74f0be44bda389fffe9bd1"
 dependencies = [
+ "log",
  "once_cell",
  "ring",
  "rustls-pki-types",
@@ -6303,9 +6377,9 @@ dependencies = [
 
 [[package]]
 name = "tiktoken-rs"
-version = "0.7.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25563eeba904d770acf527e8b370fe9a5547bacd20ff84a0b6c3bc41288e5625"
+checksum = "3a19830747d9034cd9da43a60eaa8e552dfda7712424aebf187b7a60126bae0d"
 dependencies = [
  "anyhow",
  "base64",
@@ -6556,8 +6630,10 @@ dependencies = [
  "percent-encoding",
  "pin-project",
  "prost",
+ "rustls-native-certs",
  "socket2 0.5.10",
  "tokio",
+ "tokio-rustls",
  "tokio-stream",
  "tower",
  "tower-layer",

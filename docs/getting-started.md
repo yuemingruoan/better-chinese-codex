@@ -1,102 +1,103 @@
-## Getting started
+## 快速上手
 
-Looking for something specific? Jump ahead:
+在找特定内容？可直接跳转：
 
-- [Tips & shortcuts](#tips--shortcuts) – hotkeys, resume flow, prompts
-- [Non-interactive runs](./exec.md) – automate with `codex exec`
-- Ready for deeper customization? Head to [`advanced.md`](./advanced.md)
+- [技巧与快捷操作](#tips--shortcuts)：热键、会话恢复、提示词
+- [非交互运行](./exec.md)：使用 `codex exec` 自动化
+- 想深入自定义？前往 [`advanced.md`](./advanced.md)
 
-### CLI usage
+### CLI 用法
 
-| Command            | Purpose                            | Example                         |
-| ------------------ | ---------------------------------- | ------------------------------- |
-| `codex`            | Interactive TUI                    | `codex`                         |
-| `codex "..."`      | Initial prompt for interactive TUI | `codex "fix lint errors"`       |
-| `codex exec "..."` | Non-interactive "automation mode"  | `codex exec "explain utils.ts"` |
+| 命令                | 目的                         | 示例                               |
+| ------------------ | ---------------------------- | ---------------------------------- |
+| `codex`            | 交互式 TUI                   | `codex`
+| `codex "..."`      | 在交互式 TUI 启动时指定提示词 | `codex "修复 lint 错误"`
+| `codex exec "..."` | 非交互“自动化”模式           | `codex exec "解释 utils.ts"`
 
-Key flags: `--model/-m`, `--ask-for-approval/-a`.
+常用标志：`--model/-m`、`--ask-for-approval/-a`。
 
-### Resuming interactive sessions
+### 恢复交互会话
 
-- Run `codex resume` to display the session picker UI
-- Resume most recent: `codex resume --last`
-- Resume by id: `codex resume <SESSION_ID>` (You can get session ids from /status or `~/.codex/sessions/`)
+- 执行 `codex resume` 打开会话选择器
+- 恢复最近一次会话：`codex resume --last`
+- 根据 ID 恢复：`codex resume <SESSION_ID>`（可通过 /status 或 `~/.codex/sessions/` 查看）
+- 选择器会显示会话记录的原始工作目录、若可用还会展示当时的 Git 分支
 
-Examples:
+示例：
 
 ```shell
-# Open a picker of recent sessions
+# 打开最近会话列表
 codex resume
 
-# Resume the most recent session
+# 恢复最新的会话
 codex resume --last
 
-# Resume a specific session by id
+# 根据 ID 恢复
 codex resume 7f9f9a2e-1b3c-4c7a-9b0e-123456789abc
 ```
 
-### Running with a prompt as input
+### 直接用提示词启动
 
-You can also run Codex CLI with a prompt as input:
+可以直接携带提示词运行 Codex CLI：
 
 ```shell
-codex "explain this codebase to me"
+codex "向我解释这个代码库"
 ```
 
-### Example prompts
+### 示例提示词
 
-Below are a few bite-size examples you can copy-paste. Replace the text in quotes with your own task.
+以下是可以复制粘贴的示例，把引号中的内容替换成你自己的任务即可。
 
-| ✨  | What you type                                                                   | What happens                                                               |
-| --- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| 1   | `codex "Refactor the Dashboard component to React Hooks"`                       | Codex rewrites the class component, runs `npm test`, and shows the diff.   |
-| 2   | `codex "Generate SQL migrations for adding a users table"`                      | Infers your ORM, creates migration files, and runs them in a sandboxed DB. |
-| 3   | `codex "Write unit tests for utils/date.ts"`                                    | Generates tests, executes them, and iterates until they pass.              |
-| 4   | `codex "Bulk-rename *.jpeg -> *.jpg with git mv"`                               | Safely renames files and updates imports/usages.                           |
-| 5   | `codex "Explain what this regex does: ^(?=.*[A-Z]).{8,}$"`                      | Outputs a step-by-step human explanation.                                  |
-| 6   | `codex "Carefully review this repo, and propose 3 high impact well-scoped PRs"` | Suggests impactful PRs in the current codebase.                            |
-| 7   | `codex "Look for vulnerabilities and create a security review report"`          | Finds and explains security bugs.                                          |
+| ✨  | 输入                                                                              | Codex 的行为                                                        |
+| --- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 1   | `codex "把 Dashboard 组件重构为 React Hooks"`                                         | 重写 class 组件、运行 `npm test` 并展示 diff。                        |
+| 2   | `codex "生成新增 users 表的 SQL 迁移"`                                                | 推断 ORM、创建迁移文件并在沙箱数据库中运行。                          |
+| 3   | `codex "为 utils/date.ts 编写单元测试"`                                               | 生成测试、执行并迭代直至通过。                                       |
+| 4   | `codex "用 git mv 批量把 *.jpeg 重命名为 *.jpg"`                                      | 安全重命名文件并更新引用。                                           |
+| 5   | `codex "解释这个正则：^(?=.*[A-Z]).{8,}$"`                                           | 输出逐步的人类可读解释。                                             |
+| 6   | `codex "仔细 Review 这个仓库，给出 3 个最有价值且范围清晰的 PR"`                       | 针对当前代码库提出高影响力的 PR 建议。                               |
+| 7   | `codex "检查漏洞并生成安全审计报告"`                                                   | 发现并解释安全问题。                                                 |
 
-Looking to reuse your own instructions? Create slash commands with [custom prompts](./prompts.md).
+想复用自定义指令？可以通过 [自定义提示词](./prompts.md) 创建 slash 命令。
 
-### Memory with AGENTS.md
+### 通过 AGENTS.md 扩展记忆
 
-You can give Codex extra instructions and guidance using `AGENTS.md` files. Codex looks for them in the following places, and merges them top-down:
+你可以借助 `AGENTS.md` 为 Codex 提供额外说明。Codex 会按以下顺序查找并自上而下合并：
 
-1. `~/.codex/AGENTS.md` - personal global guidance
-2. Every directory from the repository root down to your current working directory (inclusive). In each directory, Codex first looks for `AGENTS.override.md` and uses it if present; otherwise it falls back to `AGENTS.md`. Use the override form when you want to replace inherited instructions for that directory.
+1. `~/.codex/AGENTS.md`：个人全局指导
+2. 从仓库根目录到当前工作目录（含）之间的每个目录。每一层优先寻找 `AGENTS.override.md`，若不存在则使用 `AGENTS.md`。当你需要在该目录下替换继承的指令时，请使用 override 版本。
 
-For more information on how to use AGENTS.md, see the [official AGENTS.md documentation](https://agents.md/).
+关于 AGENTS.md 的更多使用方式，请参阅 [官方 AGENTS.md 文档](https://agents.md/)。
 
 ### Tips & shortcuts
 
-#### Use `@` for file search
+#### 使用 `@` 搜索文件
 
-Typing `@` triggers a fuzzy-filename search over the workspace root. Use up/down to select among the results and Tab or Enter to replace the `@` with the selected path. You can use Esc to cancel the search.
+输入 `@` 会在工作区根目录触发模糊文件名搜索。可用上下方向键选择结果，用 Tab 或 Enter 将 `@` 替换为选定路径。按 Esc 可取消搜索。
 
-#### Esc–Esc to edit a previous message
+#### Esc–Esc 编辑上一条消息
 
-When the chat composer is empty, press Esc to prime “backtrack” mode. Press Esc again to open a transcript preview highlighting the last user message; press Esc repeatedly to step to older user messages. Press Enter to confirm and Codex will fork the conversation from that point, trim the visible transcript accordingly, and pre‑fill the composer with the selected user message so you can edit and resubmit it.
+当输入框为空时，按一次 Esc 进入“回溯”模式。再次按 Esc 将打开历史消息预览，并高亮最近的用户消息；重复按 Esc 可向更早的消息移动。按 Enter 确认后，Codex 会从该节点分叉对话、裁剪可见历史，并把所选消息填入输入框，方便你修改后重新提交。
 
-In the transcript preview, the footer shows an `Esc edit prev` hint while editing is active.
+在预览中，底部会显示 `Esc edit prev` 提示，表示当前处于可编辑状态。
 
-#### `--cd`/`-C` flag
+#### `--cd`/`-C`
 
-Sometimes it is not convenient to `cd` to the directory you want Codex to use as the "working root" before running Codex. Fortunately, `codex` supports a `--cd` option so you can specify whatever folder you want. You can confirm that Codex is honoring `--cd` by double-checking the **workdir** it reports in the TUI at the start of a new session.
+有时不便提前 `cd` 到希望的“工作根目录”。`codex` 提供 `--cd` 选项，你可以指定任意文件夹。可在新会话开始时查看 TUI 顶部显示的 **workdir**，确认 `--cd` 生效。
 
-#### `--add-dir` flag
+#### `--add-dir`
 
-Need to work across multiple projects in one run? Pass `--add-dir` one or more times to expose extra directories as writable roots for the current session while keeping the main working directory unchanged. For example:
+需要在一次运行中跨多个项目工作？多次传入 `--add-dir` 可把额外目录暴露为可写根路径，同时保持主工作目录不变。例如：
 
 ```shell
 codex --cd apps/frontend --add-dir ../backend --add-dir ../shared
 ```
 
-Codex can then inspect and edit files in each listed directory without leaving the primary workspace.
+此后 Codex 可以在列出的每个目录中查看与编辑文件，而无需离开主工作区。
 
-#### Shell completions
+#### Shell 补全
 
-Generate shell completion scripts via:
+生成 shell 补全脚本：
 
 ```shell
 codex completion bash
@@ -104,11 +105,11 @@ codex completion zsh
 codex completion fish
 ```
 
-#### Image input
+#### 图片输入
 
-Paste images directly into the composer (Ctrl+V / Cmd+V) to attach them to your prompt. You can also attach files via the CLI using `-i/--image` (comma‑separated):
+可直接把图片粘贴到输入框（Ctrl+V / Cmd+V）以附加到提示中。通过 CLI 也可以用 `-i/--image`（逗号分隔）附加图片：
 
 ```bash
-codex -i screenshot.png "Explain this error"
-codex --image img1.png,img2.jpg "Summarize these diagrams"
+codex -i screenshot.png "帮我解释这个错误"
+codex --image img1.png,img2.jpg "总结这些图表"
 ```

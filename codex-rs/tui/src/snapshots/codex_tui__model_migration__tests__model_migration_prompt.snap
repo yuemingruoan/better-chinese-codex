@@ -2,14 +2,17 @@
 source: tui/src/model_migration.rs
 expression: terminal.backend()
 ---
-> 全新 gpt-5.1 模型
+> Codex 再升级：gpt-5.1-codex-max
 
-  Codex 现已支持并默认使用 gpt-5.1、gpt-5.1-codex 与
-  gpt-5.1-codex-mini。
+  Codex 现已由 gpt-5.1-codex-max 驱动，这是我们最新
+  的旗舰级代理式编码模型，具备更强推理能力，也更
+  擅长处理长程项目。
 
-  如需继续使用旧模型，可通过 -m 参数或 config.toml
-  中的配置进行指定。
+  了解更多：www.openai.com/index/gpt-5-1-codex-max.
 
-  了解更多：www.openai.com/index/gpt-5-1.
+  请选择 Codex 接下来的处理方式。
 
-  按 Enter 继续
+› 1. 试用新模型
+  2. 继续使用当前模型
+
+  使用 ↑/↓ 切换，按 Enter 确认

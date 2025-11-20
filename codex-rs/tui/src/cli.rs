@@ -28,14 +28,22 @@ pub struct Cli {
     #[clap(skip)]
     pub resume_session_id: Option<String>,
 
+    /// 内部用途：在 `codex resume` 中禁用 CWD 过滤并展示所有会话（含 CWD 列）。
+    #[clap(skip)]
+    pub resume_show_all: bool,
+
     /// 指定代理要使用的模型。
     #[arg(long, short = 'm')]
     pub model: Option<String>,
 
     /// 选择本地开源模型提供者的便捷开关。
-    /// 等效于 -c model_provider=oss，并会校验本地 Ollama 服务是否运行。
+    /// 等效于 -c model_provider=oss，并会校验本地 LM Studio 或 Ollama 是否运行。
     #[arg(long = "oss", default_value_t = false)]
     pub oss: bool,
+
+    /// 指定本地提供者（lmstudio 或 ollama）。若未通过 --oss 指定，则沿用配置默认或进入选择界面。
+    #[arg(long = "local-provider")]
+    pub oss_provider: Option<String>,
 
     /// 使用 config.toml 中的配置档来指定默认选项。
     #[arg(long = "profile", short = 'p')]

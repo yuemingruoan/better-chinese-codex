@@ -1,0 +1,139 @@
+name: Issue Deduplicator
+
+on:
+  issues:
+    types:
+      - opened
+      - labeled
+
+jobs:
+  gather-duplicates:
+    name: Identify potential duplicates
+    if: ${{ github.event.action == 'opened' || (github.event.action == 'labeled' && github.event.label.name == 'codex-deduplicate') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      codex_output: ${{ steps.codex.outputs.final-message }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Prepare Codex inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eo pipefail
+
+          CURRENT_ISSUE_FILE=codex-current-issue.json
+          EXISTING_ISSUES_FILE=codex-existing-issues.json
+
+          gh issue list --repo "${{ github.repository }}" \
+            --json number,title,body,createdAt \
+            --limit 1000 \
+            --state all \
+            --search "sort:created-desc" \
+            | jq '.' \
+            > "$EXISTING_ISSUES_FILE"
+
+          gh issue view "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --json number,title,body \
+            | jq '.' \
+            > "$CURRENT_ISSUE_FILE"
+
+      - id: codex
+        uses: openai/codex-action@main
+        with:
+          openai-api-key: ${{ secrets.CODEX_OPENAI_API_KEY }}
+          allow-users: "*"
+          model: gpt-5.1
+          prompt: |
+            你是一名 GitHub Issue 分拣助手，需要识别潜在重复问题，且所有分析与输出都必须使用中文。
+
+            你会在当前工作目录中获得两份 JSON 文件：
+            - `codex-current-issue.json`：包含最新 issue 的 `number`、`title`、`body`。
+            - `codex-existing-issues.json`：近期 issue 的数组，每个元素含 `number`、`title`、`body`、`createdAt`。
+
+            操作要求：
+            - 比较当前 issue 与已有 issue，挑出至多五个描述了相同问题或需求的条目。
+            - 聚焦真实意图与上下文（如症状、需求、复现步骤、报错信息），不要只做字符串相似度或模板匹配。
+            - 分析结束后，用 1-2 句中文解释你为何返回这些候选。
+            - 无法确定时宁可少报，最多列出五个编号。
+
+          output-schema: |
+            {
+              "type": "object",
+              "properties": {
+                "issues": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "reason": { "type": "string" }
+              },
+              "required": ["issues", "reason"],
+              "additionalProperties": false
+            }
+
+  comment-on-issue:
+    name: Comment with potential duplicates
+    needs: gather-duplicates
+    if: ${{ needs.gather-duplicates.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Comment on issue
+        uses: actions/github-script@v8
+        env:
+          CODEX_OUTPUT: ${{ needs.gather-duplicates.outputs.codex_output }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const raw = process.env.CODEX_OUTPUT ?? '';
+            let parsed;
+            try {
+              parsed = JSON.parse(raw);
+            } catch (error) {
+              core.info(`Codex output was not valid JSON. Raw output: ${raw}`);
+              core.info(`Parse error: ${error.message}`);
+              return;
+            }
+
+            const issues = Array.isArray(parsed?.issues) ? parsed.issues : [];
+            const currentIssueNumber = String(context.payload.issue.number);
+
+            console.log(`Current issue number: ${currentIssueNumber}`);
+            console.log(issues);
+
+            const filteredIssues = issues.filter((value) => String(value) !== currentIssueNumber);
+
+            if (filteredIssues.length === 0) {
+              core.info('Codex reported no potential duplicates.');
+              return;
+            }
+
+            const lines = [
+              '检测到可能重复的 Issue，请核对下列条目，若确认为重复请关闭当前 Issue。',
+              '',
+              ...filteredIssues.map((value) => `- #${String(value)}`),
+              '',
+              '*由 [Codex Action](https://github.com/openai/codex-action) 提供支持*'];
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: lines.join("\n"),
+            });
+
+      - name: Remove codex-deduplicate label
+        if: ${{ always() && github.event.action == 'labeled' && github.event.label.name == 'codex-deduplicate' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue edit "${{ github.event.issue.number }}" --remove-label codex-deduplicate || true
+          echo "Attempted to remove label: codex-deduplicate"

@@ -1,55 +1,55 @@
-## FAQ
+## 常见问题（FAQ）
 
-This FAQ highlights the most common questions and points you to the right deep-dive guides in `docs/`.
+本 FAQ 汇总了最常见的问题，并指向 `docs/` 中的详细指南。
 
-### OpenAI released a model called Codex in 2021 - is this related?
+### OpenAI 不是在 2021 年发布过一个叫 Codex 的模型吗？
 
-In 2021, OpenAI released Codex, an AI system designed to generate code from natural language prompts. That original Codex model was deprecated as of March 2023 and is separate from the CLI tool.
+2021 年，OpenAI 发布了 Codex —— 一套可以根据自然语言提示生成代码的 AI 系统。那个最初的 Codex 模型已在 2023 年 3 月停止服务，与本 CLI 工具并无关系。
 
-### Which models are supported?
+### 目前推荐使用哪些模型？
 
-We recommend using Codex with GPT-5 Codex, our best coding model. The default reasoning level is medium, and you can upgrade to high for complex tasks with the `/model` command.
+推荐在 Codex 中使用 GPT-5.1 Codex，这是我们最强的编码模型。默认推理级别为 medium，可在复杂任务中通过 `/model` 命令切换至 high。
 
-You can also use older models by using API-based auth and launching codex with the `--model` flag.
+若想使用旧版模型，可改用基于 API 的鉴权方式，并在启动 codex 时通过 `--model` 标志指定模型。
 
-### How do approvals and sandbox modes work together?
+### 审批与沙箱模式如何协同？
 
-Approvals are the mechanism Codex uses to ask before running a tool call with elevated permissions - typically to leave the sandbox or re-run a failed command without isolation. Sandbox mode provides the baseline isolation (`Read Only`, `Workspace Write`, or `Danger Full Access`; see [Sandbox & approvals](./sandbox.md)).
+审批机制用于在 Codex 需要提升权限运行工具调用前先征求同意——通常是离开沙箱或在无隔离的情况下重试失败命令。沙箱模式则提供默认隔离（`Read Only`、`Workspace Write` 或 `Danger Full Access`，详见 [Sandbox & approvals](./sandbox.md)）。
 
-### Can I automate tasks without the TUI?
+### 不开 TUI 能自动化任务吗？
 
-Yes. [`codex exec`](./exec.md) runs Codex in non-interactive mode with streaming logs, JSONL output, and structured schema support. The command respects the same sandbox and approval settings you configure in the [Config guide](./config.md).
+可以。[`codex exec`](./exec.md) 可在非交互模式下运行 Codex，提供流式日志、JSONL 输出与结构化 Schema 支持。该命令会遵循你在 [配置指南](./config.md) 中设置的沙箱与审批策略。
 
-### How do I stop Codex from editing my files?
+### 如何阻止 Codex 修改我的文件？
 
-By default, Codex can modify files in your current working directory (Auto mode). To prevent edits, run `codex` in read-only mode with the CLI flag `--sandbox read-only`. Alternatively, you can change the approval level mid-conversation with `/approvals`.
+默认情况下，Codex 在当前工作目录具备修改权限（Auto 模式）。如需禁止编辑，可在 CLI 中使用 `--sandbox read-only`。也可以在对话过程中通过 `/approvals` 调整审批级别。
 
-### How do I connect Codex to MCP servers?
+### 如何把 Codex 接入 MCP 服务器？
 
-Configure MCP servers through your `config.toml` using the examples in [Config -> Connecting to MCP servers](./config.md#connecting-to-mcp-servers).
+在 `config.toml` 中配置 MCP 服务器，可参考 [Config -> Connecting to MCP servers](./config.md#connecting-to-mcp-servers) 提供的示例。
 
-### I'm having trouble logging in. What should I check?
+### 登录遇到问题，该检查什么？
 
-Confirm your setup in three steps:
+按以下步骤排查：
 
-1. Walk through the auth flows in [Authentication](./authentication.md) to ensure the correct credentials are present in `~/.codex/auth.json`.
-2. If you're on a headless or remote machine, make sure port-forwarding is configured as described in [Authentication -> Connecting on a "Headless" Machine](./authentication.md#connecting-on-a-headless-machine).
+1. 参考 [Authentication](./authentication.md) 中的流程，确认 `~/.codex/auth.json` 内存在正确的凭据。
+2. 如果你在无头或远程机器上使用 Codex，确保按照 [Authentication -> Connecting on a "Headless" Machine](./authentication.md#connecting-on-a-headless-machine) 配置端口转发。
 
-### Does it work on Windows?
+### 可以在 Windows 上直接使用吗？
 
-Running Codex directly on Windows may work, but is not officially supported. We recommend using [Windows Subsystem for Linux (WSL2)](https://learn.microsoft.com/en-us/windows/wsl/install).
+在 Windows 上直接运行 Codex 可能可行，但暂未正式支持。我们建议通过 [Windows Subsystem for Linux (WSL2)](https://learn.microsoft.com/en-us/windows/wsl/install) 使用。
 
-### Where should I start after installation?
+### 安装完成后应该先做什么？
 
-Follow the quick setup in [Install & build](./install.md) and then jump into [Getting started](./getting-started.md) for interactive usage tips, prompt examples, and AGENTS.md guidance.
+先完成 [Install & build](./install.md) 中的快速设置，然后阅读 [Getting started](./getting-started.md)，了解交互式使用技巧、提示例子与 AGENTS.md 的写法。
 
-### `brew upgrade codex` isn't upgrading me
+### `brew upgrade codex` 没有把我升级到最新版
 
-If you're running Codex v0.46.0 or older, `brew upgrade codex` will not move you to the latest version because we migrated from a Homebrew formula to a cask. To upgrade, uninstall the existing oudated formula and then install the new cask:
+如果你正在使用 v0.46.0 或更早版本，`brew upgrade codex` 不会升级到最新版本，因为我们已将 Homebrew 配方迁移到 cask。升级步骤如下：
 
 ```bash
 brew uninstall --formula codex
 brew install --cask codex
 ```
 
-After reinstalling, `brew upgrade --cask codex` will keep future releases up to date.
+重新安装后，执行 `brew upgrade --cask codex` 即可保持后续版本更新。

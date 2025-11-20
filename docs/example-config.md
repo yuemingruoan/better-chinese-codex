@@ -1,213 +1,212 @@
-# Example config.toml
+# 示例 config.toml
 
-Use this example configuration as a starting point. For an explanation of each field and additional context, see [Configuration](./config.md). Copy the snippet below to `~/.codex/config.toml` and adjust values as needed.
+可以把这份示例配置当成起点。若想了解每个字段含义与额外背景，请参阅 [Configuration](./config.md)。将下面的片段复制到 `~/.codex/config.toml`，然后按需调整数值。
 
 ```toml
-# Codex example configuration (config.toml)
+# Codex 示例配置（config.toml）
 #
-# This file lists all keys Codex reads from config.toml, their default values,
-# and concise explanations. Values here mirror the effective defaults compiled
-# into the CLI. Adjust as needed.
+# 该文件罗列出 Codex 会从 config.toml 读取的所有键、它们的默认值以及简短说明。
+# 这些值与 CLI 中编译的实际默认值一致，可按需覆盖。
 #
-# Notes
-# - Root keys must appear before tables in TOML.
-# - Optional keys that default to "unset" are shown commented out with notes.
-# - MCP servers, profiles, and model providers are examples; remove or edit.
+# 说明
+# - 在 TOML 中根级键必须写在所有表之前。
+# - 默认值为“未设置”的可选键会以注释方式展示，并附带说明。
+# - MCP 服务器、配置档与模型提供方仅供展示，可自行删除或修改。
 
 ################################################################################
-# Core Model Selection
+# 核心模型选择
 ################################################################################
 
-# Primary model used by Codex. Default differs by OS; non-Windows defaults here.
-# Linux/macOS default: "gpt-5-codex"; Windows default: "gpt-5".
-model = "gpt-5-codex"
+# Codex 主要使用的模型。所有平台默认值："gpt-5.1-codex-max"。
+model = "gpt-5.1-codex-max"
 
-# Model used by the /review feature (code reviews). Default: "gpt-5-codex".
-review_model = "gpt-5-codex"
+# /review 功能（代码评审）所用模型。默认："gpt-5.1-codex-max"。
+review_model = "gpt-5.1-codex-max"
 
-# Provider id selected from [model_providers]. Default: "openai".
+# 在 [model_providers] 中选择的 provider id。默认："openai"。
 model_provider = "openai"
 
-# Optional manual model metadata. When unset, Codex auto-detects from model.
-# Uncomment to force values.
-# model_context_window = 128000       # tokens; default: auto for model
-# model_max_output_tokens = 8192      # tokens; default: auto for model
-# model_auto_compact_token_limit = 0  # disable/override auto; default: model family specific
+# 可选的模型元数据。若未设置，Codex 会依据模型自动识别。
+# 取消注释即可强制覆盖。
+# model_context_window = 128000       # token 数；默认：按模型自动决定
+# model_max_output_tokens = 8192      # token 数；默认：按模型自动决定
+# model_auto_compact_token_limit = 0  # 0 表示禁用/覆盖自动压缩；默认：依模型家族而定
+# tool_output_token_limit = 10000  # 每个工具输出保存的 token 数；默认：gpt-5.1-codex-max 为 10000
 
 ################################################################################
-# Reasoning & Verbosity (Responses API capable models)
+# 推理与冗长度（支持 Responses API 的模型）
 ################################################################################
 
-# Reasoning effort: minimal | low | medium | high (default: medium)
+# 推理力度：minimal | low | medium | high（默认：medium）
 model_reasoning_effort = "medium"
 
-# Reasoning summary: auto | concise | detailed | none (default: auto)
+# 推理摘要：auto | concise | detailed | none（默认：auto）
 model_reasoning_summary = "auto"
 
-# Text verbosity for GPT-5 family (Responses API): low | medium | high (default: medium)
+# GPT-5 系列（Responses API）的文字冗长度：low | medium | high（默认：medium）
 model_verbosity = "medium"
 
-# Force-enable reasoning summaries for current model (default: false)
+# 强制开启推理摘要（默认：false）
 model_supports_reasoning_summaries = false
 
-# Force reasoning summary format: none | experimental (default: none)
+# 强制指定推理摘要格式：none | experimental（默认：none）
 model_reasoning_summary_format = "none"
 
 ################################################################################
-# Instruction Overrides
+# 指令覆盖
 ################################################################################
 
-# Additional user instructions appended after AGENTS.md. Default: unset.
+# 附加到 AGENTS.md 之后的用户指令。默认：未设置。
 # developer_instructions = ""
 
-# Optional legacy base instructions override (prefer AGENTS.md). Default: unset.
+# 可选的旧版基础指令覆盖（推荐使用 AGENTS.md）。默认：未设置。
 # instructions = ""
 
-# Inline override for the history compaction prompt. Default: unset.
+# 在行内覆盖历史压缩提示词。默认：未设置。
 # compact_prompt = ""
 
-# Override built-in base instructions with a file path. Default: unset.
+# 使用文件路径覆盖内置基础指令。默认：未设置。
 # experimental_instructions_file = "/absolute/or/relative/path/to/instructions.txt"
 
-# Load the compact prompt override from a file. Default: unset.
+# 从文件加载压缩提示词覆盖。默认：未设置。
 # experimental_compact_prompt_file = "/absolute/or/relative/path/to/compact_prompt.txt"
 
 ################################################################################
-# Approval & Sandbox
+# 审批与沙箱
 ################################################################################
 
-# When to ask for command approval:
-# - untrusted: only known-safe read-only commands auto-run; others prompt
-# - on-failure: auto-run in sandbox; prompt only on failure for escalation
-# - on-request: model decides when to ask (default)
-# - never: never prompt (risky)
+# 何时请求命令审批：
+# - untrusted：仅自动运行已知安全的只读命令，其他命令会提示
+# - on-failure：默认在沙箱运行，仅在失败时提示升级
+# - on-request：由模型决定何时询问（默认）
+# - never：从不提示（风险极高）
 approval_policy = "on-request"
 
-# Filesystem/network sandbox policy for tool calls:
-# - read-only (default)
+# 工具调用的文件系统/网络沙箱策略：
+# - read-only（默认）
 # - workspace-write
-# - danger-full-access (no sandbox; extremely risky)
+# - danger-full-access（无遮罩，风险极高）
 sandbox_mode = "read-only"
 
-# Extra settings used only when sandbox_mode = "workspace-write".
+# 仅在 sandbox_mode = "workspace-write" 时生效的附加参数。
 [sandbox_workspace_write]
-# Additional writable roots beyond the workspace (cwd). Default: []
+# 除工作区（cwd）以外的额外可写根路径。默认：[]
 writable_roots = []
-# Allow outbound network access inside the sandbox. Default: false
+# 是否允许沙箱内访问外网。默认：false
 network_access = false
-# Exclude $TMPDIR from writable roots. Default: false
+# 将 $TMPDIR 排除在可写目录之外。默认：false
 exclude_tmpdir_env_var = false
-# Exclude /tmp from writable roots. Default: false
+# 将 /tmp 排除在可写目录之外。默认：false
 exclude_slash_tmp = false
 
 ################################################################################
-# Shell Environment Policy for spawned processes
+# 子进程的 Shell 环境策略
 ################################################################################
 
 [shell_environment_policy]
-# inherit: all (default) | core | none
+# inherit：all（默认）| core | none
 inherit = "all"
-# Skip default excludes for names containing KEY/TOKEN (case-insensitive). Default: false
+# 忽略名称中包含 KEY/TOKEN（大小写不敏感）的默认排除项。默认：false
 ignore_default_excludes = false
-# Case-insensitive glob patterns to remove (e.g., "AWS_*", "AZURE_*"). Default: []
+# 需移除的大小写不敏感通配符（例如 "AWS_*"、"AZURE_*")。默认：[]
 exclude = []
-# Explicit key/value overrides (always win). Default: {}
+# 明确设置的键值（始终优先生效）。默认：{}
 set = {}
-# Whitelist; if non-empty, keep only matching vars. Default: []
+# 白名单；非空时仅保留匹配的变量。默认：[]
 include_only = []
-# Experimental: run via user shell profile. Default: false
+# 实验特性：通过用户 shell profile 启动。默认：false
 experimental_use_profile = false
 
 ################################################################################
-# History & File Opener
+# 历史记录与文件打开方式
 ################################################################################
 
 [history]
-# save-all (default) | none
+# save-all（默认）| none
 persistence = "save-all"
-# Maximum bytes for history file (currently not enforced). Example: 5242880
+# 历史文件的最大字节数（当前未强制）。示例：5242880
 # max_bytes = 0
 
-# URI scheme for clickable citations: vscode (default) | vscode-insiders | windsurf | cursor | none
+# 点击引用时使用的 URI scheme：vscode（默认）| vscode-insiders | windsurf | cursor | none
 file_opener = "vscode"
 
 ################################################################################
-# UI, Notifications, and Misc
+# UI、通知与其他
 ################################################################################
 
 [tui]
-# Desktop notifications from the TUI: boolean or filtered list. Default: false
-# Examples: true | ["agent-turn-complete", "approval-requested"]
+# TUI 桌面通知：布尔值或过滤列表。默认：true
+# 示例：false | ["agent-turn-complete", "approval-requested"]
 notifications = false
 
-# Suppress internal reasoning events from output (default: false)
+# 隐藏输出中的内部推理事件（默认：false）
 hide_agent_reasoning = false
 
-# Show raw reasoning content when available (default: false)
+# 在可用时显示原始推理内容（默认：false）
 show_raw_agent_reasoning = false
 
-# Disable burst-paste detection in the TUI (default: false)
+# 在 TUI 中禁用快速粘贴检测（默认：false）
 disable_paste_burst = false
 
-# Track Windows onboarding acknowledgement (Windows only). Default: false
+# 记录 Windows 引导提示已阅读（仅 Windows）。默认：false
 windows_wsl_setup_acknowledged = false
 
-# External notifier program (argv array). When unset: disabled.
-# Example: notify = ["notify-send", "Codex"]
+# 外部通知程序（argv 数组）。未设置时禁用。
+# 示例：notify = ["notify-send", "Codex"]
 # notify = [ ]
 
-# In-product notices (mostly set automatically by Codex).
+# 产品内提示（多由 Codex 自动填充）。
 [notice]
 # hide_full_access_warning = true
 # hide_rate_limit_model_nudge = true
 
 ################################################################################
-# Authentication & Login
+# 鉴权与登录
 ################################################################################
 
-# Where to persist CLI login credentials: file (default) | keyring | auto
+# CLI 登录凭据的保存方式：file（默认）| keyring | auto
 cli_auth_credentials_store = "file"
 
-# Base URL for ChatGPT auth flow (not OpenAI API). Default:
+# ChatGPT 鉴权流程的基础 URL（非 OpenAI API）。默认：
 chatgpt_base_url = "https://chatgpt.com/backend-api/"
 
-# Restrict ChatGPT login to a specific workspace id. Default: unset.
+# 将 ChatGPT 登录限制在指定 workspace id。默认：未设置。
 # forced_chatgpt_workspace_id = ""
 
-# Force login mechanism when Codex would normally auto-select. Default: unset.
-# Allowed values: chatgpt | api
+# 在 Codex 会自动选择登录方式时强制指定机制。默认：未设置。
+# 允许值：chatgpt | api
 # forced_login_method = "chatgpt"
 
 ################################################################################
-# Project Documentation Controls
+# 项目文档控制
 ################################################################################
 
-# Max bytes from AGENTS.md to embed into first-turn instructions. Default: 32768
+# 嵌入首轮指令的 AGENTS.md 最大字节数。默认：32768
 project_doc_max_bytes = 32768
 
-# Ordered fallbacks when AGENTS.md is missing at a directory level. Default: []
+# 当某级目录缺少 AGENTS.md 时按序查找的后备文件名。默认：[]
 project_doc_fallback_filenames = []
 
 ################################################################################
-# Tools (legacy toggles kept for compatibility)
+# 工具（保留的旧版开关）
 ################################################################################
 
 [tools]
-# Enable web search tool (alias: web_search_request). Default: false
+# 启用网页搜索工具（别名：web_search_request）。默认：false
 web_search = false
 
-# Enable the view_image tool so the agent can attach local images. Default: true
+# 允许代理使用 view_image 工具附加本地图片。默认：true
 view_image = true
 
-# (Alias accepted) You can also write:
+# （别名）也可以写成：
 # web_search_request = false
 
 ################################################################################
-# Centralized Feature Flags (preferred)
+# 集中式特性开关（推荐）
 ################################################################################
 
 [features]
-# Leave this table empty to accept defaults. Set explicit booleans to opt in/out.
+# 如果接受默认值，可以保持该表为空。设置布尔值即可明确选择加入或退出。
 unified_exec = false
 streamable_shell = false
 rmcp_client = false
@@ -219,103 +218,103 @@ ghost_commit = false
 enable_experimental_windows_sandbox = false
 
 ################################################################################
-# Experimental toggles (legacy; prefer [features])
+# 实验性切换（旧式，优先使用 [features]）
 ################################################################################
 
-# Use experimental unified exec tool. Default: false
+# 启用实验版统一 exec 工具。默认：false
 experimental_use_unified_exec_tool = false
 
-# Use experimental Rust MCP client (enables OAuth for HTTP MCP). Default: false
+# 启用实验版 Rust MCP 客户端（允许 HTTP MCP 走 OAuth）。默认：false
 experimental_use_rmcp_client = false
 
-# Include apply_patch via freeform editing path (affects default tool set). Default: false
+# 通过自由编辑路径包含 apply_patch（影响默认工具集）。默认：false
 experimental_use_freeform_apply_patch = false
 
-# Enable model-based sandbox command assessment. Default: false
+# 启用基于模型的沙箱命令评估。默认：false
 experimental_sandbox_command_assessment = false
 
 ################################################################################
-# MCP (Model Context Protocol) servers
+# MCP（Model Context Protocol）服务器
 ################################################################################
 
-# Preferred store for MCP OAuth credentials: auto (default) | file | keyring
+# MCP OAuth 凭据的首选存储：auto（默认）| file | keyring
 mcp_oauth_credentials_store = "auto"
 
-# Define MCP servers under this table. Leave empty to disable.
+# 在此表中定义 MCP 服务器。保持为空即表示禁用。
 [mcp_servers]
 
-# --- Example: STDIO transport ---
+# --- 示例：STDIO 传输 ---
 # [mcp_servers.docs]
-# command = "docs-server"                 # required
-# args = ["--port", "4000"]               # optional
-# env = { "API_KEY" = "value" }           # optional key/value pairs copied as-is
-# env_vars = ["ANOTHER_SECRET"]            # optional: forward these from the parent env
-# cwd = "/path/to/server"                 # optional working directory override
-# startup_timeout_sec = 10.0               # optional; default 10.0 seconds
-# # startup_timeout_ms = 10000              # optional alias for startup timeout (milliseconds)
-# tool_timeout_sec = 60.0                  # optional; default 60.0 seconds
-# enabled_tools = ["search", "summarize"]  # optional allow-list
-# disabled_tools = ["slow-tool"]           # optional deny-list (applied after allow-list)
+# command = "docs-server"                 # 必填
+# args = ["--port", "4000"]               # 可选
+# env = { "API_KEY" = "value" }           # 可选的键值对，原样传递
+# env_vars = ["ANOTHER_SECRET"]            # 可选：从父进程环境转发这些变量
+# cwd = "/path/to/server"                 # 可选的工作目录覆盖
+# startup_timeout_sec = 10.0               # 可选；默认 10.0 秒
+# # startup_timeout_ms = 10000              # 可选别名，单位毫秒
+# tool_timeout_sec = 60.0                  # 可选；默认 60.0 秒
+# enabled_tools = ["search", "summarize"]  # 可选允许列表
+# disabled_tools = ["slow-tool"]           # 可选拒绝列表（在允许列表之后应用）
 
-# --- Example: Streamable HTTP transport ---
+# --- 示例：可流式的 HTTP 传输 ---
 # [mcp_servers.github]
-# url = "https://github-mcp.example.com/mcp"  # required
-# bearer_token_env_var = "GITHUB_TOKEN"        # optional; Authorization: Bearer <token>
-# http_headers = { "X-Example" = "value" }    # optional static headers
-# env_http_headers = { "X-Auth" = "AUTH_ENV" } # optional headers populated from env vars
-# startup_timeout_sec = 10.0                   # optional
-# tool_timeout_sec = 60.0                      # optional
-# enabled_tools = ["list_issues"]             # optional allow-list
+# url = "https://github-mcp.example.com/mcp"  # 必填
+# bearer_token_env_var = "GITHUB_TOKEN"        # 可选；发送 Authorization: Bearer <token>
+# http_headers = { "X-Example" = "value" }    # 可选静态请求头
+# env_http_headers = { "X-Auth" = "AUTH_ENV" } # 可选：由环境变量填充的请求头
+# startup_timeout_sec = 10.0                   # 可选
+# tool_timeout_sec = 60.0                      # 可选
+# enabled_tools = ["list_issues"]             # 可选允许列表
 
 ################################################################################
-# Model Providers (extend/override built-ins)
+# 模型提供方（扩展/覆盖内置设置）
 ################################################################################
 
-# Built-ins include:
-# - openai (Responses API; requires login or OPENAI_API_KEY via auth flow)
-# - oss (Chat Completions API; defaults to http://localhost:11434/v1)
+# 内置提供方包括：
+# - openai（Responses API；需要登录或通过鉴权流程获取 OPENAI_API_KEY）
+# - oss（Chat Completions API；默认指向 http://localhost:11434/v1）
 
 [model_providers]
 
-# --- Example: override OpenAI with explicit base URL or headers ---
+# --- 示例：覆盖 OpenAI 的基础 URL 或请求头 ---
 # [model_providers.openai]
 # name = "OpenAI"
-# base_url = "https://api.openai.com/v1"         # default if unset
-# wire_api = "responses"                         # "responses" | "chat" (default varies)
-# # requires_openai_auth = true                    # built-in OpenAI defaults to true
-# # request_max_retries = 4                        # default 4; max 100
-# # stream_max_retries = 5                         # default 5;  max 100
-# # stream_idle_timeout_ms = 300000                # default 300_000 (5m)
-# # experimental_bearer_token = "sk-example"      # optional dev-only direct bearer token
+# base_url = "https://api.openai.com/v1"         # 未设置时的默认值
+# wire_api = "responses"                         # "responses" | "chat"（默认为模型决定）
+# # requires_openai_auth = true                    # 内置 OpenAI 默认即为 true
+# # request_max_retries = 4                        # 默认 4；最多 100
+# # stream_max_retries = 5                         # 默认 5；最多 100
+# # stream_idle_timeout_ms = 300000                # 默认 300_000（5 分钟）
+# # experimental_bearer_token = "sk-example"      # 可选，仅供本地开发使用的直接 token
 # # http_headers = { "X-Example" = "value" }
 # # env_http_headers = { "OpenAI-Organization" = "OPENAI_ORGANIZATION", "OpenAI-Project" = "OPENAI_PROJECT" }
 
-# --- Example: Azure (Chat/Responses depending on endpoint) ---
+# --- 示例：Azure（根据 endpoint 使用 Chat 或 Responses） ---
 # [model_providers.azure]
 # name = "Azure"
 # base_url = "https://YOUR_PROJECT_NAME.openai.azure.com/openai"
-# wire_api = "responses"                          # or "chat" per endpoint
+# wire_api = "responses"                          # 或 "chat"，视 endpoint 而定
 # query_params = { api-version = "2025-04-01-preview" }
 # env_key = "AZURE_OPENAI_API_KEY"
-# # env_key_instructions = "Set AZURE_OPENAI_API_KEY in your environment"
+# # env_key_instructions = "在环境变量中设置 AZURE_OPENAI_API_KEY"
 
-# --- Example: Local OSS (e.g., Ollama-compatible) ---
+# --- 示例：本地 OSS（例如兼容 Ollama） ---
 # [model_providers.ollama]
 # name = "Ollama"
 # base_url = "http://localhost:11434/v1"
 # wire_api = "chat"
 
 ################################################################################
-# Profiles (named presets)
+# 配置档（命名预设）
 ################################################################################
 
-# Active profile name. When unset, no profile is applied.
+# 当前启用的配置档名称。未设置时不应用任何 profile。
 # profile = "default"
 
 [profiles]
 
 # [profiles.default]
-# model = "gpt-5-codex"
+# model = "gpt-5.1-codex-max"
 # model_provider = "openai"
 # approval_policy = "on-request"
 # sandbox_mode = "read-only"
@@ -334,27 +333,27 @@ mcp_oauth_credentials_store = "auto"
 # features = { unified_exec = false }
 
 ################################################################################
-# Projects (trust levels)
+# 项目（信任级别）
 ################################################################################
 
-# Mark specific worktrees as trusted. Only "trusted" is recognized.
+# 将特定工作树标记为 trusted。目前仅支持 "trusted"。
 [projects]
 # [projects."/absolute/path/to/project"]
 # trust_level = "trusted"
 
 ################################################################################
-# OpenTelemetry (OTEL) – disabled by default
+# OpenTelemetry（OTEL）——默认禁用
 ################################################################################
 
 [otel]
-# Include user prompt text in logs. Default: false
+# 是否把用户提问文本写入日志。默认：false
 log_user_prompt = false
-# Environment label applied to telemetry. Default: "dev"
+# 写入遥测时附加的 environment 标签。默认："dev"
 environment = "dev"
-# Exporter: none (default) | otlp-http | otlp-grpc
+# 导出方式：none（默认）| otlp-http | otlp-grpc
 exporter = "none"
 
-# Example OTLP/HTTP exporter configuration
+# OTLP/HTTP 导出示例
 # [otel]
 # exporter = { otlp-http = {
 #   endpoint = "https://otel.example.com/v1/logs",
@@ -362,10 +361,23 @@ exporter = "none"
 #   headers = { "x-otlp-api-key" = "${OTLP_TOKEN}" }
 # }}
 
-# Example OTLP/gRPC exporter configuration
+# OTLP/gRPC 导出示例
 # [otel]
 # exporter = { otlp-grpc = {
 #   endpoint = "https://otel.example.com:4317",
 #   headers = { "x-otlp-meta" = "abc123" }
+# }}
+
+# 启用双向 TLS 的 OTLP 导出示例
+# [otel]
+# exporter = { otlp-http = {
+#   endpoint = "https://otel.example.com/v1/logs",
+#   protocol = "binary",
+#   headers = { "x-otlp-api-key" = "${OTLP_TOKEN}" },
+#   tls = {
+#     ca-certificate = "certs/otel-ca.pem",
+#     client-certificate = "/etc/codex/certs/client.pem",
+#     client-private-key = "/etc/codex/certs/client-key.pem",
+#   }
 # }}
 ```

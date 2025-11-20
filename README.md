@@ -31,6 +31,7 @@ npm install -g @openai/codex-cli
 - npm 全局目录通常位于 `%APPDATA%\npm`。
 - 将下载得到的 `codex.exe` 放入 `%APPDATA%\npm` 目录，并替换与 `codex.cmd` 同级的旧版本（务必保留 `.cmd` 启动脚本）。
 
+<<<<<<< HEAD
 ### 3. macOS / Linux
 1. 先安装 CLI（可选择 npm、Homebrew 或其他渠道）：
    ```bash
@@ -49,3 +50,112 @@ npm install -g @openai/codex-cli
    readlink "$(which codex)"            # macOS 需逐级解析
    ```
 4. 使用从发布页下载的最新 `codex` 可执行文件替换目标路径中的旧版本，并保持原有权限位即可完成升级。
+5. 如果你偏好通过 Homebrew 图形化安装，可执行：
+   ```bash
+   brew install --cask codex
+   ```
+   安装完成后终端直接运行 `codex` 即可启动。若升级过程中遇到 Homebrew 缓存或权限问题，可参考 [FAQ 关于 `brew upgrade codex` 的章节](./docs/faq.md#brew-upgrade-codex-isnt-upgrading-me)。
+
+<details>
+<summary>也可以直接前往 <a href="https://github.com/openai/codex/releases/latest">最新 GitHub Release</a> 下载与你平台匹配的二进制文件</summary>
+
+每个 Release 都会附带多份可执行文件，常用条目如下：
+
+- macOS
+  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
+  - x86_64（较老的 Intel Mac）: `codex-x86_64-apple-darwin.tar.gz`
+- Linux
+  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
+  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
+
+归档包内只包含一个可执行文件，名称带有平台后缀（例如 `codex-x86_64-unknown-linux-musl`），解压后通常需要重命名为 `codex` 以便加入 PATH。
+
+</details>
+
+### 通过 ChatGPT 订阅计划使用 Codex
+
+<p align="center">
+  <img src="./.github/codex-cli-login.png" alt="Codex CLI 登录示意" width="80%" />
+  </p>
+
+直接运行 `codex`，在登录界面选择 **Sign in with ChatGPT**，即可将 Codex 纳入 ChatGPT Plus / Pro / Team / Edu / Enterprise 订阅额度。[了解你的 ChatGPT 套餐包含哪些 Codex 功能](https://help.openai.com/en/articles/11369540-codex-in-chatgpt)。
+
+Codex 也支持 API Key 登录，但需要 [额外配置](./docs/authentication.md#usage-based-billing-alternative-use-an-openai-api-key)。如果你此前已经使用 API Key 进行按量计费，请根据[迁移指引](./docs/authentication.md#migrating-from-usage-based-billing-api-key)完成切换。若登录遇到困难，可在 [该 issue](https://github.com/openai/codex/issues/1243) 反馈。
+
+### Model Context Protocol（MCP）
+
+Codex 能够访问 MCP 服务器，配置示例见 [配置文档的 MCP 章节](./docs/config.md#mcp_servers)。
+
+### 配置
+
+Codex CLI 的偏好设置保存在 `~/.codex/config.toml`。完整配置项请查阅 [Configuration 文档](./docs/config.md)。
+
+### Execpolicy 快速上手
+
+Codex 在执行 shell 命令前可以根据自定义策略进行拦截或提示：
+
+1. 创建策略目录：`mkdir -p ~/.codex/policy`。
+2. 在该目录中放置一个或多个 `.codexpolicy` 文件，Codex 启动时会自动加载全部策略。
+3. 通过 `prefix_rule` 描述允许/提醒/禁止的命令模式：
+
+```starlark
+prefix_rule(
+    pattern = ["git", ["push", "fetch"]],
+    decision = "prompt",  # allow | prompt | forbidden
+    match = [["git", "push", "origin", "main"]],  # 必须命中的示例
+    not_match = [["git", "status"]],              # 必须排除的示例
+)
+```
+
+- `pattern` 是按顺序匹配的 shell token，使用内层列表即可表示多选（如同时匹配 `push` 与 `fetch`）。
+- `decision` 表示严格程度；若多个规则命中，将取最严格的决策（forbidden > prompt > allow）。
+- `match` / `not_match` 类似可选的单元测试，Codex 在加载策略时会验证示例，方便快速发现行为异常。
+
+在上述示例中，一旦 Codex 想执行 `git push` 或 `git fetch` 前缀的命令，就会先征求用户确认。
+
+可使用 [`execpolicy2` CLI](./codex-rs/execpolicy2/README.md) 预览策略判定：
+
+```bash
+cargo run -p codex-execpolicy2 -- check --policy ~/.codex/policy/default.codexpolicy git push origin main
+```
+
+可以指定多个 `--policy` 参数以观察不同策略文件的叠加效果。更完整的语法示例请参阅 [`codex-rs/execpolicy2` README](./codex-rs/execpolicy2/README.md)。
+
+---
+
+### 文档 & FAQ 索引
+
+- [**快速上手**](./docs/getting-started.md)
+  - [CLI 使用方式](./docs/getting-started.md#cli-usage)
+  - [斜杠指令](./docs/slash_commands.md)
+  - [以 Prompt 作为输入运行](./docs/getting-started.md#running-with-a-prompt-as-input)
+  - [示例 Prompt](./docs/getting-started.md#example-prompts)
+  - [自定义 Prompt](./docs/prompts.md)
+  - [AGENTS.md 记忆机制](./docs/getting-started.md#memory-with-agentsmd)
+- [**配置**](./docs/config.md)
+  - [配置示例](./docs/example-config.md)
+- [**沙箱与审批**](./docs/sandbox.md)
+- [**认证方式**](./docs/authentication.md)
+  - [强制指定认证方式](./docs/authentication.md#forcing-a-specific-auth-method-advanced)
+  - [无头设备登录](./docs/authentication.md#connecting-on-a-headless-machine)
+- **自动化 Codex**
+  - [GitHub Action](https://github.com/openai/codex-action)
+  - [TypeScript SDK](./sdk/typescript/README.md)
+  - [非交互模式（`codex exec`）](./docs/exec.md)
+- [**进阶主题**](./docs/advanced.md)
+  - [Tracing / 详细日志](./docs/advanced.md#tracing--verbose-logging)
+  - [Model Context Protocol（MCP）](./docs/advanced.md#model-context-protocol-mcp)
+- [**零数据保留（ZDR）**](./docs/zdr.md)
+- [**贡献指南**](./docs/contributing.md)
+- [**安装与构建**](./docs/install.md)
+  - [系统要求](./docs/install.md#system-requirements)
+  - [DotSlash](./docs/install.md#dotslash)
+  - [源码构建](./docs/install.md#build-from-source)
+- [**FAQ**](./docs/faq.md)
+- [**开源基金**](./docs/open-source-fund.md)
+
+---
+
+## 许可证
+
+本仓库遵循 [Apache-2.0 License](LICENSE)。
