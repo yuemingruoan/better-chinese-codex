@@ -40,8 +40,10 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ${{ github.workspace }}/codex-rs/target/
-          # Restrict hash scope to the workspace Cargo.lock to avoid glob failures.
-          key: cargo-${{ matrix.os }}-${{ hashFiles('codex-rs/Cargo.lock') }}
+          # Use a simple key to avoid hashFiles failures on runners with path issues.
+          key: cargo-${{ matrix.os }}-${{ github.sha }}
+          restore-keys: |
+            cargo-${{ matrix.os }}-
 
       - name: Build codex binary
         run: cargo build --release --bin codex
