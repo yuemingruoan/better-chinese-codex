@@ -138,6 +138,7 @@ const SDD_PLAN_PROMPT: &str = include_str!("../prompt_for_sdd_plan.md");
 const SDD_EXEC_PROMPT: &str = include_str!("../prompt_for_sdd_execute.md");
 const SDD_MERGE_PROMPT: &str = include_str!("../prompt_for_sdd_merge.md");
 const SDD_ABANDON_PROMPT: &str = include_str!("../prompt_for_sdd_abandon.md");
+const CHECKPOINT_PROMPT: &str = include_str!("../prompt_for_checkpoint_command.md");
 // Track information about an in-flight exec command.
 struct RunningCommand {
     command: Vec<String>,
@@ -1418,7 +1419,6 @@ impl ChatWidget {
                 self.handle_sdd_develop_command(None);
             }
             SlashCommand::Checkpoint => {
-                const CHECKPOINT_PROMPT: &str = include_str!("../prompt_for_checkpoint_command.md");
                 self.submit_user_message(CHECKPOINT_PROMPT.to_string().into());
             }
             SlashCommand::Compact => {
@@ -1753,6 +1753,7 @@ impl ChatWidget {
         }
         let prompt = self.build_sdd_merge_prompt(&state.description);
         self.send_user_inputs(prompt, Vec::new());
+        self.send_user_inputs(CHECKPOINT_PROMPT.to_string(), Vec::new());
         self.add_info_message(
             "已发送合并提示词，请按 PR 流程合并后继续正常对话。".to_string(),
             None,
@@ -1771,6 +1772,7 @@ impl ChatWidget {
         }
         let prompt = self.build_sdd_abandon_prompt(&state.description);
         self.send_user_inputs(prompt, Vec::new());
+        self.send_user_inputs(CHECKPOINT_PROMPT.to_string(), Vec::new());
         self.add_info_message(
             "已发送放弃修改的提示词，请确认分支删除后继续正常对话。".to_string(),
             None,
