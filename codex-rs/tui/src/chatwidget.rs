@@ -82,8 +82,8 @@ use crate::bottom_pane::SelectionAction;
 use crate::bottom_pane::SelectionItem;
 use crate::bottom_pane::SelectionViewParams;
 use crate::bottom_pane::custom_prompt_view::CustomPromptView;
+use crate::bottom_pane::parse_slash_name;
 use crate::bottom_pane::popup_consts::standard_popup_hint_line;
-use crate::bottom_pane::prompt_args::parse_slash_name;
 use crate::clipboard_paste::paste_image_to_temp_png;
 use crate::diff_render::display_path_for;
 use crate::exec_cell::CommandOutput;
@@ -115,7 +115,6 @@ mod session_header;
 use self::session_header::SessionHeader;
 use crate::streaming::controller::StreamController;
 use std::path::Path;
-use std::path::PathBuf;
 
 use chrono::Local;
 use codex_common::approval_presets::ApprovalPreset;
@@ -1583,7 +1582,7 @@ impl ChatWidget {
         }
     }
 
-    fn open_sdd_plan_options(&mut self) {
+    pub(crate) fn open_sdd_plan_options(&mut self) {
         if !matches!(
             self.sdd_state,
             Some(SddDevelopState {
@@ -1623,7 +1622,7 @@ impl ChatWidget {
         self.request_redraw();
     }
 
-    fn open_sdd_dev_options(&mut self) {
+    pub(crate) fn open_sdd_dev_options(&mut self) {
         if !matches!(
             self.sdd_state,
             Some(SddDevelopState {
@@ -1667,21 +1666,29 @@ impl ChatWidget {
         self.request_redraw();
     }
 
-    fn on_sdd_plan_approved(&mut self) {
-        let Some(state) = self.sdd_state.as_mut() else {
-            self.add_info_message(
-                "没有活跃的 SDD 计划可继续开发，请先运行 /sdd-develop <需求>。".to_string(),
-                None,
-            );
-            return;
+    pub(crate) fn on_sdd_plan_approved(&mut self) {
+        let description = match self.sdd_state.as_ref() {
+            Some(state) if state.stage == SddDevelopStage::AwaitPlanDecision => {
+                state.description.clone()
+            }
+            Some(_) => {
+                self.add_info_message("当前不在计划确认阶段，无法继续开发。".to_string(), None);
+                return;
+            }
+            None => {
+                self.add_info_message(
+                    "没有活跃的 SDD 计划可继续开发，请先运行 /sdd-develop <需求>。".to_string(),
+                    None,
+                );
+                return;
+            }
         };
-        if state.stage != SddDevelopStage::AwaitPlanDecision {
-            self.add_info_message("当前不在计划确认阶段，无法继续开发。".to_string(), None);
-            return;
-        }
-        let prompt = self.build_sdd_exec_prompt(&state.description);
+
+        let prompt = self.build_sdd_exec_prompt(&description);
         self.send_user_inputs(prompt, Vec::new());
-        state.stage = SddDevelopStage::AwaitDevDecision;
+        if let Some(state) = self.sdd_state.as_mut() {
+            state.stage = SddDevelopStage::AwaitDevDecision;
+        }
         self.add_info_message(
             "已发送开发指令，请等待 AI 在独立分支完成实现。".to_string(),
             Some("完成后可通过 /sdd-develop 选择合并、继续修改或放弃。".to_string()),
@@ -1689,7 +1696,7 @@ impl ChatWidget {
         self.open_sdd_dev_options();
     }
 
-    fn on_sdd_plan_rework(&mut self) {
+    pub(crate) fn on_sdd_plan_rework(&mut self) {
         let Some(state) = self.sdd_state.as_ref() else {
             self.add_info_message(
                 "没有活跃的 SDD 计划可修改，请先运行 /sdd-develop <需求>。".to_string(),
@@ -1713,7 +1720,7 @@ impl ChatWidget {
         self.request_redraw();
     }
 
-    fn on_sdd_request_more_changes(&mut self) {
+    pub(crate) fn on_sdd_request_more_changes(&mut self) {
         let Some(state) = self.sdd_state.as_ref() else {
             self.add_info_message("没有活跃的 SDD 分支可继续修改。".to_string(), None);
             return;
@@ -1734,7 +1741,7 @@ impl ChatWidget {
         self.request_redraw();
     }
 
-    fn on_sdd_merge_branch(&mut self) {
+    pub(crate) fn on_sdd_merge_branch(&mut self) {
         let Some(state) = self.sdd_state.take() else {
             self.add_info_message("没有活跃的 SDD 分支可合并。".to_string(), None);
             return;
@@ -1752,7 +1759,7 @@ impl ChatWidget {
         );
     }
 
-    fn on_sdd_abandon_branch(&mut self) {
+    pub(crate) fn on_sdd_abandon_branch(&mut self) {
         let Some(state) = self.sdd_state.take() else {
             self.add_info_message("没有活跃的 SDD 分支可放弃。".to_string(), None);
             return;
