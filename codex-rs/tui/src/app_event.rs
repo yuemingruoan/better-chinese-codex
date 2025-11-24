@@ -42,6 +42,21 @@ pub(crate) enum AppEvent {
         matches: Vec<FileMatch>,
     },
 
+    /// Open SDD plan decision options.
+    OpenSddPlanOptions,
+    /// User accepted the SDD plan and wants to continue to development.
+    SddPlanApproved,
+    /// User wants to revise the SDD plan.
+    SddPlanRework,
+    /// Open SDD post-development options.
+    OpenSddDevOptions,
+    /// User wants further changes on the SDD branch.
+    SddDevRequestMoreChanges,
+    /// User wants to merge the SDD branch via PR flow.
+    SddDevMergeBranch,
+    /// User wants to abandon and delete the SDD branch.
+    SddDevAbandonBranch,
+
     /// Result of refreshing rate limits
     RateLimitSnapshotFetched(RateLimitSnapshot),
 

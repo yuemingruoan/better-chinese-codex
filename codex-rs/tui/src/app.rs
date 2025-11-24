@@ -531,6 +531,27 @@ impl App {
             AppEvent::FileSearchResult { query, matches } => {
                 self.chat_widget.apply_file_search_result(query, matches);
             }
+            AppEvent::OpenSddPlanOptions => {
+                self.chat_widget.open_sdd_plan_options();
+            }
+            AppEvent::SddPlanApproved => {
+                self.chat_widget.on_sdd_plan_approved();
+            }
+            AppEvent::SddPlanRework => {
+                self.chat_widget.on_sdd_plan_rework();
+            }
+            AppEvent::OpenSddDevOptions => {
+                self.chat_widget.open_sdd_dev_options();
+            }
+            AppEvent::SddDevRequestMoreChanges => {
+                self.chat_widget.on_sdd_request_more_changes();
+            }
+            AppEvent::SddDevMergeBranch => {
+                self.chat_widget.on_sdd_merge_branch();
+            }
+            AppEvent::SddDevAbandonBranch => {
+                self.chat_widget.on_sdd_abandon_branch();
+            }
             AppEvent::RateLimitSnapshotFetched(snapshot) => {
                 self.chat_widget.on_rate_limit_snapshot(Some(snapshot));
             }

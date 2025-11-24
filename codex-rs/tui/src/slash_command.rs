@@ -23,6 +23,7 @@ pub enum SlashCommand {
     Diff,
     Mention,
     Status,
+    SddDevelop,
     Mcp,
     Logout,
     Quit,
@@ -42,6 +43,7 @@ impl SlashCommand {
             SlashCommand::Compact => "总结当前对话以避免上下文超限",
             SlashCommand::Review => "审查当前改动并查找问题",
             SlashCommand::Undo => "恢复到上一次 Codex 快照",
+            SlashCommand::SddDevelop => "启动基于 SDD 的开发流程",
             SlashCommand::Quit | SlashCommand::Exit => "退出 Codex",
             SlashCommand::Diff => "显示 git diff（包含未跟踪文件）",
             SlashCommand::Mention => "在消息中提及文件",
@@ -70,6 +72,7 @@ impl SlashCommand {
             | SlashCommand::Checkpoint
             | SlashCommand::Compact
             | SlashCommand::Undo
+            | SlashCommand::SddDevelop
             | SlashCommand::Model
             | SlashCommand::Approvals
             | SlashCommand::Review
