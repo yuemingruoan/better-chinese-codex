@@ -9,6 +9,7 @@ use std::time::Duration;
 use anyhow::Result;
 use anyhow::anyhow;
 use futures::FutureExt;
+use futures::future::BoxFuture;
 use mcp_types::CallToolRequestParams;
 use mcp_types::CallToolResult;
 use mcp_types::InitializeRequestParams;
@@ -21,11 +22,20 @@ use mcp_types::ListToolsRequestParams;
 use mcp_types::ListToolsResult;
 use mcp_types::ReadResourceRequestParams;
 use mcp_types::ReadResourceResult;
+use mcp_types::RequestId;
 use reqwest::header::HeaderMap;
 use rmcp::model::CallToolRequestParam;
+use rmcp::model::ClientNotification;
+use rmcp::model::ClientRequest;
+use rmcp::model::CreateElicitationRequestParam;
+use rmcp::model::CreateElicitationResult;
+use rmcp::model::CustomNotification;
+use rmcp::model::CustomRequest;
+use rmcp::model::Extensions;
 use rmcp::model::InitializeRequestParam;
 use rmcp::model::PaginatedRequestParam;
 use rmcp::model::ReadResourceRequestParam;
+use rmcp::model::ServerResult;
 use rmcp::service::RoleClient;
 use rmcp::service::RunningService;
 use rmcp::service::{self};
@@ -76,6 +86,14 @@ enum ClientState {
         oauth: Option<OAuthPersistor>,
     },
 }
+
+pub type Elicitation = CreateElicitationRequestParam;
+pub type ElicitationResponse = CreateElicitationResult;
+
+/// Interface for sending elicitation requests to the UI and awaiting a response.
+pub type SendElicitation = Box<
+    dyn Fn(RequestId, Elicitation) -> BoxFuture<'static, Result<ElicitationResponse>> + Send + Sync,
+>;
 
 /// MCP client implemented on top of the official `rmcp` SDK.
 /// https://github.com/modelcontextprotocol/rust-sdk
@@ -200,9 +218,10 @@ impl RmcpClient {
         &self,
         params: InitializeRequestParams,
         timeout: Option<Duration>,
+        send_elicitation: SendElicitation,
     ) -> Result<InitializeResult> {
         let rmcp_params: InitializeRequestParam = convert_to_rmcp(params.clone())?;
-        let client_handler = LoggingClientHandler::new(rmcp_params);
+        let client_handler = LoggingClientHandler::new(rmcp_params, send_elicitation);
 
         let (transport, oauth_persistor) = {
             let mut guard = self.state.lock().await;
@@ -346,6 +365,36 @@ impl RmcpClient {
         let converted = convert_call_tool_result(rmcp_result)?;
         self.persist_oauth_tokens().await;
         Ok(converted)
+    }
+
+    pub async fn send_custom_notification(
+        &self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<()> {
+        let service: Arc<RunningService<RoleClient, LoggingClientHandler>> = self.service().await?;
+        service
+            .send_notification(ClientNotification::CustomNotification(CustomNotification {
+                method: method.to_string(),
+                params,
+                extensions: Extensions::new(),
+            }))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn send_custom_request(
+        &self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<ServerResult> {
+        let service: Arc<RunningService<RoleClient, LoggingClientHandler>> = self.service().await?;
+        let response = service
+            .send_request(ClientRequest::CustomRequest(CustomRequest::new(
+                method, params,
+            )))
+            .await?;
+        Ok(response)
     }
 
     async fn service(&self) -> Result<Arc<RunningService<RoleClient, LoggingClientHandler>>> {

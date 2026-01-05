@@ -1,15 +1,14 @@
 ---
 source: tui/src/model_migration.rs
-assertion_line: 358
 expression: terminal.backend()
 ---
-> Codex 再升级：gpt-5.1-codex-max
 
-  Codex 现已由 gpt-5.1-codex-max
-  驱动，这是我们最新的旗舰级代理式编码模型，具备更强推理能力
-  ，也更擅长处理长程项目。
+> Codex 已升级，欢迎使用 gpt-5.1-codex-max。
 
-  了解更多：www.openai.com/index/gpt-5-1-codex-max.
+  Upgrade to gpt-5.2-codex for the latest and greatest
+  agentic coding model.
+
+  如果你愿意，也可以继续使用 gpt-5.1-codex-mini。
 
   请选择 Codex 接下来的处理方式。
 

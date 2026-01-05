@@ -8,7 +8,7 @@
 
 ### 目前推荐使用哪些模型？
 
-推荐在 Codex 中使用 GPT-5.1 Codex，这是我们最强的编码模型。默认推理级别为 medium，可在复杂任务中通过 `/model` 命令切换至 high。
+推荐在 Codex 中使用 GPT-5.1 Codex Max，这是我们最强的编码模型。默认推理级别为 medium，可在复杂任务中通过 `/model` 切换至 high 或 xhigh（当模型支持时，例如 `gpt-5.1-codex-max` 与 `gpt-5.2`）。
 
 若想使用旧版模型，可改用基于 API 的鉴权方式，并在启动 codex 时通过 `--model` 标志指定模型。
 

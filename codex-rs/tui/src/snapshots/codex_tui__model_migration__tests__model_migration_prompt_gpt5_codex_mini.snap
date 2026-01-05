@@ -1,16 +1,15 @@
 ---
 source: tui/src/model_migration.rs
-assertion_line: 412
 expression: terminal.backend()
 ---
-> 全新 gpt-5.1 模型
 
-  Codex 已全面升级至 gpt-5.1 系列（含 gpt-5.1-codex 及
-  gpt-5.1-codex-mini），默认体验更稳更快。
+> Codex 已升级，欢迎使用 gpt-5.1-codex-mini。
 
-  如需继续使用旧模型，可通过 -m 参数或在 config.toml
-  中直接指定模型名称。
+  我们建议从 gpt-5-codex-mini 切换到 gpt-5.1-codex-mini。
 
-  了解更多：www.openai.com/index/gpt-5-1.
+  Optimized for codex. Cheaper, faster, but less capable.
+  了解更多
+  gpt-5.1-codex-mini：https://www.codex.com/models/gpt-5.1-c
+  odex-mini
 
   按 Enter 继续

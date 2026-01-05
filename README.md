@@ -89,38 +89,9 @@ Codex 能够访问 MCP 服务器，配置示例见 [配置文档的 MCP 章节](
 
 Codex CLI 的偏好设置保存在 `~/.codex/config.toml`。完整配置项请查阅 [Configuration 文档](./docs/config.md)。
 
-### Execpolicy 快速上手
+### Execpolicy
 
-Codex 在执行 shell 命令前可以根据自定义策略进行拦截或提示：
-
-1. 创建策略目录：`mkdir -p ~/.codex/policy`。
-2. 在该目录中放置一个或多个 `.codexpolicy` 文件，Codex 启动时会自动加载全部策略。
-3. 通过 `prefix_rule` 描述允许/提醒/禁止的命令模式：
-
-```starlark
-prefix_rule(
-    pattern = ["git", ["push", "fetch"]],
-    decision = "prompt",  # allow | prompt | forbidden
-    match = [["git", "push", "origin", "main"]],  # 必须命中的示例
-    not_match = [["git", "status"]],              # 必须排除的示例
-)
-```
-
-- `pattern` 是按顺序匹配的 shell token，使用内层列表即可表示多选（如同时匹配 `push` 与 `fetch`）。
-- `decision` 表示严格程度；若多个规则命中，将取最严格的决策（forbidden > prompt > allow）。
-- `match` / `not_match` 类似可选的单元测试，Codex 在加载策略时会验证示例，方便快速发现行为异常。
-
-在上述示例中，一旦 Codex 想执行 `git push` 或 `git fetch` 前缀的命令，就会先征求用户确认。
-
-可使用 [`execpolicy2` CLI](./codex-rs/execpolicy2/README.md) 预览策略判定：
-
-```bash
-cargo run -p codex-execpolicy2 -- check --policy ~/.codex/policy/default.codexpolicy git push origin main
-```
-
-可以指定多个 `--policy` 参数以观察不同策略文件的叠加效果。更完整的语法示例请参阅 [`codex-rs/execpolicy2` README](./codex-rs/execpolicy2/README.md)。
-
----
+请参考 [Execpolicy 快速上手](./docs/execpolicy.md) 来设置 Codex 可执行命令的规则。
 
 ### 文档 & FAQ 索引
 
@@ -134,6 +105,7 @@ cargo run -p codex-execpolicy2 -- check --policy ~/.codex/policy/default.codexpo
 - [**配置**](./docs/config.md)
   - [配置示例](./docs/example-config.md)
 - [**沙箱与审批**](./docs/sandbox.md)
+- [**Execpolicy 快速上手**](./docs/execpolicy.md)
 - [**认证方式**](./docs/authentication.md)
   - [强制指定认证方式](./docs/authentication.md#forcing-a-specific-auth-method-advanced)
   - [无头设备登录](./docs/authentication.md#connecting-on-a-headless-machine)

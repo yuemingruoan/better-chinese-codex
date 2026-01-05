@@ -1,0 +1,11 @@
+---
+source: tui/src/chatwidget/tests.rs
+expression: terminal.backend()
+---
+"                                                                                "
+"• Booting MCP server: alpha （0秒 • 按 esc 以中断）                             " Hidden by multi-width symbols: [(29, " "), (32, " "), (37, " "), (44, " "), (46, " "), (48, " "), (50, " ")]
+"                                                                                "
+"                                                                                "
+"› Ask Codex to do anything                                                      "
+"                                                                                "
+"  100% context left · ? for shortcuts                                           "

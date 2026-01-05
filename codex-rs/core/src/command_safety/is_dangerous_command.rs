@@ -5,6 +5,9 @@ use crate::sandboxing::SandboxPermissions;
 
 use crate::bash::parse_shell_lc_plain_commands;
 use crate::is_safe_command::is_known_safe_command;
+#[cfg(windows)]
+#[path = "windows_dangerous_commands.rs"]
+mod windows_dangerous_commands;
 
 pub fn requires_initial_appoval(
     policy: AskForApproval,
@@ -18,8 +21,11 @@ pub fn requires_initial_appoval(
     match policy {
         AskForApproval::Never | AskForApproval::OnFailure => false,
         AskForApproval::OnRequest => {
-            // In DangerFullAccess, only prompt if the command looks dangerous.
-            if matches!(sandbox_policy, SandboxPolicy::DangerFullAccess) {
+            // In DangerFullAccess or ExternalSandbox, only prompt if the command looks dangerous.
+            if matches!(
+                sandbox_policy,
+                SandboxPolicy::DangerFullAccess | SandboxPolicy::ExternalSandbox { .. }
+            ) {
                 return command_might_be_dangerous(command);
             }
 
@@ -36,6 +42,13 @@ pub fn requires_initial_appoval(
 }
 
 pub fn command_might_be_dangerous(command: &[String]) -> bool {
+    #[cfg(windows)]
+    {
+        if windows_dangerous_commands::is_dangerous_command_windows(command) {
+            return true;
+        }
+    }
+
     if is_dangerous_to_call_with_exec(command) {
         return true;
     }
@@ -73,6 +86,7 @@ fn is_dangerous_to_call_with_exec(command: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use codex_protocol::protocol::NetworkAccess;
 
     fn vec_str(items: &[&str]) -> Vec<String> {
         items.iter().map(std::string::ToString::to_string).collect()
@@ -139,5 +153,24 @@ mod tests {
     #[test]
     fn rm_f_is_dangerous() {
         assert!(command_might_be_dangerous(&vec_str(&["rm", "-f", "/"])));
+    }
+
+    #[test]
+    fn external_sandbox_only_prompts_for_dangerous_commands() {
+        let external_policy = SandboxPolicy::ExternalSandbox {
+            network_access: NetworkAccess::Restricted,
+        };
+        assert!(!requires_initial_appoval(
+            AskForApproval::OnRequest,
+            &external_policy,
+            &vec_str(&["ls"]),
+            SandboxPermissions::UseDefault,
+        ));
+        assert!(requires_initial_appoval(
+            AskForApproval::OnRequest,
+            &external_policy,
+            &vec_str(&["rm", "-rf", "/"]),
+            SandboxPermissions::UseDefault,
+        ));
     }
 }

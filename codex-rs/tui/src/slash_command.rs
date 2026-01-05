@@ -14,8 +14,11 @@ pub enum SlashCommand {
     // more frequently used commands should be listed first.
     Model,
     Approvals,
+    Experimental,
+    Skills,
     Review,
     New,
+    Resume,
     Init,
     Checkpoint,
     Compact,
@@ -30,6 +33,7 @@ pub enum SlashCommand {
     Exit,
     Feedback,
     Rollout,
+    Ps,
     TestApproval,
 }
 
@@ -37,24 +41,28 @@ impl SlashCommand {
     /// User-visible description shown in the popup.
     pub fn description(self) -> &'static str {
         match self {
+            SlashCommand::Feedback => "向维护者发送日志",
             SlashCommand::New => "在对话中开始新的聊天",
             SlashCommand::Init => "创建包含 Codex 指南的 AGENTS.md 文件",
-            SlashCommand::Checkpoint => "阶段性记录 AI 所执行的操作",
             SlashCommand::Compact => "总结当前对话以避免上下文超限",
             SlashCommand::Review => "审查当前改动并查找问题",
-            SlashCommand::Undo => "恢复到上一次 Codex 快照",
-            SlashCommand::SddDevelop => "启动基于 SDD 的开发流程",
+            SlashCommand::Resume => "恢复已保存的会话",
+            SlashCommand::Undo => "让 Codex 回退一个回合",
             SlashCommand::Quit | SlashCommand::Exit => "退出 Codex",
             SlashCommand::Diff => "显示 git diff（包含未跟踪文件）",
             SlashCommand::Mention => "在消息中提及文件",
+            SlashCommand::Skills => "使用技能提升特定任务的表现",
             SlashCommand::Status => "显示会话配置与令牌使用情况",
+            SlashCommand::Ps => "列出后台终端",
             SlashCommand::Model => "选择模型及推理强度",
             SlashCommand::Approvals => "配置 Codex 无需审批即可执行的操作",
+            SlashCommand::Experimental => "切换实验功能",
             SlashCommand::Mcp => "列出已配置的 MCP 工具",
             SlashCommand::Logout => "注销 Codex 登录",
-            SlashCommand::TestApproval => "测试审批请求",
             SlashCommand::Rollout => "打印部署文件路径",
-            SlashCommand::Feedback => "向开发者反馈问题",
+            SlashCommand::TestApproval => "测试审批请求",
+            SlashCommand::Checkpoint => "阶段性记录 AI 所执行的操作",
+            SlashCommand::SddDevelop => "启动基于 SDD 的开发流程",
         }
     }
 
@@ -68,6 +76,7 @@ impl SlashCommand {
     pub fn available_during_task(self) -> bool {
         match self {
             SlashCommand::New
+            | SlashCommand::Resume
             | SlashCommand::Init
             | SlashCommand::Checkpoint
             | SlashCommand::Compact
@@ -75,11 +84,14 @@ impl SlashCommand {
             | SlashCommand::SddDevelop
             | SlashCommand::Model
             | SlashCommand::Approvals
+            | SlashCommand::Experimental
             | SlashCommand::Review
             | SlashCommand::Logout => false,
             SlashCommand::Diff
             | SlashCommand::Mention
+            | SlashCommand::Skills
             | SlashCommand::Status
+            | SlashCommand::Ps
             | SlashCommand::Mcp
             | SlashCommand::Feedback
             | SlashCommand::Quit

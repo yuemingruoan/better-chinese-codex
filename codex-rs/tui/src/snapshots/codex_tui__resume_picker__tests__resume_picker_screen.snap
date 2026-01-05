@@ -1,0 +1,13 @@
+---
+source: tui/src/resume_picker.rs
+expression: snapshot
+---
+Resume a previous session
+Type to search
+  更新时间      分支    工作目录      会话内容
+尚无会话记录
+
+
+
+
+enter to resume     esc to start new     ctrl + c to quit

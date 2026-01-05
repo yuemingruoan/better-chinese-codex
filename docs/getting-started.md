@@ -21,7 +21,8 @@
 - 执行 `codex resume` 打开会话选择器
 - 恢复最近一次会话：`codex resume --last`
 - 根据 ID 恢复：`codex resume <SESSION_ID>`（可通过 /status 或 `~/.codex/sessions/` 查看）
-- 选择器会显示会话记录的原始工作目录、若可用还会展示当时的 Git 分支
+- 选择器会显示会话记录的 Git 分支（若可用）
+- 如需显示会话原始工作目录（CWD），运行 `codex resume --all`（同时禁用 cwd 过滤并添加 CWD 列）
 
 示例：
 

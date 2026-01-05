@@ -33,7 +33,6 @@ Optional and experimental capabilities are toggled via the `[features]` table in
 
 ```toml
 [features]
-streamable_shell = true          # enable the streamable exec tool
 web_search_request = true        # allow the model to request web searches
 # view_image_tool defaults to true; omit to keep defaults
 ```
@@ -42,15 +41,14 @@ web_search_request = true        # allow the model to request web searches
 
 | Key                                       | 默认值 | 阶段        | 描述                                                         |
 | ----------------------------------------- | :----: | ----------- | ------------------------------------------------------------ |
-| `unified_exec`                            | false  | Experimental | 启用统一的 PTY 执行器                                        |
-| `streamable_shell`                        | false  | Experimental | 使用可流式传输的 `exec-command`/`write-stdin` 组合           |
-| `rmcp_client`                             | false  | Experimental | 允许通过 HTTP 流式 MCP 服务器使用 OAuth                      |
-| `apply_patch_freeform`                    | false  | Beta        | 暴露自由格式的 `apply_patch` 工具                           |
-| `view_image_tool`                         |  true  | Stable      | 暴露 `view_image` 工具                                       |
-| `web_search_request`                      | false  | Stable      | 允许模型主动发起 Web 搜索                                    |
-| `experimental_sandbox_command_assessment` | false  | Experimental | 启用模型辅助的沙箱风险评估                                   |
-| `ghost_commit`                            | false  | Experimental | 为每个回合创建一次“幽灵提交”                                 |
-| `enable_experimental_windows_sandbox`     | false  | Experimental | 使用受限令牌版的 Windows 沙箱                                |
+| `unified_exec`                        | false  | Experimental | 启用统一的 PTY 执行器                                        |
+| `apply_patch_freeform`                | false  | Beta        | 暴露自由格式的 `apply_patch` 工具                           |
+| `view_image_tool`                     |  true  | Stable      | 暴露 `view_image` 工具                                       |
+| `web_search_request`                  | false  | Stable      | 允许模型主动发起 Web 搜索                                    |
+| `ghost_commit`                        | false  | Experimental | 为每个回合创建一次“幽灵提交”                                 |
+| `enable_experimental_windows_sandbox` | false  | Experimental | 使用受限令牌版的 Windows 沙箱                                |
+| `tui2`                                | false  | Experimental | 启用实验版 TUI v2（viewport 实现）                           |
+| `skills`                              | false  | Experimental | 启用技能发现与注入                                           |
 
 提示：
 
@@ -180,12 +178,13 @@ model = "mistral"
 
 ### model_reasoning_effort
 
-当所选模型支持推理（例如 `o3`、`o4-mini`、`codex-*`、`gpt-5.1-codex-max`、`gpt-5.1`、`gpt-5.1-codex`）时，使用 Responses API 会默认开启推理能力。参考 [OpenAI Platform 文档](https://platform.openai.com/docs/guides/reasoning?api-mode=responses#get-started-with-reasoning)，可选值包括：
+当所选模型支持推理（例如 `o3`、`o4-mini`、`codex-*`、`gpt-5.1-codex-max`、`gpt-5.1`、`gpt-5.1-codex`、`gpt-5.2`）时，使用 Responses API 会默认开启推理能力。参考 [OpenAI Platform 文档](https://platform.openai.com/docs/guides/reasoning?api-mode=responses#get-started-with-reasoning)，可选值包括：
 
 - `"minimal"`
 - `"low"`
 - `"medium"`（默认）
 - `"high"`
+- `"xhigh"`（`gpt-5.1-codex-max` 与 `gpt-5.2` 可用；推理强度：极高）
 
 若希望尽可能降低推理成本，可设置为 `"minimal"`。
 
@@ -231,12 +230,6 @@ model_supports_reasoning_summaries = true
 ### model_context_window
 
 指定模型的上下文窗口大小（token 数）。大部分 OpenAI 模型 Codex 都内置了该值；若你在旧版 CLI 中使用了新模型，可通过此项告知 Codex 剩余上下文的计算方式。
-
-### model_max_output_tokens
-
-与 `model_context_window` 类似，但用于限制单次输出 token 数。
-
-> 参见 [`codex exec`](./exec.md)，了解这些模型配置如何影响非交互式运行。
 
 ### oss_provider
 
@@ -417,13 +410,7 @@ http_headers = { "HEADER_NAME" = "HEADER_VALUE" }
 env_http_headers = { "HEADER_NAME" = "ENV_VAR" }
 ```
 
-流式 HTTP 通道使用实验性的 Rust MCP 客户端，OAuth 登录需打开 `experimental_use_rmcp_client = true`：
-
-```toml
-experimental_use_rmcp_client = true
-```
-
-启用后，可运行 `codex mcp login <server-name>` 完成授权。
+流式 HTTP 通道默认使用 Rust MCP 客户端。可运行 `codex mcp login <server-name>` 完成 OAuth 授权。
 
 #### 其它选项
 
@@ -438,17 +425,6 @@ disabled_tools = ["search"]
 ```
 
 若同时设置 `enabled_tools` 与 `disabled_tools`，Codex 会先套用白名单，再剔除黑名单。
-
-#### Experimental RMCP client
-
-This flag enables OAuth support for streamable HTTP servers.
-
-```toml
-experimental_use_rmcp_client = true
-
-[mcp_servers.server_name]
-…
-```
 
 #### MCP CLI commands
 
@@ -811,6 +787,23 @@ notifications = true
 # You can optionally filter to specific notification types.
 # Available types are "agent-turn-complete" and "approval-requested".
 notifications = [ "agent-turn-complete", "approval-requested" ]
+
+# 终端动画（欢迎页、状态 shimmer、spinner）。默认 true。
+animations = true
+
+# TUI2 鼠标滚动（滚轮 + 触控板）
+#
+# 终端的滚轮事件密度不同（常见为 1、3、9+），TUI2 会将 raw 事件归一化。
+# 详情见 `codex-rs/tui2/docs/scroll_input_model.md`。
+scroll_events_per_tick = 3
+scroll_wheel_lines = 3
+scroll_trackpad_lines = 1
+scroll_trackpad_accel_events = 30
+scroll_trackpad_accel_max = 3
+scroll_mode = "auto"
+scroll_wheel_tick_detect_max_ms = 12
+scroll_wheel_like_max_duration_ms = 200
+scroll_invert = false
 ```
 
 > [!NOTE]
@@ -818,6 +811,12 @@ notifications = [ "agent-turn-complete", "approval-requested" ]
 
 > [!NOTE]
 > `tui.notifications` 仅作用于 TUI；若需要跨平台脚本或系统级通知，请使用 `notify` 运行外部程序。两者可并行启用。
+
+> [!NOTE]
+> 在 Windows Terminal 的 WSL2 会话中，`tui.notifications` 会自动切换到 Windows Toast 通知。
+
+> [!NOTE]
+> `tui.scroll_*` 仅影响 TUI2（viewport）滚动实现。
 
 ## 身份验证与授权
 
@@ -858,7 +857,6 @@ cli_auth_credentials_store = "keyring"
 | `model`                                          | string                                                           | 使用的模型（如 `gpt-5.1-codex-max`）。                                                                     |
 | `model_provider`                                 | string                                                           | `model_providers` 中的 provider ID，默认 `openai`。                                               |
 | `model_context_window`                           | number                                                           | 上下文窗口大小（token 数）。                                                                |
-| `model_max_output_tokens`                        | number                                                           | 输出 token 上限。                                                                            |
 | `tool_output_token_limit`                        | number                                                           | 历史记录中保存工具输出的 token 预算（默认 2560）。                                          |
 | `approval_policy`                                | `untrusted` / `on-failure` / `on-request` / `never`            | 何时提示用户审批。                                                                                 |
 | `sandbox_mode`                                   | `read-only` / `workspace-write` / `danger-full-access`          | OS 沙箱策略。                                                                             |
@@ -867,8 +865,12 @@ cli_auth_credentials_store = "keyring"
 | `sandbox_workspace_write.exclude_tmpdir_env_var` | boolean                                                          | 将 `$TMPDIR` 排除在可写列表之外（默认 false）。                           |
 | `sandbox_workspace_write.exclude_slash_tmp`      | boolean                                                          | 将 `/tmp` 排除在可写列表之外（默认 false）。                             |
 | `notify`                                         | array<string>                                                    | 外部通知程序。                                                                         |
+| `tui.animations`                                 | boolean                                                           | 终端动画开关（欢迎页、状态 shimmer、spinner；默认 true）。               |
 | `instructions`                                   | string                                                           | 已废弃；请使用 `experimental_instructions_file` 或 `AGENTS.md`。         |
 | `features.<feature-flag>`                        | boolean                                                          | 详见 [特性开关](#feature-flags)。                                           |
+| `ghost_snapshot.disable_warnings`                | boolean                                                          | 禁用幽灵快照相关警告（大文件、目录等）。                                |
+| `ghost_snapshot.ignore_large_untracked_files`    | number                                                           | 忽略超过该大小的未跟踪文件（默认 10 MiB）。设为 `0` 表示禁用。           |
+| `ghost_snapshot.ignore_large_untracked_dirs`     | number                                                           | 忽略超过该文件数的未跟踪目录（默认 200）。设为 `0` 表示禁用。           |
 | `mcp_servers.<id>.command`                       | string                                                           | STDIO MCP 服务器的启动命令。                                          |
 | `mcp_servers.<id>.args`                          | array<string>                                                    | STDIO MCP 服务器的参数。                                            |
 | `mcp_servers.<id>.env`                           | map<string,string>                                               | STDIO MCP 服务器的环境变量。                                           |
@@ -893,13 +895,23 @@ cli_auth_credentials_store = "keyring"
 | `profile`                                        | string                                                            | Active profile name.                                                                                                       |
 | `profiles.<name>.*`                              | various                                                           | Profile‑scoped overrides of the same keys.                                                                                 |
 | `history.persistence`                            | `save-all` \| `none`                                              | History file persistence (default: `save-all`).                                                                            |
-| `history.max_bytes`                              | number                                                            | Currently ignored (not enforced).                                                                                          |
+| `history.max_bytes`                              | number                                                            | 历史文件最大字节数；超过后会丢弃最旧条目以压缩至约 80%。                                                                     |
 | `file_opener`                                    | `vscode` \| `vscode-insiders` \| `windsurf` \| `cursor` \| `none` | URI scheme for clickable citations (default: `vscode`).                                                                    |
 | `tui`                                            | table                                                             | TUI‑specific options.                                                                                                      |
 | `tui.notifications`                              | boolean \| array<string>                                          | Enable desktop notifications in the tui (default: true).                                                                   |
+| `tui.scroll_events_per_tick`                     | number                                                            | 滚轮单次物理刻度对应的原始事件数（默认：终端特定，未识别则为 3）。                      |
+| `tui.scroll_wheel_lines`                         | number                                                            | 滚轮模式下每个刻度滚动的行数（默认 3）。                                   |
+| `tui.scroll_trackpad_lines`                      | number                                                            | 触控板模式基准行数（默认 1）。                                           |
+| `tui.scroll_trackpad_accel_events`               | number                                                            | 触控板加速度：每 +1 倍速所需事件数（默认 30）。                           |
+| `tui.scroll_trackpad_accel_max`                  | number                                                            | 触控板加速度最大倍率（默认 3）。                                          |
+| `tui.scroll_mode`                                | `auto` / `wheel` / `trackpad`                                    | TUI2 滚动输入解释方式（默认 `auto`）。                                   |
+| `tui.scroll_wheel_tick_detect_max_ms`            | number                                                            | 自动识别滚轮阈值（ms，默认 12）。                                         |
+| `tui.scroll_wheel_like_max_duration_ms`          | number                                                            | 自动模式兜底时长（ms，默认 200）。                                        |
+| `tui.scroll_invert`                              | boolean                                                           | 反转滚动方向（默认 false）。                                             |
 | `hide_agent_reasoning`                           | boolean                                                          | 是否隐藏模型推理事件。                                                   |
+| `check_for_update_on_startup`                    | boolean                                                           | 启动时检查更新（默认 true；若由集中管理更新可设为 false）。            |
 | `show_raw_agent_reasoning`                       | boolean                                                          | 是否展示原始推理内容（若模型支持）。                              |
-| `model_reasoning_effort`                         | `minimal` / `low` / `medium` / `high`                          | Responses API 的推理强度。                                       |
+| `model_reasoning_effort`                         | `minimal` / `low` / `medium` / `high` / `xhigh`                | Responses API 的推理强度（`xhigh`：极高）。                       |
 | `model_reasoning_summary`                        | `auto` / `concise` / `detailed` / `none`                       | 推理摘要的粒度。                                               |
 | `model_verbosity`                                | `low` / `medium` / `high`                                       | GPT‑5 Responses 文本详略。                                       |
 | `model_supports_reasoning_summaries`             | boolean                                                          | 强制开启推理摘要。                                                |

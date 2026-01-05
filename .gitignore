@@ -86,3 +86,7 @@ CHANGELOG.ignore.md
 .direnv
 .envrc
 codex-rs/.cargo-home/*
+
+# Python bytecode files
+__pycache__/
+*.pyc

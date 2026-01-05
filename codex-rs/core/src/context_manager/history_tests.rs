@@ -56,6 +56,17 @@ fn reasoning_msg(text: &str) -> ResponseItem {
     }
 }
 
+fn reasoning_with_encrypted_content(len: usize) -> ResponseItem {
+    ResponseItem::Reasoning {
+        id: String::new(),
+        summary: vec![ReasoningItemReasoningSummary::SummaryText {
+            text: "summary".to_string(),
+        }],
+        content: None,
+        encrypted_content: Some("a".repeat(len)),
+    }
+}
+
 fn truncate_exec_output(content: &str) -> String {
     truncate::truncate_text(content, TruncationPolicy::Tokens(EXEC_FORMAT_MAX_TOKENS))
 }
@@ -110,6 +121,28 @@ fn filters_non_api_messages() {
             }
         ]
     );
+}
+
+#[test]
+fn non_last_reasoning_tokens_return_zero_when_no_user_messages() {
+    let history = create_history_with_items(vec![reasoning_with_encrypted_content(800)]);
+
+    assert_eq!(history.get_non_last_reasoning_items_tokens(), 0);
+}
+
+#[test]
+fn non_last_reasoning_tokens_ignore_entries_after_last_user() {
+    let history = create_history_with_items(vec![
+        reasoning_with_encrypted_content(900),
+        user_msg("first"),
+        reasoning_with_encrypted_content(1_000),
+        user_msg("second"),
+        reasoning_with_encrypted_content(2_000),
+    ]);
+    // first: (900 * 0.75 - 650) / 4 = 6.25 tokens
+    // second: (1000 * 0.75 - 650) / 4 = 25 tokens
+    // first + second = 62.5
+    assert_eq!(history.get_non_last_reasoning_items_tokens(), 32);
 }
 
 #[test]
@@ -666,11 +699,8 @@ fn normalize_mixed_inserts_and_removals() {
     );
 }
 
-// In debug builds we panic on normalization errors instead of silently fixing them.
-#[cfg(debug_assertions)]
 #[test]
-#[should_panic]
-fn normalize_adds_missing_output_for_function_call_panics_in_debug() {
+fn normalize_adds_missing_output_for_function_call_inserts_output() {
     let items = vec![ResponseItem::FunctionCall {
         id: None,
         name: "do_it".to_string(),
@@ -679,6 +709,24 @@ fn normalize_adds_missing_output_for_function_call_panics_in_debug() {
     }];
     let mut h = create_history_with_items(items);
     h.normalize_history();
+    assert_eq!(
+        h.contents(),
+        vec![
+            ResponseItem::FunctionCall {
+                id: None,
+                name: "do_it".to_string(),
+                arguments: "{}".to_string(),
+                call_id: "call-x".to_string(),
+            },
+            ResponseItem::FunctionCallOutput {
+                call_id: "call-x".to_string(),
+                output: FunctionCallOutputPayload {
+                    content: "aborted".to_string(),
+                    ..Default::default()
+                },
+            },
+        ]
+    );
 }
 
 #[cfg(debug_assertions)]

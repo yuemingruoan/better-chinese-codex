@@ -21,9 +21,10 @@ use codex_app_server_protocol::ApprovalDecision;
 use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::ClientInfo;
 use codex_app_server_protocol::ClientRequest;
-use codex_app_server_protocol::CommandExecutionRequestAcceptSettings;
 use codex_app_server_protocol::CommandExecutionRequestApprovalParams;
 use codex_app_server_protocol::CommandExecutionRequestApprovalResponse;
+use codex_app_server_protocol::FileChangeRequestApprovalParams;
+use codex_app_server_protocol::FileChangeRequestApprovalResponse;
 use codex_app_server_protocol::GetAccountRateLimitsResponse;
 use codex_app_server_protocol::InitializeParams;
 use codex_app_server_protocol::InitializeResponse;
@@ -99,6 +100,15 @@ enum CliCommand {
     /// Start a V2 turn that should not elicit an ExecCommand approval.
     #[command(name = "no-trigger-cmd-approval")]
     NoTriggerCmdApproval,
+    /// Send two sequential V2 turns in the same thread to test follow-up behavior.
+    SendFollowUpV2 {
+        /// Initial user message for the first turn.
+        #[arg()]
+        first_message: String,
+        /// Follow-up user message for the second turn.
+        #[arg()]
+        follow_up_message: String,
+    },
     /// Trigger the ChatGPT login flow and wait for completion.
     TestLogin,
     /// Fetch the current account rate limits from the Codex app-server.
@@ -118,6 +128,10 @@ fn main() -> Result<()> {
             trigger_patch_approval(codex_bin, user_message)
         }
         CliCommand::NoTriggerCmdApproval => no_trigger_cmd_approval(codex_bin),
+        CliCommand::SendFollowUpV2 {
+            first_message,
+            follow_up_message,
+        } => send_follow_up_v2(codex_bin, first_message, follow_up_message),
         CliCommand::TestLogin => test_login(codex_bin),
         CliCommand::GetAccountRateLimits => get_account_rate_limits(codex_bin),
     }
@@ -203,6 +217,44 @@ fn send_message_v2_with_policies(
     println!("< turn/start response: {turn_response:?}");
 
     client.stream_turn(&thread_response.thread.id, &turn_response.turn.id)?;
+
+    Ok(())
+}
+
+fn send_follow_up_v2(
+    codex_bin: String,
+    first_message: String,
+    follow_up_message: String,
+) -> Result<()> {
+    let mut client = CodexClient::spawn(codex_bin)?;
+
+    let initialize = client.initialize()?;
+    println!("< initialize response: {initialize:?}");
+
+    let thread_response = client.thread_start(ThreadStartParams::default())?;
+    println!("< thread/start response: {thread_response:?}");
+
+    let first_turn_params = TurnStartParams {
+        thread_id: thread_response.thread.id.clone(),
+        input: vec![V2UserInput::Text {
+            text: first_message,
+        }],
+        ..Default::default()
+    };
+    let first_turn_response = client.turn_start(first_turn_params)?;
+    println!("< turn/start response (initial): {first_turn_response:?}");
+    client.stream_turn(&thread_response.thread.id, &first_turn_response.turn.id)?;
+
+    let follow_up_params = TurnStartParams {
+        thread_id: thread_response.thread.id.clone(),
+        input: vec![V2UserInput::Text {
+            text: follow_up_message,
+        }],
+        ..Default::default()
+    };
+    let follow_up_response = client.turn_start(follow_up_params)?;
+    println!("< turn/start response (follow-up): {follow_up_response:?}");
+    client.stream_turn(&thread_response.thread.id, &follow_up_response.turn.id)?;
 
     Ok(())
 }
@@ -501,6 +553,10 @@ impl CodexClient {
                     print!("{}", delta.delta);
                     std::io::stdout().flush().ok();
                 }
+                ServerNotification::TerminalInteraction(delta) => {
+                    println!("[stdin sent: {}]", delta.stdin);
+                    std::io::stdout().flush().ok();
+                }
                 ServerNotification::ItemStarted(payload) => {
                     println!("\n< item started: {:?}", payload.item);
                 }
@@ -510,7 +566,9 @@ impl CodexClient {
                 ServerNotification::TurnCompleted(payload) => {
                     if payload.turn.id == turn_id {
                         println!("\n< turn/completed notification: {:?}", payload.turn.status);
-                        if let TurnStatus::Failed { error } = &payload.turn.status {
+                        if payload.turn.status == TurnStatus::Failed
+                            && let Some(error) = payload.turn.error
+                        {
                             println!("[turn error] {}", error.message);
                         }
                         break;
@@ -677,6 +735,9 @@ impl CodexClient {
             ServerRequest::CommandExecutionRequestApproval { request_id, params } => {
                 self.handle_command_execution_request_approval(request_id, params)?;
             }
+            ServerRequest::FileChangeRequestApproval { request_id, params } => {
+                self.approve_file_change_request(request_id, params)?;
+            }
             other => {
                 bail!("received unsupported server request: {other:?}");
             }
@@ -695,7 +756,7 @@ impl CodexClient {
             turn_id,
             item_id,
             reason,
-            risk,
+            proposed_execpolicy_amendment,
         } = params;
 
         println!(
@@ -704,16 +765,46 @@ impl CodexClient {
         if let Some(reason) = reason.as_deref() {
             println!("< reason: {reason}");
         }
-        if let Some(risk) = risk.as_ref() {
-            println!("< risk assessment: {risk:?}");
+        if let Some(execpolicy_amendment) = proposed_execpolicy_amendment.as_ref() {
+            println!("< proposed execpolicy amendment: {execpolicy_amendment:?}");
         }
 
         let response = CommandExecutionRequestApprovalResponse {
             decision: ApprovalDecision::Accept,
-            accept_settings: Some(CommandExecutionRequestAcceptSettings { for_session: false }),
         };
         self.send_server_request_response(request_id, &response)?;
         println!("< approved commandExecution request for item {item_id}");
+        Ok(())
+    }
+
+    fn approve_file_change_request(
+        &mut self,
+        request_id: RequestId,
+        params: FileChangeRequestApprovalParams,
+    ) -> Result<()> {
+        let FileChangeRequestApprovalParams {
+            thread_id,
+            turn_id,
+            item_id,
+            reason,
+            grant_root,
+        } = params;
+
+        println!(
+            "\n< fileChange approval requested for thread {thread_id}, turn {turn_id}, item {item_id}"
+        );
+        if let Some(reason) = reason.as_deref() {
+            println!("< reason: {reason}");
+        }
+        if let Some(grant_root) = grant_root.as_deref() {
+            println!("< grant root: {}", grant_root.display());
+        }
+
+        let response = FileChangeRequestApprovalResponse {
+            decision: ApprovalDecision::Accept,
+        };
+        self.send_server_request_response(request_id, &response)?;
+        println!("< approved fileChange request for item {item_id}");
         Ok(())
     }
 

@@ -7,9 +7,12 @@ use chrono::DateTime;
 use chrono::Local;
 use codex_common::create_config_summary_entries;
 use codex_core::config::Config;
+use codex_core::models_manager::model_family::ModelFamily;
+use codex_core::protocol::NetworkAccess;
 use codex_core::protocol::SandboxPolicy;
 use codex_core::protocol::TokenUsage;
 use codex_protocol::ConversationId;
+use codex_protocol::account::PlanType;
 use ratatui::prelude::*;
 use ratatui::style::Stylize;
 use std::collections::BTreeSet;
@@ -65,55 +68,73 @@ struct StatusHistoryCell {
     rate_limits: StatusRateLimitData,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn new_status_output(
     config: &Config,
     auth_manager: &AuthManager,
+    model_family: &ModelFamily,
     total_usage: &TokenUsage,
     context_usage: Option<&TokenUsage>,
     session_id: &Option<ConversationId>,
     rate_limits: Option<&RateLimitSnapshotDisplay>,
+    plan_type: Option<PlanType>,
     now: DateTime<Local>,
+    model_name: &str,
 ) -> CompositeHistoryCell {
     let command = PlainHistoryCell::new(vec!["/status".magenta().into()]);
     let card = StatusHistoryCell::new(
         config,
         auth_manager,
+        model_family,
         total_usage,
         context_usage,
         session_id,
         rate_limits,
+        plan_type,
         now,
+        model_name,
     );
 
     CompositeHistoryCell::new(vec![Box::new(command), Box::new(card)])
 }
 
 impl StatusHistoryCell {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         config: &Config,
         auth_manager: &AuthManager,
+        model_family: &ModelFamily,
         total_usage: &TokenUsage,
         context_usage: Option<&TokenUsage>,
         session_id: &Option<ConversationId>,
         rate_limits: Option<&RateLimitSnapshotDisplay>,
+        plan_type: Option<PlanType>,
         now: DateTime<Local>,
+        model_name: &str,
     ) -> Self {
-        let config_entries = create_config_summary_entries(config);
-        let (model_name, model_details) = compose_model_display(config, &config_entries);
+        let config_entries = create_config_summary_entries(config, model_name);
+        let (model_name, model_details) = compose_model_display(model_name, &config_entries);
         let approval = config_entries
             .iter()
             .find(|(k, _)| *k == "approval")
             .map(|(_, v)| v.clone())
             .unwrap_or_else(|| "未知".to_string());
-        let sandbox = match &config.sandbox_policy {
+        let sandbox = match config.sandbox_policy.get() {
             SandboxPolicy::DangerFullAccess => "danger-full-access".to_string(),
             SandboxPolicy::ReadOnly => "read-only".to_string(),
             SandboxPolicy::WorkspaceWrite { .. } => "workspace-write".to_string(),
+            SandboxPolicy::ExternalSandbox { network_access } => {
+                if matches!(network_access, NetworkAccess::Enabled) {
+                    "external-sandbox (network access enabled)".to_string()
+                } else {
+                    "external-sandbox".to_string()
+                }
+            }
         };
         let agents_summary = compose_agents_summary(config);
-        let account = compose_account_display(auth_manager);
+        let account = compose_account_display(auth_manager, plan_type);
         let session_id = session_id.as_ref().map(std::string::ToString::to_string);
-        let context_window = config.model_context_window.and_then(|window| {
+        let context_window = model_family.context_window.and_then(|window| {
             context_usage.map(|usage| StatusContextWindowData {
                 percent_remaining: usage.percent_of_context_window_remaining(window),
                 tokens_in_context: usage.tokens_in_context_window(),

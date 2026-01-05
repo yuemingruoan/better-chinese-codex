@@ -1,32 +1,28 @@
 use std::path::Path;
 
+use codex_core::sandboxing::SandboxPermissions;
+use codex_execpolicy::Policy;
 use rmcp::ErrorData as McpError;
 use rmcp::RoleServer;
 use rmcp::model::CreateElicitationRequestParam;
 use rmcp::model::CreateElicitationResult;
 use rmcp::model::ElicitationAction;
 use rmcp::model::ElicitationSchema;
-use rmcp::model::PrimitiveSchema;
-use rmcp::model::StringSchema;
 use rmcp::service::RequestContext;
 
 use crate::posix::escalate_protocol::EscalateAction;
 use crate::posix::escalation_policy::EscalationPolicy;
+use crate::posix::stopwatch::Stopwatch;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
-/// This is the policy which decides how to handle an exec() call.
-///
-/// `file` is the absolute, canonical path to the executable to run, i.e. the first arg to exec.
-/// `argv` is the argv, including the program name (`argv[0]`).
-/// `workdir` is the absolute, canonical path to the working directory in which to execute the
-/// command.
-pub(crate) type ExecPolicy = fn(file: &Path, argv: &[String], workdir: &Path) -> ExecPolicyOutcome;
-
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ExecPolicyOutcome {
     Allow {
-        run_with_escalated_permissions: bool,
+        sandbox_permissions: SandboxPermissions,
     },
     Prompt {
-        run_with_escalated_permissions: bool,
+        sandbox_permissions: SandboxPermissions,
     },
     Forbidden,
 }
@@ -34,35 +30,69 @@ pub(crate) enum ExecPolicyOutcome {
 /// ExecPolicy with access to the MCP RequestContext so that it can leverage
 /// elicitations.
 pub(crate) struct McpEscalationPolicy {
-    policy: ExecPolicy,
+    /// In-memory execpolicy rules that drive how to handle an exec() call.
+    policy: Arc<RwLock<Policy>>,
     context: RequestContext<RoleServer>,
+    stopwatch: Stopwatch,
+    preserve_program_paths: bool,
 }
 
 impl McpEscalationPolicy {
-    pub(crate) fn new(policy: ExecPolicy, context: RequestContext<RoleServer>) -> Self {
-        Self { policy, context }
+    pub(crate) fn new(
+        policy: Arc<RwLock<Policy>>,
+        context: RequestContext<RoleServer>,
+        stopwatch: Stopwatch,
+        preserve_program_paths: bool,
+    ) -> Self {
+        Self {
+            policy,
+            context,
+            stopwatch,
+            preserve_program_paths,
+        }
     }
 
     async fn prompt(
         &self,
-        _file: &Path,
+        file: &Path,
         argv: &[String],
         workdir: &Path,
         context: RequestContext<RoleServer>,
     ) -> Result<CreateElicitationResult, McpError> {
-        let command = shlex::try_join(argv.iter().map(String::as_str)).unwrap_or_default();
-        context
-            .peer
-            .create_elicitation(CreateElicitationRequestParam {
-                message: format!("Allow Codex to run `{command:?}` in `{workdir:?}`?"),
-                #[allow(clippy::expect_used)]
-                requested_schema: ElicitationSchema::builder()
-                    .property("dummy", PrimitiveSchema::String(StringSchema::new()))
-                    .build()
-                    .expect("failed to build elicitation schema"),
+        let args = shlex::try_join(argv.iter().skip(1).map(String::as_str)).unwrap_or_default();
+        let command = if args.is_empty() {
+            file.display().to_string()
+        } else {
+            format!("{} {}", file.display(), args)
+        };
+        self.stopwatch
+            .pause_for(async {
+                context
+                    .peer
+                    .create_elicitation(CreateElicitationRequestParam {
+                        message: format!(
+                            "Allow agent to run `{command}` in `{}`?",
+                            workdir.display()
+                        ),
+                        requested_schema: ElicitationSchema::builder()
+                            .title("Execution Permission Request")
+                            .optional_string_with("reason", |schema| {
+                                schema.description(
+                                    "Optional reason for allowing or denying execution",
+                                )
+                            })
+                            .build()
+                            .map_err(|e| {
+                                McpError::internal_error(
+                                    format!("failed to build elicitation schema: {e}"),
+                                    None,
+                                )
+                            })?,
+                    })
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))
             })
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))
     }
 }
 
@@ -74,19 +104,21 @@ impl EscalationPolicy for McpEscalationPolicy {
         argv: &[String],
         workdir: &Path,
     ) -> Result<EscalateAction, rmcp::ErrorData> {
-        let outcome = (self.policy)(file, argv, workdir);
+        let policy = self.policy.read().await;
+        let outcome =
+            crate::posix::evaluate_exec_policy(&policy, file, argv, self.preserve_program_paths)?;
         let action = match outcome {
             ExecPolicyOutcome::Allow {
-                run_with_escalated_permissions,
+                sandbox_permissions,
             } => {
-                if run_with_escalated_permissions {
+                if sandbox_permissions.requires_escalated_permissions() {
                     EscalateAction::Escalate
                 } else {
                     EscalateAction::Run
                 }
             }
             ExecPolicyOutcome::Prompt {
-                run_with_escalated_permissions,
+                sandbox_permissions,
             } => {
                 let result = self
                     .prompt(file, argv, workdir, self.context.clone())
@@ -94,7 +126,7 @@ impl EscalationPolicy for McpEscalationPolicy {
                 // TODO: Extract reason from `result.content`.
                 match result.action {
                     ElicitationAction::Accept => {
-                        if run_with_escalated_permissions {
+                        if sandbox_permissions.requires_escalated_permissions() {
                             EscalateAction::Escalate
                         } else {
                             EscalateAction::Run

@@ -29,7 +29,6 @@ model_provider = "openai"
 # 可选的模型元数据。若未设置，Codex 会依据模型自动识别。
 # 取消注释即可强制覆盖。
 # model_context_window = 128000       # token 数；默认：按模型自动决定
-# model_max_output_tokens = 8192      # token 数；默认：按模型自动决定
 # model_auto_compact_token_limit = 0  # 0 表示禁用/覆盖自动压缩；默认：依模型家族而定
 # tool_output_token_limit = 10000  # 每个工具输出保存的 token 数；默认：gpt-5.1-codex-max 为 10000
 
@@ -37,7 +36,7 @@ model_provider = "openai"
 # 推理与冗长度（支持 Responses API 的模型）
 ################################################################################
 
-# 推理力度：minimal | low | medium | high（默认：medium）
+# 推理力度：minimal | low | medium | high | xhigh（默认：medium；xhigh 对应“极高”，部分模型可用）
 model_reasoning_effort = "medium"
 
 # 推理摘要：auto | concise | detailed | none（默认：auto）
@@ -106,8 +105,8 @@ exclude_slash_tmp = false
 [shell_environment_policy]
 # inherit：all（默认）| core | none
 inherit = "all"
-# 忽略名称中包含 KEY/TOKEN（大小写不敏感）的默认排除项。默认：false
-ignore_default_excludes = false
+# 忽略名称中包含 KEY/TOKEN（大小写不敏感）的默认排除项。默认：true
+ignore_default_excludes = true
 # 需移除的大小写不敏感通配符（例如 "AWS_*"、"AZURE_*")。默认：[]
 exclude = []
 # 明确设置的键值（始终优先生效）。默认：{}
@@ -124,7 +123,7 @@ experimental_use_profile = false
 [history]
 # save-all（默认）| none
 persistence = "save-all"
-# 历史文件的最大字节数（当前未强制）。示例：5242880
+# 历史文件的最大字节数，超过后会裁剪最旧条目。示例：5242880
 # max_bytes = 0
 
 # 点击引用时使用的 URI scheme：vscode（默认）| vscode-insiders | windsurf | cursor | none
@@ -138,6 +137,9 @@ file_opener = "vscode"
 # TUI 桌面通知：布尔值或过滤列表。默认：true
 # 示例：false | ["agent-turn-complete", "approval-requested"]
 notifications = false
+
+# 终端动画（欢迎页、状态 shimmer、spinner）。默认：true
+animations = true
 
 # 隐藏输出中的内部推理事件（默认：false）
 hide_agent_reasoning = false

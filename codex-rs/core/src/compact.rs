@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::ModelProviderInfo;
 use crate::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::codex::Session;
@@ -8,9 +9,8 @@ use crate::codex::get_last_assistant_message_from_turn;
 use crate::error::CodexErr;
 use crate::error::Result as CodexResult;
 use crate::features::Feature;
-use crate::protocol::AgentMessageEvent;
 use crate::protocol::CompactedItem;
-use crate::protocol::ErrorEvent;
+use crate::protocol::ContextCompactedEvent;
 use crate::protocol::EventMsg;
 use crate::protocol::TaskStartedEvent;
 use crate::protocol::TurnContextItem;
@@ -19,7 +19,6 @@ use crate::truncate::TruncationPolicy;
 use crate::truncate::approx_token_count;
 use crate::truncate::truncate_text;
 use crate::util::backoff;
-use codex_app_server_protocol::AuthMode;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseInputItem;
@@ -33,13 +32,11 @@ pub const SUMMARIZATION_PROMPT: &str = include_str!("../templates/compact/prompt
 pub const SUMMARY_PREFIX: &str = include_str!("../templates/compact/summary_prefix.md");
 const COMPACT_USER_MESSAGE_MAX_TOKENS: usize = 20_000;
 
-pub(crate) async fn should_use_remote_compact_task(session: &Session) -> bool {
-    session
-        .services
-        .auth_manager
-        .auth()
-        .is_some_and(|auth| auth.mode == AuthMode::ChatGPT)
-        && session.enabled(Feature::RemoteCompaction).await
+pub(crate) fn should_use_remote_compact_task(
+    session: &Session,
+    provider: &ModelProviderInfo,
+) -> bool {
+    provider.is_openai() && session.enabled(Feature::RemoteCompaction)
 }
 
 pub(crate) async fn run_inline_auto_compact_task(
@@ -128,9 +125,7 @@ async fn run_compact_task_inner(
                     continue;
                 }
                 sess.set_total_tokens_full(turn_context.as_ref()).await;
-                let event = EventMsg::Error(ErrorEvent {
-                    message: e.to_string(),
-                });
+                let event = EventMsg::Error(e.to_error_event(None));
                 sess.send_event(&turn_context, event).await;
                 return;
             }
@@ -141,14 +136,13 @@ async fn run_compact_task_inner(
                     sess.notify_stream_error(
                         turn_context.as_ref(),
                         format!("Reconnecting... {retries}/{max_retries}"),
+                        e,
                     )
                     .await;
                     tokio::time::sleep(delay).await;
                     continue;
                 } else {
-                    let event = EventMsg::Error(ErrorEvent {
-                        message: e.to_string(),
-                    });
+                    let event = EventMsg::Error(e.to_error_event(None));
                     sess.send_event(&turn_context, event).await;
                     return;
                 }
@@ -179,9 +173,7 @@ async fn run_compact_task_inner(
     });
     sess.persist_rollout_items(&[rollout_item]).await;
 
-    let event = EventMsg::AgentMessage(AgentMessageEvent {
-        message: "Compact task completed".to_string(),
-    });
+    let event = EventMsg::ContextCompacted(ContextCompactedEvent {});
     sess.send_event(&turn_context, event).await;
 
     let warning = EventMsg::Warning(WarningEvent {
