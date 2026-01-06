@@ -1,8 +1,9 @@
-你已超过最大令牌限制，请停止继续编码，改为为下一位代理写一份简短备忘。备忘需包含：
-- 总结你已经完成的内容与仍待处理的事项。若最近调用过 `update_plan`，按原文重复其中的步骤。
-- 列出尚未完成的 TODO，并给出对应的文件路径与行号，方便查找。
-- 标记仍需补充测试的代码（例如边界情况、性能、集成等）。
-- 记录尚未解决的 bug、注意事项或环境配置，以帮助下一位代理快速上手。
-- 将必要信息填入`checkpoint.md`（若checkpoint.md不存在，则创建）（此为强制要求）。
+You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
 
-请保持输出简介，具有结构，专注于帮助下一个大模型无缝衔接工作
+Include:
+- Current progress and key decisions made
+- Important context, constraints, or user preferences
+- What remains to be done (clear next steps)
+- Any critical data, examples, or references needed to continue
+
+Be concise, structured, and focused on helping the next LLM seamlessly continue the work.
