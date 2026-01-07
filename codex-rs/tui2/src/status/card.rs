@@ -41,7 +41,7 @@ use codex_core::AuthManager;
 
 #[derive(Debug, Clone)]
 struct StatusContextWindowData {
-    percent_remaining: i64,
+    percent_used: i64,
     tokens_in_context: i64,
     window: i64,
 }
@@ -137,7 +137,7 @@ impl StatusHistoryCell {
             None => (&default_usage, config.model_context_window),
         };
         let context_window = context_window.map(|window| StatusContextWindowData {
-            percent_remaining: context_usage.percent_of_context_window_remaining(window),
+            percent_used: context_usage.percent_of_context_window_used(window),
             tokens_in_context: context_usage.tokens_in_context_window(),
             window,
         });
@@ -184,12 +184,12 @@ impl StatusHistoryCell {
 
     fn context_window_spans(&self) -> Option<Vec<Span<'static>>> {
         let context = self.token_usage.context_window.as_ref()?;
-        let percent = context.percent_remaining;
+        let percent = context.percent_used;
         let used_fmt = format_tokens_compact(context.tokens_in_context);
         let window_fmt = format_tokens_compact(context.window);
 
         Some(vec![
-            Span::from(format!("{percent}% left")),
+            Span::from(format!("{percent}% used")),
             Span::from(" (").dim(),
             Span::from(used_fmt).dim(),
             Span::from(" used / ").dim(),

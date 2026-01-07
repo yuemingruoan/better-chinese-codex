@@ -286,9 +286,10 @@ fn build_columns(entries: Vec<Line<'static>>) -> Vec<Line<'static>> {
 }
 
 fn context_window_line(percent: Option<i64>, used_tokens: Option<i64>) -> Line<'static> {
+    // NOTE: Display "used" percentage (can exceed 100) rather than "remaining".
     if let Some(percent) = percent {
-        let percent = percent.clamp(0, 100);
-        return Line::from(vec![Span::from(format!("{percent}% context left")).dim()]);
+        let percent = percent.max(0);
+        return Line::from(vec![Span::from(format!("{percent}% context used")).dim()]);
     }
 
     if let Some(tokens) = used_tokens {
@@ -296,7 +297,7 @@ fn context_window_line(percent: Option<i64>, used_tokens: Option<i64>) -> Line<'
         return Line::from(vec![Span::from(format!("{used_fmt} used")).dim()]);
     }
 
-    Line::from(vec![Span::from("100% context left").dim()])
+    Line::from(vec![Span::from("0% context used").dim()])
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

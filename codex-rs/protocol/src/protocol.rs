@@ -1012,7 +1012,7 @@ impl TokenUsage {
         self.total_tokens
     }
 
-    /// Estimate the remaining user-controllable percentage of the model's context window.
+    /// Estimate the used user-controllable percentage of the model's context window.
     ///
     /// `context_window` is the total size of the model's context window.
     /// `BASELINE_TOKENS` should capture tokens that are always present in
@@ -1020,19 +1020,18 @@ impl TokenUsage {
     /// the percentage reflects the portion the user can influence.
     ///
     /// This normalizes both the numerator and denominator by subtracting the
-    /// baseline, so immediately after the first prompt the UI shows 100% left
-    /// and trends toward 0% as the user fills the effective window.
-    pub fn percent_of_context_window_remaining(&self, context_window: i64) -> i64 {
+    /// baseline, so immediately after the first prompt the UI shows 0% used
+    /// and trends above 100% if the user exceeds the effective window.
+    pub fn percent_of_context_window_used(&self, context_window: i64) -> i64 {
         if context_window <= BASELINE_TOKENS {
             return 0;
         }
 
         let effective_window = context_window - BASELINE_TOKENS;
+        // NOTE: We intentionally expose "used" percentage and allow >100% to display.
+        // Do not clamp or convert to "remaining" when syncing with upstream.
         let used = (self.tokens_in_context_window() - BASELINE_TOKENS).max(0);
-        let remaining = (effective_window - used).max(0);
-        ((remaining as f64 / effective_window as f64) * 100.0)
-            .clamp(0.0, 100.0)
-            .round() as i64
+        ((used as f64 / effective_window as f64) * 100.0).round() as i64
     }
 
     /// In-place element-wise sum of token counts.
