@@ -235,7 +235,7 @@ You can give Codex extra instructions and guidance using `AGENTS.md` files. Code
 
 1. `~/.codex/AGENTS.md` - personal global guidance
 2. `AGENTS.md` at repo root - shared project notes
-3. `AGENTS.md` in the current working directory - sub-folder/feature specifics
+3. `AGENTS.md` in the current working directory (or `.codex/AGENTS.md` under it). If both exist, Codex uses the most recently modified file (ties prefer `AGENTS.md`).
 
 Disable loading of these files with `--no-project-doc` or the environment variable `CODEX_DISABLE_PROJECT_DOC=1`.
 
