@@ -405,6 +405,8 @@ async fn make_chatwidget_manual(
         feedback: codex_feedback::CodexFeedback::new(),
         current_rollout_path: None,
         sdd_state: None,
+        sdd_pending_plan_rework_prompt: None,
+        sdd_open_plan_options_after_task: false,
         sdd_new_session_after_cleanup: false,
         external_editor_state: ExternalEditorState::Closed,
     };

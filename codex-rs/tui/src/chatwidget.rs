@@ -388,6 +388,10 @@ pub(crate) struct ChatWidget {
     current_rollout_path: Option<PathBuf>,
     // State for the /sdd-develop workflow.
     sdd_state: Option<SddDevelopState>,
+    // Pending plan-rework prompt prefix to prepend on the next user submission.
+    sdd_pending_plan_rework_prompt: Option<String>,
+    // When true, reopen plan options after the next task completes.
+    sdd_open_plan_options_after_task: bool,
     // When true, start a fresh session after current turn completes (used for SDD abandon).
     sdd_new_session_after_cleanup: bool,
     external_editor_state: ExternalEditorState,
@@ -610,6 +614,19 @@ impl ChatWidget {
         });
 
         self.maybe_show_pending_rate_limit_prompt();
+
+        if self.sdd_open_plan_options_after_task {
+            self.sdd_open_plan_options_after_task = false;
+            if matches!(
+                self.sdd_state,
+                Some(SddDevelopState {
+                    stage: SddDevelopStage::AwaitPlanDecision,
+                    ..
+                })
+            ) {
+                self.open_sdd_plan_options();
+            }
+        }
 
         if self.sdd_new_session_after_cleanup {
             self.sdd_new_session_after_cleanup = false;
@@ -1505,6 +1522,8 @@ impl ChatWidget {
             feedback,
             current_rollout_path: None,
             sdd_state: None,
+            sdd_pending_plan_rework_prompt: None,
+            sdd_open_plan_options_after_task: false,
             sdd_new_session_after_cleanup: false,
             external_editor_state: ExternalEditorState::Closed,
         };
@@ -1593,6 +1612,8 @@ impl ChatWidget {
             feedback,
             current_rollout_path: None,
             sdd_state: None,
+            sdd_pending_plan_rework_prompt: None,
+            sdd_open_plan_options_after_task: false,
             sdd_new_session_after_cleanup: false,
             external_editor_state: ExternalEditorState::Closed,
         };
@@ -1887,6 +1908,8 @@ impl ChatWidget {
             .map(|d| d.trim().to_string())
             .filter(|d| !d.is_empty())
         {
+            self.sdd_pending_plan_rework_prompt = None;
+            self.sdd_open_plan_options_after_task = false;
             self.sdd_state = Some(SddDevelopState {
                 description: desc.clone(),
                 stage: SddDevelopStage::AwaitPlanDecision,
@@ -2033,6 +2056,9 @@ impl ChatWidget {
             }
         };
 
+        self.sdd_pending_plan_rework_prompt = None;
+        self.sdd_open_plan_options_after_task = false;
+
         let prompt = self.build_sdd_exec_prompt(&description);
         self.send_user_inputs(prompt, Vec::new());
         if let Some(state) = self.sdd_state.as_mut() {
@@ -2057,14 +2083,12 @@ impl ChatWidget {
             self.add_info_message("当前不在计划阶段，无法修改计划。".to_string(), None);
             return;
         }
-        let prefill = format!(
-            "{SDD_PLAN_PROMPT}\n\n需求描述：\n{}\n\n请根据以下反馈更新 task.md：\n",
-            state.description
-        );
-        self.set_composer_text(prefill);
+        let prompt = self.build_sdd_plan_rework_prompt(&state.description);
+        self.sdd_pending_plan_rework_prompt = Some(prompt);
+        self.set_composer_text(String::new());
         self.add_info_message(
-            "已在输入框放入修改模板，请补充反馈后提交。".to_string(),
-            Some("提交后可再次输入 /sdd-develop 打开选项。".to_string()),
+            "已准备计划修改请求，请在输入框补充反馈后提交。".to_string(),
+            Some("提交后会重新弹出计划选项。".to_string()),
         );
         self.request_redraw();
     }
@@ -2136,6 +2160,10 @@ impl ChatWidget {
         } else {
             format!("{SDD_PLAN_PROMPT}\n\n需求描述：\n{description}")
         }
+    }
+
+    fn build_sdd_plan_rework_prompt(&self, _description: &str) -> String {
+        "我认为你提出的task.md不够完善，还有以下问题需要解决：\n".to_string()
     }
 
     fn build_sdd_exec_prompt(&self, description: &str) -> String {
@@ -2240,7 +2268,10 @@ impl ChatWidget {
 
     fn submit_user_message(&mut self, user_message: UserMessage) {
         let UserMessage { text, image_paths } = user_message;
-        if text.is_empty() && image_paths.is_empty() {
+        if text.is_empty()
+            && image_paths.is_empty()
+            && self.sdd_pending_plan_rework_prompt.is_none()
+        {
             return;
         }
 
@@ -2266,14 +2297,33 @@ impl ChatWidget {
             return;
         }
 
-        self.send_user_inputs(text, image_paths);
+        let (send_text, display_text) = self.apply_sdd_plan_rework_prefix(text);
+        self.send_user_inputs_with_display(send_text, display_text, image_paths);
     }
 
-    fn send_user_inputs(&mut self, text: String, image_paths: Vec<PathBuf>) {
+    fn apply_sdd_plan_rework_prefix(&mut self, text: String) -> (String, String) {
+        if let Some(prefix) = self.sdd_pending_plan_rework_prompt.take() {
+            self.sdd_open_plan_options_after_task = true;
+            let mut combined = prefix;
+            combined.push_str(&text);
+            (combined, text)
+        } else {
+            (text.clone(), text)
+        }
+    }
+
+    fn send_user_inputs_with_display(
+        &mut self,
+        send_text: String,
+        display_text: String,
+        image_paths: Vec<PathBuf>,
+    ) {
         let mut items: Vec<UserInput> = Vec::new();
 
-        if !text.is_empty() {
-            items.push(UserInput::Text { text: text.clone() });
+        if !send_text.is_empty() {
+            items.push(UserInput::Text {
+                text: send_text,
+            });
         }
 
         for path in image_paths {
@@ -2281,7 +2331,7 @@ impl ChatWidget {
         }
 
         if let Some(skills) = self.bottom_pane.skills() {
-            let skill_mentions = find_skill_mentions(&text, skills);
+            let skill_mentions = find_skill_mentions(&display_text, skills);
             for skill in skill_mentions {
                 items.push(UserInput::Skill {
                     name: skill.name.clone(),
@@ -2303,15 +2353,22 @@ impl ChatWidget {
                 tracing::error!("failed to send message: {e}");
             });
 
-        if !text.is_empty() {
+        if !display_text.is_empty() {
             self.codex_op_tx
-                .send(Op::AddToHistory { text: text.clone() })
+                .send(Op::AddToHistory {
+                    text: display_text.clone(),
+                })
                 .unwrap_or_else(|e| {
                     tracing::error!("failed to send AddHistory op: {e}");
                 });
-            self.add_to_history(history_cell::new_user_prompt(text));
+            self.add_to_history(history_cell::new_user_prompt(display_text));
         }
         self.needs_final_message_separator = false;
+    }
+
+    fn send_user_inputs(&mut self, text: String, image_paths: Vec<PathBuf>) {
+        let display_text = text.clone();
+        self.send_user_inputs_with_display(text, display_text, image_paths);
     }
 
     fn try_handle_sdd_develop(&mut self, text: &str) -> bool {
