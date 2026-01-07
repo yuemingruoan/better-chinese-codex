@@ -1,5 +1,7 @@
 ## Upstream merge strategy (Codex 0.77 → 0.79 sync)
 
+- Default to working on the `develop-main` branch unless the user explicitly requests another branch.
+
 - Assets and docs follow upstream changes; do not keep deleted upstream assets.
 - Localized prompt files (提示词) do not follow upstream; keep existing Chinese prompts.
 - GitHub workflows remain deleted; do not sync upstream automation workflows.
