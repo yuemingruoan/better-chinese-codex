@@ -77,10 +77,6 @@ impl SessionState {
     pub(crate) fn set_token_usage_full(&mut self, context_window: i64) {
         self.history.set_token_usage_full(context_window);
     }
-
-    pub(crate) fn get_total_token_usage(&self) -> i64 {
-        self.history.get_total_token_usage()
-    }
 }
 
 // Sometimes new snapshots don't include credits or plan information.

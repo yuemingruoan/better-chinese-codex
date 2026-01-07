@@ -36,9 +36,6 @@ pub struct ModelFamily {
     /// Maximum supported context window, if known.
     pub context_window: Option<i64>,
 
-    /// Token threshold for automatic compaction if config does not override it.
-    auto_compact_token_limit: Option<i64>,
-
     // Whether the `reasoning` field can be set when making a request to this
     // model family. Note it has `effort` and `summary` subfields (though
     // `summary` is optional).
@@ -86,9 +83,6 @@ impl ModelFamily {
         }
         if let Some(context_window) = config.model_context_window {
             self.context_window = Some(context_window);
-        }
-        if let Some(auto_compact_token_limit) = config.model_auto_compact_token_limit {
-            self.auto_compact_token_limit = Some(auto_compact_token_limit);
         }
         self
     }
@@ -139,15 +133,6 @@ impl ModelFamily {
         self.experimental_supported_tools = experimental_supported_tools;
     }
 
-    pub fn auto_compact_token_limit(&self) -> Option<i64> {
-        self.auto_compact_token_limit
-            .or(self.context_window.map(Self::default_auto_compact_limit))
-    }
-
-    const fn default_auto_compact_limit(context_window: i64) -> i64 {
-        (context_window * 9) / 10
-    }
-
     pub fn get_model_slug(&self) -> &str {
         &self.slug
     }
@@ -164,7 +149,6 @@ macro_rules! model_family {
             family: $family.to_string(),
             needs_special_apply_patch_instructions: false,
             context_window: Some(CONTEXT_WINDOW_272K),
-            auto_compact_token_limit: None,
             supports_reasoning_summaries: false,
             supports_parallel_tool_calls: false,
             apply_patch_tool_type: None,
@@ -398,7 +382,6 @@ fn derive_default_model_family(model: &str) -> ModelFamily {
         family: model.to_string(),
         needs_special_apply_patch_instructions: false,
         context_window: None,
-        auto_compact_token_limit: None,
         supports_reasoning_summaries: false,
         supports_parallel_tool_calls: false,
         apply_patch_tool_type: None,
