@@ -1709,6 +1709,10 @@ async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiv
                 )
                 .await;
             }
+            Op::SddGitAction { action } => {
+                handlers::run_sdd_git_action(&sess, sub.id.clone(), action, &mut previous_context)
+                    .await;
+            }
             Op::ResolveElicitation {
                 server_name,
                 request_id,
@@ -1744,6 +1748,7 @@ mod handlers {
     use crate::review_prompts::resolve_review_request;
     use crate::tasks::CompactTask;
     use crate::tasks::RegularTask;
+    use crate::tasks::SddGitTask;
     use crate::tasks::UndoTask;
     use crate::tasks::UserShellCommandTask;
     use codex_protocol::custom_prompts::CustomPrompt;
@@ -1867,6 +1872,22 @@ mod handlers {
             Arc::clone(&turn_context),
             Vec::new(),
             UserShellCommandTask::new(command),
+        )
+        .await;
+        *previous_context = Some(turn_context);
+    }
+
+    pub async fn run_sdd_git_action(
+        sess: &Arc<Session>,
+        sub_id: String,
+        action: crate::protocol::SddGitAction,
+        previous_context: &mut Option<Arc<TurnContext>>,
+    ) {
+        let turn_context = sess.new_default_turn_with_sub_id(sub_id).await;
+        sess.spawn_task(
+            Arc::clone(&turn_context),
+            Vec::new(),
+            SddGitTask::new(action),
         )
         .await;
         *previous_context = Some(turn_context);

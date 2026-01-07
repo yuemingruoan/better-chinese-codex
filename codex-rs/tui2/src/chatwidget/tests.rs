@@ -404,6 +404,8 @@ async fn make_chatwidget_manual(
         sdd_state: None,
         sdd_pending_plan_rework_prompt: None,
         sdd_open_plan_options_after_task: false,
+        sdd_pending_git_action: None,
+        sdd_git_action_failed: false,
         sdd_new_session_after_cleanup: false,
     };
     (widget, rx, op_rx)

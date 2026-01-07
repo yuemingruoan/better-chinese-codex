@@ -232,8 +232,32 @@ pub enum Op {
         command: String,
     },
 
+    /// Execute a restricted, SDD-only git action.
+    SddGitAction {
+        /// The git action to perform.
+        action: SddGitAction,
+    },
+
     /// Request the list of available models.
     ListModels,
+}
+
+/// Restricted git actions used by the /sdd-develop workflow.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SddGitAction {
+    /// Create and switch to a new SDD branch from the base branch.
+    CreateBranch { name: String, base: String },
+    /// Switch to an existing SDD branch.
+    SwitchBranch { name: String },
+    /// Commit all changes, merge into base, and leave the repo on base.
+    FinalizeMerge {
+        name: String,
+        base: String,
+        commit_message: String,
+    },
+    /// Drop the SDD branch and leave the repo on base.
+    AbandonBranch { name: String, base: String },
 }
 
 /// Determines the conditions under which the user is consulted to approve
@@ -1489,6 +1513,7 @@ pub enum ExecCommandSource {
     #[default]
     Agent,
     UserShell,
+    SddGit,
     UnifiedExecStartup,
     UnifiedExecInteraction,
 }
