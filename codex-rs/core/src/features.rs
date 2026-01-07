@@ -8,6 +8,7 @@
 use crate::config::ConfigToml;
 use crate::config::profile::ConfigProfile;
 use serde::Deserialize;
+use serde::Serialize;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
@@ -71,8 +72,11 @@ pub enum Feature {
     UnifiedExec,
     /// Include the freeform apply_patch tool.
     ApplyPatchFreeform,
-    /// Allow the model to request web searches.
+    /// Allow the model to request web searches that fetch live content.
     WebSearchRequest,
+    /// Allow the model to request web searches that fetch cached content.
+    /// Takes precedence over `WebSearchRequest`.
+    WebSearchCached,
     /// Gate the execpolicy enforcement for shell/unified exec.
     ExecPolicy,
     /// Enable Windows sandbox (restricted token) on Windows.
@@ -91,6 +95,8 @@ pub enum Feature {
     Tui2,
     /// Enable discovery and injection of skills.
     Skills,
+    /// Enforce UTF8 output in Powershell.
+    PowershellUtf8,
 }
 
 impl Feature {
@@ -252,6 +258,10 @@ impl Features {
 
         features
     }
+
+    pub fn enabled_features(&self) -> Vec<Feature> {
+        self.enabled.iter().copied().collect()
+    }
 }
 
 /// Keys accepted in `[features]` tables.
@@ -270,7 +280,7 @@ pub fn is_known_feature_key(key: &str) -> bool {
 }
 
 /// Deserializable features table for TOML.
-#[derive(Deserialize, Debug, Clone, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct FeaturesToml {
     #[serde(flatten)]
     pub entries: BTreeMap<String, bool>,
@@ -291,7 +301,7 @@ pub const FEATURES: &[FeatureSpec] = &[
         id: Feature::GhostCommit,
         key: "undo",
         stage: Stage::Stable,
-        default_enabled: true,
+        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::ParallelToolCalls,
@@ -321,6 +331,12 @@ pub const FEATURES: &[FeatureSpec] = &[
         id: Feature::WebSearchRequest,
         key: "web_search_request",
         stage: Stage::Stable,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::WebSearchCached,
+        key: "web_search_cached",
+        stage: Stage::Experimental,
         default_enabled: false,
     },
     // Beta program. Rendered in the `/experimental` menu for users.
@@ -385,6 +401,12 @@ pub const FEATURES: &[FeatureSpec] = &[
         key: "skills",
         stage: Stage::Experimental,
         default_enabled: true,
+    },
+    FeatureSpec {
+        id: Feature::PowershellUtf8,
+        key: "powershell_utf8",
+        stage: Stage::Experimental,
+        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::Tui2,

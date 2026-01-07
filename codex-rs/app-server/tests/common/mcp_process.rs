@@ -11,7 +11,6 @@ use tokio::process::ChildStdin;
 use tokio::process::ChildStdout;
 
 use anyhow::Context;
-use assert_cmd::prelude::*;
 use codex_app_server_protocol::AddConversationListenerParams;
 use codex_app_server_protocol::ArchiveConversationParams;
 use codex_app_server_protocol::CancelLoginAccountParams;
@@ -46,10 +45,10 @@ use codex_app_server_protocol::SetDefaultModelParams;
 use codex_app_server_protocol::ThreadArchiveParams;
 use codex_app_server_protocol::ThreadListParams;
 use codex_app_server_protocol::ThreadResumeParams;
+use codex_app_server_protocol::ThreadRollbackParams;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::TurnInterruptParams;
 use codex_app_server_protocol::TurnStartParams;
-use std::process::Command as StdCommand;
 use tokio::process::Command;
 
 pub struct McpProcess {
@@ -78,12 +77,8 @@ impl McpProcess {
         codex_home: &Path,
         env_overrides: &[(&str, Option<&str>)],
     ) -> anyhow::Result<Self> {
-        // Use assert_cmd to locate the binary path and then switch to tokio::process::Command
-        let std_cmd = StdCommand::cargo_bin("codex-app-server")
-            .context("should find binary for codex-mcp-server")?;
-
-        let program = std_cmd.get_program().to_owned();
-
+        let program = codex_utils_cargo_bin::cargo_bin("codex-app-server")
+            .context("should find binary for codex-app-server")?;
         let mut cmd = Command::new(program);
 
         cmd.stdin(Stdio::piped());
@@ -320,6 +315,15 @@ impl McpProcess {
     ) -> anyhow::Result<i64> {
         let params = Some(serde_json::to_value(params)?);
         self.send_request("thread/archive", params).await
+    }
+
+    /// Send a `thread/rollback` JSON-RPC request.
+    pub async fn send_thread_rollback_request(
+        &mut self,
+        params: ThreadRollbackParams,
+    ) -> anyhow::Result<i64> {
+        let params = Some(serde_json::to_value(params)?);
+        self.send_request("thread/rollback", params).await
     }
 
     /// Send a `thread/list` JSON-RPC request.

@@ -143,6 +143,7 @@ impl TestCodexBuilder {
             config.model_provider.clone(),
             config.codex_home.clone(),
         );
+        let conversation_manager = Arc::new(conversation_manager);
 
         let new_conversation = match resume_from {
             Some(path) => {
@@ -164,7 +165,7 @@ impl TestCodexBuilder {
             config,
             codex: new_conversation.conversation,
             session_configured: new_conversation.session_configured,
-            conversation_manager: Arc::new(conversation_manager),
+            conversation_manager,
         })
     }
 
@@ -184,8 +185,8 @@ impl TestCodexBuilder {
         for hook in self.pre_build_hooks.drain(..) {
             hook(home.path());
         }
-        if let Ok(cmd) = assert_cmd::Command::cargo_bin("codex") {
-            config.codex_linux_sandbox_exe = Some(PathBuf::from(cmd.get_program().to_os_string()));
+        if let Ok(path) = codex_utils_cargo_bin::cargo_bin("codex") {
+            config.codex_linux_sandbox_exe = Some(path);
         }
 
         let mut mutators = vec![];

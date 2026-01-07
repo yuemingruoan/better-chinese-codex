@@ -29,7 +29,6 @@ use std::path::PathBuf;
 use tracing::error;
 use tracing_appender::non_blocking;
 use tracing_subscriber::EnvFilter;
-use tracing_subscriber::filter::Targets;
 use tracing_subscriber::prelude::*;
 
 mod additional_dirs;
@@ -47,6 +46,7 @@ pub mod custom_terminal;
 mod diff_render;
 mod exec_cell;
 mod exec_command;
+mod external_editor;
 mod file_search;
 mod frames;
 mod get_git_diff;
@@ -97,7 +97,6 @@ pub use markdown_render::render_markdown_text;
 pub use public_widgets::composer_input::ComposerAction;
 pub use public_widgets::composer_input::ComposerInput;
 use std::io::Write as _;
-
 // (tests access modules directly within the crate)
 
 pub async fn run_main(
@@ -272,19 +271,17 @@ pub async fn run_main(
 
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(non_blocking)
-        .with_target(false)
+        // `with_target(true)` is the default, but we previously disabled it for file output.
+        // Keep it enabled so we can selectively enable targets via `RUST_LOG=...` and then
+        // grep for a specific module/target while troubleshooting.
+        .with_target(true)
         .with_ansi(false)
         .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
         .with_filter(env_filter());
 
     let feedback = codex_feedback::CodexFeedback::new();
-    let targets = Targets::new().with_default(tracing::Level::TRACE);
-
-    let feedback_layer = tracing_subscriber::fmt::layer()
-        .with_writer(feedback.make_writer())
-        .with_ansi(false)
-        .with_target(false)
-        .with_filter(targets);
+    let feedback_layer = feedback.logger_layer();
+    let feedback_metadata_layer = feedback.metadata_layer();
 
     if cli.oss && model_provider_override.is_some() {
         // We're in the oss section, so provider_id should be Some
@@ -319,6 +316,7 @@ pub async fn run_main(
     let _ = tracing_subscriber::registry()
         .with(file_layer)
         .with(feedback_layer)
+        .with(feedback_metadata_layer)
         .with(otel_logger_layer)
         .with(otel_tracing_layer)
         .try_init();
@@ -344,6 +342,8 @@ async fn run_ratatui_app(
     feedback: codex_feedback::CodexFeedback,
 ) -> color_eyre::Result<AppExitInfo> {
     color_eyre::install()?;
+
+    tooltips::announcement::prewarm();
 
     // Forward panic reports through tracing so they appear in the UI status
     // line, but do not swallow the default/color-eyre panic handler.
