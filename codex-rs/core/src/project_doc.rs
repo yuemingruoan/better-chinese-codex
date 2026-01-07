@@ -10,7 +10,9 @@
 //!     root is found, only the current working directory is considered.
 //! 2.  Collect every `AGENTS.md` found from the repository root down to the
 //!     current working directory (inclusive) and concatenate their contents in
-//!     that order.
+//!     that order. For the current working directory, if both `AGENTS.md` and
+//!     `.codex/AGENTS.md` exist, choose the most recently modified file and
+//!     include only that one.
 //! 3.  We do **not** walk past the Git root.
 
 use crate::config::Config;
@@ -130,8 +132,10 @@ pub async fn read_project_docs(config: &Config) -> std::io::Result<Option<String
 /// Discover the list of AGENTS.md files using the same search rules as
 /// `read_project_docs`, but return the file paths instead of concatenated
 /// contents. The list is ordered from repository root to the current working
-/// directory (inclusive). Symlinks are allowed. When `project_doc_max_bytes`
-/// is zero, returns an empty list.
+/// directory (inclusive). If both `AGENTS.md` and `.codex/AGENTS.md` exist in
+/// the current working directory, only the most recently modified file is
+/// included. Symlinks are allowed. When `project_doc_max_bytes` is zero,
+/// returns an empty list.
 pub fn discover_project_doc_paths(config: &Config) -> std::io::Result<Vec<PathBuf>> {
     let mut dir = config.cwd.clone();
     if let Ok(canon) = normalize_path(&dir) {
@@ -179,25 +183,72 @@ pub fn discover_project_doc_paths(config: &Config) -> std::io::Result<Vec<PathBu
 
     let mut found: Vec<PathBuf> = Vec::new();
     let candidate_filenames = candidate_filenames(config);
-    for d in search_dirs {
-        for name in &candidate_filenames {
-            let candidate = d.join(name);
-            match std::fs::symlink_metadata(&candidate) {
-                Ok(md) => {
-                    let ft = md.file_type();
-                    // Allow regular files and symlinks; opening will later fail for dangling links.
-                    if ft.is_file() || ft.is_symlink() {
-                        found.push(candidate);
-                        break;
-                    }
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(e) => return Err(e),
-            }
+    let cwd_index = search_dirs.len().saturating_sub(1);
+    for (index, dir) in search_dirs.into_iter().enumerate() {
+        let selected = if index == cwd_index {
+            select_cwd_or_codex_doc(&dir, &candidate_filenames)?
+        } else {
+            select_doc_in_dir(&dir, &candidate_filenames)?
+        };
+        if let Some(path) = selected {
+            found.push(path);
         }
     }
 
     Ok(found)
+}
+
+fn select_doc_in_dir(
+    dir: &std::path::Path,
+    candidate_filenames: &[&str],
+) -> std::io::Result<Option<PathBuf>> {
+    for name in candidate_filenames {
+        let candidate = dir.join(name);
+        match std::fs::symlink_metadata(&candidate) {
+            Ok(md) => {
+                let ft = md.file_type();
+                // Allow regular files and symlinks; opening will later fail for dangling links.
+                if ft.is_file() || ft.is_symlink() {
+                    return Ok(Some(candidate));
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(None)
+}
+
+fn select_cwd_or_codex_doc(
+    cwd: &std::path::Path,
+    candidate_filenames: &[&str],
+) -> std::io::Result<Option<PathBuf>> {
+    let cwd_doc = select_doc_in_dir(cwd, candidate_filenames)?;
+    let codex_doc = select_doc_in_dir(&cwd.join(".codex"), candidate_filenames)?;
+
+    Ok(match (cwd_doc, codex_doc) {
+        (Some(cwd_doc), Some(codex_doc)) => Some(select_newer_doc(cwd_doc, codex_doc)),
+        (Some(cwd_doc), None) => Some(cwd_doc),
+        (None, Some(codex_doc)) => Some(codex_doc),
+        (None, None) => None,
+    })
+}
+
+fn select_newer_doc(cwd_doc: PathBuf, codex_doc: PathBuf) -> PathBuf {
+    let cwd_modified = std::fs::metadata(&cwd_doc).and_then(|meta| meta.modified());
+    let codex_modified = std::fs::metadata(&codex_doc).and_then(|meta| meta.modified());
+
+    match (cwd_modified, codex_modified) {
+        (Ok(cwd_time), Ok(codex_time)) => {
+            if codex_time > cwd_time {
+                codex_doc
+            } else {
+                cwd_doc
+            }
+        }
+        (Err(_), Ok(_)) => codex_doc,
+        _ => cwd_doc,
+    }
 }
 
 fn candidate_filenames<'a>(config: &'a Config) -> Vec<&'a str> {
@@ -234,8 +285,10 @@ mod tests {
     use super::*;
     use crate::config::ConfigBuilder;
     use crate::skills::load_skills;
+    use pretty_assertions::assert_eq;
     use std::fs;
     use std::path::PathBuf;
+    use std::time::Duration;
     use tempfile::TempDir;
 
     /// Helper that returns a `Config` pointing at `root` and using `limit` as
@@ -421,6 +474,39 @@ mod tests {
             .await
             .expect("doc expected");
         assert_eq!(res, "root doc\n\ncrate doc");
+    }
+
+    #[tokio::test]
+    async fn prefers_newer_doc_between_cwd_and_codex() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let codex_dir = tmp.path().join(".codex");
+        std::fs::create_dir_all(&codex_dir).unwrap();
+
+        fs::write(tmp.path().join("AGENTS.md"), "cwd doc").unwrap();
+        std::thread::sleep(Duration::from_secs(1));
+        fs::write(codex_dir.join("AGENTS.md"), "codex doc").unwrap();
+
+        let cfg = make_config(&tmp, 4096, None).await;
+        let res = get_user_instructions(&cfg, None)
+            .await
+            .expect("doc expected");
+
+        assert_eq!(res, "codex doc");
+    }
+
+    #[tokio::test]
+    async fn uses_codex_doc_when_only_codex_present() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let codex_dir = tmp.path().join(".codex");
+        std::fs::create_dir_all(&codex_dir).unwrap();
+        fs::write(codex_dir.join("AGENTS.md"), "codex doc").unwrap();
+
+        let cfg = make_config(&tmp, 4096, None).await;
+        let res = get_user_instructions(&cfg, None)
+            .await
+            .expect("doc expected");
+
+        assert_eq!(res, "codex doc");
     }
 
     /// AGENTS.override.md is preferred over AGENTS.md when both are present.
