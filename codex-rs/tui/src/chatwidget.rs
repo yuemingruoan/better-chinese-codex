@@ -1788,9 +1788,9 @@ impl ChatWidget {
                 }
                 self.request_exit();
             }
-            // SlashCommand::Undo => {
-            //     self.app_event_tx.send(AppEvent::CodexOp(Op::Undo));
-            // }
+            SlashCommand::Undo => {
+                self.app_event_tx.send(AppEvent::CodexOp(Op::Undo));
+            }
             SlashCommand::Diff => {
                 self.add_diff_in_progress();
                 let tx = self.app_event_tx.clone();
