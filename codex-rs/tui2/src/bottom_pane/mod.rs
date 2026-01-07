@@ -29,6 +29,7 @@ mod file_search_popup;
 mod footer;
 mod list_selection_view;
 mod prompt_args;
+pub(crate) use prompt_args::parse_slash_name;
 mod skill_popup;
 pub(crate) use list_selection_view::SelectionViewParams;
 mod feedback_view;

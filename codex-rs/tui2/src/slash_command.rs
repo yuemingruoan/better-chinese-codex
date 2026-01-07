@@ -24,6 +24,7 @@ pub enum SlashCommand {
     Diff,
     Mention,
     Status,
+    SddDevelop,
     Mcp,
     Logout,
     Quit,
@@ -49,6 +50,7 @@ impl SlashCommand {
             SlashCommand::Mention => "mention a file",
             SlashCommand::Skills => "use skills to improve how Codex performs specific tasks",
             SlashCommand::Status => "show current session configuration and token usage",
+            SlashCommand::SddDevelop => "start the SDD development workflow",
             SlashCommand::Model => "choose what model and reasoning effort to use",
             SlashCommand::Approvals => "choose what Codex can do without approval",
             SlashCommand::Mcp => "list configured MCP tools",
@@ -72,6 +74,7 @@ impl SlashCommand {
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Undo
+            | SlashCommand::SddDevelop
             | SlashCommand::Model
             | SlashCommand::Approvals
             | SlashCommand::Review

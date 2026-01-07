@@ -401,6 +401,12 @@ async fn make_chatwidget_manual(
         last_rendered_width: std::cell::Cell::new(None),
         feedback: codex_feedback::CodexFeedback::new(),
         current_rollout_path: None,
+        sdd_state: None,
+        sdd_pending_plan_rework_prompt: None,
+        sdd_open_plan_options_after_task: false,
+        sdd_pending_git_action: None,
+        sdd_git_action_failed: false,
+        sdd_new_session_after_cleanup: false,
     };
     (widget, rx, op_rx)
 }

@@ -45,6 +45,7 @@ use codex_core::protocol::PatchApplyBeginEvent;
 use codex_core::protocol::RateLimitSnapshot;
 use codex_core::protocol::ReviewRequest;
 use codex_core::protocol::ReviewTarget;
+use codex_core::protocol::SddGitAction;
 use codex_core::protocol::SkillsListEntry;
 use codex_core::protocol::StreamErrorEvent;
 use codex_core::protocol::TaskCompleteEvent;
@@ -93,6 +94,7 @@ use crate::bottom_pane::SelectionAction;
 use crate::bottom_pane::SelectionItem;
 use crate::bottom_pane::SelectionViewParams;
 use crate::bottom_pane::custom_prompt_view::CustomPromptView;
+use crate::bottom_pane::parse_slash_name;
 use crate::bottom_pane::popup_consts::standard_popup_hint_line;
 use crate::clipboard_paste::paste_image_to_temp_png;
 use crate::diff_render::display_path_for;
@@ -132,6 +134,7 @@ use codex_common::approval_presets::builtin_approval_presets;
 use codex_core::AuthManager;
 use codex_core::CodexAuth;
 use codex_core::ConversationManager;
+use codex_core::git_info::get_git_repo_root;
 use codex_core::protocol::AskForApproval;
 use codex_core::protocol::SandboxPolicy;
 use codex_file_search::FileMatch;
@@ -142,6 +145,10 @@ use strum::IntoEnumIterator;
 
 const USER_SHELL_COMMAND_HELP_TITLE: &str = "Prefix a command with ! to run it locally";
 const USER_SHELL_COMMAND_HELP_HINT: &str = "Example: !ls";
+const SDD_PLAN_PROMPT: &str = include_str!("../prompt_for_sdd_plan.md");
+const SDD_EXEC_PROMPT: &str = include_str!("../prompt_for_sdd_execute.md");
+const SDD_BRANCH_PREFIX: &str = "sdd/";
+const SDD_BASE_BRANCH: &str = "develop-main";
 // Track information about an in-flight exec command.
 struct RunningCommand {
     command: Vec<String>,
@@ -277,6 +284,26 @@ enum RateLimitSwitchPromptState {
     Shown,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SddDevelopStage {
+    AwaitPlanDecision,
+    AwaitDevDecision,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SddDevelopState {
+    description: String,
+    branch_name: String,
+    stage: SddDevelopStage,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SddGitPendingAction {
+    CreateBranch { description: String },
+    FinalizeMerge,
+    AbandonBranch,
+}
+
 pub(crate) struct ChatWidget {
     app_event_tx: AppEventSender,
     codex_op_tx: UnboundedSender<Op>,
@@ -334,6 +361,18 @@ pub(crate) struct ChatWidget {
     feedback: codex_feedback::CodexFeedback,
     // Current session rollout path (if known)
     current_rollout_path: Option<PathBuf>,
+    // State for the /sdd-develop workflow.
+    sdd_state: Option<SddDevelopState>,
+    // Pending plan-rework prompt prefix to prepend on the next user submission.
+    sdd_pending_plan_rework_prompt: Option<String>,
+    // When true, reopen plan options after the next task completes.
+    sdd_open_plan_options_after_task: bool,
+    // Pending SDD git action awaiting completion.
+    sdd_pending_git_action: Option<SddGitPendingAction>,
+    // Whether the last SDD git action reported a failure.
+    sdd_git_action_failed: bool,
+    // When true, start a fresh session after current turn completes (used for SDD abandon).
+    sdd_new_session_after_cleanup: bool,
 }
 
 struct UserMessage {
@@ -552,6 +591,56 @@ impl ChatWidget {
         });
 
         self.maybe_show_pending_rate_limit_prompt();
+
+        if let Some(action) = self.sdd_pending_git_action.take() {
+            let failed = self.sdd_git_action_failed;
+            self.sdd_git_action_failed = false;
+            if failed {
+                self.add_error_message("SDD Git 操作失败，请检查输出后重试。".to_string());
+                return;
+            }
+            match action {
+                SddGitPendingAction::CreateBranch { description } => {
+                    let prompt = self.build_sdd_exec_prompt(&description);
+                    self.submit_user_message(prompt.into());
+                    if let Some(state) = self.sdd_state.as_mut() {
+                        state.stage = SddDevelopStage::AwaitDevDecision;
+                    }
+                    self.add_info_message(
+                        "已发送开发指令，请等待 AI 在独立分支完成实现。".to_string(),
+                        Some("完成后可通过 /sdd-develop 选择合并、继续修改或放弃。".to_string()),
+                    );
+                    self.open_sdd_dev_options();
+                }
+                SddGitPendingAction::FinalizeMerge => {
+                    self.sdd_state = None;
+                    self.add_info_message("已完成合并操作，请继续后续流程。".to_string(), None);
+                }
+                SddGitPendingAction::AbandonBranch => {
+                    self.sdd_state = None;
+                    self.sdd_new_session_after_cleanup = true;
+                    self.add_info_message("已删除 SDD 分支，请继续正常对话。".to_string(), None);
+                }
+            }
+        }
+
+        if self.sdd_open_plan_options_after_task {
+            self.sdd_open_plan_options_after_task = false;
+            if matches!(
+                self.sdd_state,
+                Some(SddDevelopState {
+                    stage: SddDevelopStage::AwaitPlanDecision,
+                    ..
+                })
+            ) {
+                self.open_sdd_plan_options();
+            }
+        }
+
+        if self.sdd_new_session_after_cleanup {
+            self.sdd_new_session_after_cleanup = false;
+            self.app_event_tx.send(AppEvent::NewSession);
+        }
     }
 
     pub(crate) fn set_token_info(&mut self, info: Option<TokenUsageInfo>) {
@@ -678,6 +767,9 @@ impl ChatWidget {
     }
 
     fn on_error(&mut self, message: String) {
+        if self.sdd_pending_git_action.is_some() {
+            self.sdd_git_action_failed = true;
+        }
         self.finalize_turn();
         self.add_to_history(history_cell::new_error_event(message));
         self.request_redraw();
@@ -869,6 +961,12 @@ impl ChatWidget {
     }
 
     fn on_exec_command_end(&mut self, ev: ExecCommandEndEvent) {
+        if self.sdd_pending_git_action.is_some()
+            && ev.source == ExecCommandSource::SddGit
+            && ev.exit_code != 0
+        {
+            self.sdd_git_action_failed = true;
+        }
         let ev2 = ev.clone();
         self.defer_or_handle(|q| q.push_exec_end(ev), |s| s.handle_exec_end_now(ev2));
     }
@@ -1338,6 +1436,12 @@ impl ChatWidget {
             last_rendered_width: std::cell::Cell::new(None),
             feedback,
             current_rollout_path: None,
+            sdd_state: None,
+            sdd_pending_plan_rework_prompt: None,
+            sdd_open_plan_options_after_task: false,
+            sdd_pending_git_action: None,
+            sdd_git_action_failed: false,
+            sdd_new_session_after_cleanup: false,
         };
 
         widget.prefetch_rate_limits();
@@ -1422,6 +1526,12 @@ impl ChatWidget {
             last_rendered_width: std::cell::Cell::new(None),
             feedback,
             current_rollout_path: None,
+            sdd_state: None,
+            sdd_pending_plan_rework_prompt: None,
+            sdd_open_plan_options_after_task: false,
+            sdd_pending_git_action: None,
+            sdd_git_action_failed: false,
+            sdd_new_session_after_cleanup: false,
         };
 
         widget.prefetch_rate_limits();
@@ -1556,6 +1666,9 @@ impl ChatWidget {
                 const INIT_PROMPT: &str = include_str!("../prompt_for_init_command.md");
                 self.submit_user_message(INIT_PROMPT.to_string().into());
             }
+            SlashCommand::SddDevelop => {
+                self.handle_sdd_develop_command(None);
+            }
             SlashCommand::Compact => {
                 self.clear_token_usage();
                 self.app_event_tx.send(AppEvent::CodexOp(Op::Compact));
@@ -1664,6 +1777,341 @@ impl ChatWidget {
         }
     }
 
+    fn handle_sdd_develop_command(&mut self, description: Option<String>) {
+        if get_git_repo_root(&self.config.cwd).is_none() {
+            self.add_info_message(
+                "当前目录不是 Git 仓库，/sdd-develop 需要在 Git 仓库内运行。".to_string(),
+                None,
+            );
+            return;
+        }
+
+        if let Some(desc) = description
+            .map(|d| d.trim().to_string())
+            .filter(|d| !d.is_empty())
+        {
+            self.sdd_pending_plan_rework_prompt = None;
+            self.sdd_open_plan_options_after_task = false;
+            self.sdd_pending_git_action = None;
+            self.sdd_git_action_failed = false;
+            let branch_name = self.sdd_branch_name(&desc);
+            self.sdd_state = Some(SddDevelopState {
+                description: desc.clone(),
+                branch_name,
+                stage: SddDevelopStage::AwaitPlanDecision,
+            });
+            let prompt = self.build_sdd_plan_prompt(&desc);
+            self.submit_user_message(prompt.into());
+            self.add_info_message(
+                "已发送 SDD 计划生成请求，请查看 AI 输出的 task.md 后选择下一步。".to_string(),
+                Some("随时输入 /sdd-develop 可重新打开选项。".to_string()),
+            );
+            self.open_sdd_plan_options();
+            return;
+        }
+
+        match &self.sdd_state {
+            Some(SddDevelopState {
+                stage: SddDevelopStage::AwaitPlanDecision,
+                ..
+            }) => {
+                self.add_info_message(
+                    "当前处于计划阶段，可选择继续开发或修改计划。".to_string(),
+                    Some("使用弹窗选择下一步。".to_string()),
+                );
+                self.open_sdd_plan_options();
+            }
+            Some(SddDevelopState {
+                stage: SddDevelopStage::AwaitDevDecision,
+                ..
+            }) => {
+                self.add_info_message(
+                    "当前处于开发阶段，可合并、继续修改或放弃分支。".to_string(),
+                    Some("使用弹窗选择下一步。".to_string()),
+                );
+                self.open_sdd_dev_options();
+            }
+            None => {
+                self.add_info_message(
+                    "请在 /sdd-develop 后提供要实现的需求描述。".to_string(),
+                    None,
+                );
+            }
+        }
+    }
+
+    pub(crate) fn open_sdd_plan_options(&mut self) {
+        if !matches!(
+            self.sdd_state,
+            Some(SddDevelopState {
+                stage: SddDevelopStage::AwaitPlanDecision,
+                ..
+            })
+        ) {
+            self.add_info_message(
+                "没有待确认的计划，请先使用 /sdd-develop <需求> 启动流程。".to_string(),
+                None,
+            );
+            return;
+        }
+        let items = vec![
+            SelectionItem {
+                name: "同意计划，继续开发".to_string(),
+                description: Some("创建分支并按 task.md 实施".to_string()),
+                actions: vec![Box::new(|tx| tx.send(AppEvent::SddPlanApproved))],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "不同意计划，修改计划".to_string(),
+                description: Some("反馈后让 AI 更新 task.md".to_string()),
+                actions: vec![Box::new(|tx| tx.send(AppEvent::SddPlanRework))],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+        ];
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("选择 SDD 计划操作".to_string()),
+            footer_hint: Some(standard_popup_hint_line()),
+            items,
+            header: Box::new(()),
+            ..Default::default()
+        });
+        self.request_redraw();
+    }
+
+    pub(crate) fn open_sdd_dev_options(&mut self) {
+        if !matches!(
+            self.sdd_state,
+            Some(SddDevelopState {
+                stage: SddDevelopStage::AwaitDevDecision,
+                ..
+            })
+        ) {
+            self.add_info_message("当前没有待处理的 SDD 开发分支。".to_string(), None);
+            return;
+        }
+        let items = vec![
+            SelectionItem {
+                name: "使用 Pull Request 合并分支".to_string(),
+                description: Some("按既定流程发起/合并 PR".to_string()),
+                actions: vec![Box::new(|tx| tx.send(AppEvent::SddDevMergeBranch))],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "继续修改".to_string(),
+                description: Some("在当前分支继续迭代".to_string()),
+                actions: vec![Box::new(|tx| tx.send(AppEvent::SddDevRequestMoreChanges))],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "放弃修改（删除分支）".to_string(),
+                description: Some("删除临时分支并退出流程".to_string()),
+                actions: vec![Box::new(|tx| tx.send(AppEvent::SddDevAbandonBranch))],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+        ];
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("选择 SDD 开发后续操作".to_string()),
+            footer_hint: Some(standard_popup_hint_line()),
+            items,
+            header: Box::new(()),
+            ..Default::default()
+        });
+        self.request_redraw();
+    }
+
+    pub(crate) fn on_sdd_plan_approved(&mut self) {
+        let description = match self.sdd_state.as_ref() {
+            Some(state) if state.stage == SddDevelopStage::AwaitPlanDecision => {
+                state.description.clone()
+            }
+            Some(_) => {
+                self.add_info_message("当前不在计划确认阶段，无法继续开发。".to_string(), None);
+                return;
+            }
+            None => {
+                self.add_info_message(
+                    "没有活跃的 SDD 计划可继续开发，请先运行 /sdd-develop <需求>。".to_string(),
+                    None,
+                );
+                return;
+            }
+        };
+
+        self.sdd_pending_plan_rework_prompt = None;
+        self.sdd_open_plan_options_after_task = false;
+
+        let branch_name = match self.sdd_state.as_ref() {
+            Some(state) => state.branch_name.clone(),
+            None => {
+                self.add_error_message("无法确定 SDD 分支名称。".to_string());
+                return;
+            }
+        };
+
+        self.sdd_pending_git_action = Some(SddGitPendingAction::CreateBranch { description });
+        self.sdd_git_action_failed = false;
+        self.submit_op(Op::SddGitAction {
+            action: SddGitAction::CreateBranch {
+                name: branch_name,
+                base: SDD_BASE_BRANCH.to_string(),
+            },
+        });
+        self.add_info_message("已启动 SDD 分支创建，请等待工具完成。".to_string(), None);
+    }
+
+    pub(crate) fn on_sdd_plan_rework(&mut self) {
+        let Some(state) = self.sdd_state.as_ref() else {
+            self.add_info_message(
+                "没有活跃的 SDD 计划可修改，请先运行 /sdd-develop <需求>。".to_string(),
+                None,
+            );
+            return;
+        };
+        if state.stage != SddDevelopStage::AwaitPlanDecision {
+            self.add_info_message("当前不在计划阶段，无法修改计划。".to_string(), None);
+            return;
+        }
+        self.sdd_pending_git_action = None;
+        self.sdd_git_action_failed = false;
+        let prompt = self.build_sdd_plan_rework_prompt(&state.description);
+        self.sdd_pending_plan_rework_prompt = Some(prompt);
+        self.set_composer_text(String::new());
+        self.add_info_message(
+            "已准备计划修改请求，请在输入框补充反馈后提交。".to_string(),
+            Some("提交后会重新弹出计划选项。".to_string()),
+        );
+        self.request_redraw();
+    }
+
+    pub(crate) fn on_sdd_request_more_changes(&mut self) {
+        let Some(state) = self.sdd_state.as_ref() else {
+            self.add_info_message("没有活跃的 SDD 分支可继续修改。".to_string(), None);
+            return;
+        };
+        if state.stage != SddDevelopStage::AwaitDevDecision {
+            self.add_info_message("当前不在开发阶段，无法继续修改。".to_string(), None);
+            return;
+        }
+        let prefill = format!(
+            "请继续在当前分支上改进，需求背景：\n{}\n\n需要额外修改的细节：\n",
+            state.description
+        );
+        self.set_composer_text(prefill);
+        self.add_info_message(
+            "已在输入框放入继续修改的模板，请补充具体修改点后提交。".to_string(),
+            Some("提交后可再次输入 /sdd-develop 打开后续选项。".to_string()),
+        );
+        self.request_redraw();
+    }
+
+    pub(crate) fn on_sdd_merge_branch(&mut self) {
+        let Some(state) = self.sdd_state.take() else {
+            self.add_info_message("没有活跃的 SDD 分支可合并。".to_string(), None);
+            return;
+        };
+        if state.stage != SddDevelopStage::AwaitDevDecision {
+            self.sdd_state = Some(state);
+            self.add_info_message("当前不在开发阶段，无法合并分支。".to_string(), None);
+            return;
+        }
+        let commit_message = self.sdd_commit_message(&state.description);
+        let branch_name = state.branch_name.clone();
+        self.sdd_state = Some(state);
+        self.sdd_pending_git_action = Some(SddGitPendingAction::FinalizeMerge);
+        self.sdd_git_action_failed = false;
+        self.submit_op(Op::SddGitAction {
+            action: SddGitAction::FinalizeMerge {
+                name: branch_name,
+                base: SDD_BASE_BRANCH.to_string(),
+                commit_message,
+            },
+        });
+        self.add_info_message("已启动合并流程（提交并合并到基线分支）。".to_string(), None);
+    }
+
+    pub(crate) fn on_sdd_abandon_branch(&mut self) {
+        let Some(state) = self.sdd_state.take() else {
+            self.add_info_message("没有活跃的 SDD 分支可放弃。".to_string(), None);
+            return;
+        };
+        if state.stage != SddDevelopStage::AwaitDevDecision {
+            self.sdd_state = Some(state);
+            self.add_info_message("当前不在开发阶段，无法放弃分支。".to_string(), None);
+            return;
+        }
+        let branch_name = state.branch_name.clone();
+        self.sdd_state = Some(state);
+        self.sdd_pending_git_action = Some(SddGitPendingAction::AbandonBranch);
+        self.sdd_git_action_failed = false;
+        self.submit_op(Op::SddGitAction {
+            action: SddGitAction::AbandonBranch {
+                name: branch_name,
+                base: SDD_BASE_BRANCH.to_string(),
+            },
+        });
+        self.add_info_message("已启动删除分支流程，请等待工具完成。".to_string(), None);
+    }
+
+    fn build_sdd_plan_prompt(&self, description: &str) -> String {
+        let template = SDD_PLAN_PROMPT.trim();
+        if template.is_empty() {
+            format!("需求描述：\n{description}")
+        } else {
+            format!("{SDD_PLAN_PROMPT}\n\n需求描述：\n{description}")
+        }
+    }
+
+    fn sdd_branch_name(&self, description: &str) -> String {
+        let slug = Self::sdd_slug(description);
+        format!("{SDD_BRANCH_PREFIX}{slug}")
+    }
+
+    fn sdd_commit_message(&self, description: &str) -> String {
+        let slug = Self::sdd_slug(description);
+        format!("sdd: {slug}")
+    }
+
+    fn sdd_slug(description: &str) -> String {
+        let mut slug = String::new();
+        let mut prev_dash = false;
+        for ch in description.chars() {
+            if ch.is_ascii_alphanumeric() {
+                slug.push(ch.to_ascii_lowercase());
+                prev_dash = false;
+            } else if !prev_dash {
+                slug.push('-');
+                prev_dash = true;
+            }
+            if slug.len() >= 32 {
+                break;
+            }
+        }
+        let slug = slug.trim_matches('-').to_string();
+        if slug.is_empty() {
+            "task".to_string()
+        } else {
+            slug
+        }
+    }
+
+    fn build_sdd_plan_rework_prompt(&self, _description: &str) -> String {
+        "我认为你提出的task.md不够完善，还有以下问题需要解决：\n".to_string()
+    }
+
+    fn build_sdd_exec_prompt(&self, description: &str) -> String {
+        let template = SDD_EXEC_PROMPT.trim();
+        if template.is_empty() {
+            format!("需求描述：\n{description}")
+        } else {
+            format!("{SDD_EXEC_PROMPT}\n\n需求描述：\n{description}")
+        }
+    }
+
     pub(crate) fn handle_paste(&mut self, text: String) {
         self.bottom_pane.handle_paste(text);
     }
@@ -1717,11 +2165,12 @@ impl ChatWidget {
 
     fn submit_user_message(&mut self, user_message: UserMessage) {
         let UserMessage { text, image_paths } = user_message;
-        if text.is_empty() && image_paths.is_empty() {
+        if text.is_empty()
+            && image_paths.is_empty()
+            && self.sdd_pending_plan_rework_prompt.is_none()
+        {
             return;
         }
-
-        let mut items: Vec<UserInput> = Vec::new();
 
         // Special-case: "!cmd" executes a local shell command instead of sending to the model.
         if let Some(stripped) = text.strip_prefix('!') {
@@ -1741,8 +2190,16 @@ impl ChatWidget {
             return;
         }
 
-        if !text.is_empty() {
-            items.push(UserInput::Text { text: text.clone() });
+        if self.try_handle_sdd_develop(&text) {
+            return;
+        }
+
+        let (send_text, display_text) = self.apply_sdd_plan_rework_prefix(text);
+
+        let mut items: Vec<UserInput> = Vec::new();
+
+        if !send_text.is_empty() {
+            items.push(UserInput::Text { text: send_text });
         }
 
         for path in image_paths {
@@ -1750,13 +2207,17 @@ impl ChatWidget {
         }
 
         if let Some(skills) = self.bottom_pane.skills() {
-            let skill_mentions = find_skill_mentions(&text, skills);
+            let skill_mentions = find_skill_mentions(&display_text, skills);
             for skill in skill_mentions {
                 items.push(UserInput::Skill {
                     name: skill.name.clone(),
                     path: skill.path.clone(),
                 });
             }
+        }
+
+        if items.is_empty() {
+            return;
         }
 
         self.codex_op_tx
@@ -1769,19 +2230,48 @@ impl ChatWidget {
             });
 
         // Persist the text to cross-session message history.
-        if !text.is_empty() {
+        if !display_text.is_empty() {
             self.codex_op_tx
-                .send(Op::AddToHistory { text: text.clone() })
+                .send(Op::AddToHistory {
+                    text: display_text.clone(),
+                })
                 .unwrap_or_else(|e| {
                     tracing::error!("failed to send AddHistory op: {e}");
                 });
         }
 
         // Only show the text portion in conversation history.
-        if !text.is_empty() {
-            self.add_to_history(history_cell::new_user_prompt(text));
+        if !display_text.is_empty() {
+            self.add_to_history(history_cell::new_user_prompt(display_text));
         }
         self.needs_final_message_separator = false;
+    }
+
+    fn apply_sdd_plan_rework_prefix(&mut self, text: String) -> (String, String) {
+        if let Some(prefix) = self.sdd_pending_plan_rework_prompt.take() {
+            self.sdd_open_plan_options_after_task = true;
+            let mut combined = prefix;
+            combined.push_str(&text);
+            (combined, text)
+        } else {
+            (text.clone(), text)
+        }
+    }
+
+    fn try_handle_sdd_develop(&mut self, text: &str) -> bool {
+        if let Some((name, rest)) = parse_slash_name(text)
+            && name == SlashCommand::SddDevelop.command()
+        {
+            let description = rest.trim();
+            let description = if description.is_empty() {
+                None
+            } else {
+                Some(description.to_string())
+            };
+            self.handle_sdd_develop_command(description);
+            return true;
+        }
+        false
     }
 
     /// Replay a subset of initial events into the UI to seed the transcript when
