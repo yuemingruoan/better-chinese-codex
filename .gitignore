@@ -66,6 +66,7 @@ coverage/
 
 # personal files
 personal/
+checkpoint.md
 
 # os
 .DS_Store
