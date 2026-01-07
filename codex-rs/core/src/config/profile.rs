@@ -1,5 +1,6 @@
 use codex_utils_absolute_path::AbsolutePathBuf;
 use serde::Deserialize;
+use serde::Serialize;
 
 use crate::protocol::AskForApproval;
 use codex_protocol::config_types::ReasoningSummary;
@@ -9,7 +10,7 @@ use codex_protocol::openai_models::ReasoningEffort;
 
 /// Collection of common configuration options that a user can define as a unit
 /// in `config.toml`.
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ConfigProfile {
     pub model: Option<String>,
     /// The key in the `model_providers` map identifying the
@@ -28,6 +29,7 @@ pub struct ConfigProfile {
     pub experimental_use_freeform_apply_patch: Option<bool>,
     pub tools_web_search: Option<bool>,
     pub tools_view_image: Option<bool>,
+    pub analytics: Option<crate::config::types::AnalyticsConfigToml>,
     /// Optional feature toggles scoped to this profile.
     #[serde(default)]
     pub features: Option<crate::features::FeaturesToml>,

@@ -17,6 +17,16 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
 
+## Upstream merge strategy (Codex 0.77 → 0.79 sync)
+
+- Assets and docs follow upstream changes; do not keep deleted upstream assets.
+- Localized prompt files (提示词) do not follow upstream; keep existing Chinese prompts.
+- GitHub workflows remain deleted; do not sync upstream automation workflows.
+- Docs (except README) should match upstream official content and be localized to Chinese.
+- README stays as the fork's current version; do not merge upstream README changes.
+- Code conflicts require manual review case by case; default to preserving fork features and integrating upstream capabilities when possible.
+- Keep fork version numbers; do not align to upstream versions.
+
 # Rust/codex-rs
 
 In the codex-rs folder where the rust code lives:
@@ -95,6 +105,12 @@ If you don’t have the tool:
 - Tests should use pretty_assertions::assert_eq for clearer diffs. Import this at the top of the test module if it isn't already.
 - Prefer deep equals comparisons whenever possible. Perform `assert_eq!()` on entire objects, rather than individual fields.
 - Avoid mutating process environment in tests; prefer passing environment-derived flags or dependencies from above.
+
+### Spawning workspace binaries in tests (Cargo vs Buck2)
+
+- Prefer `codex_utils_cargo_bin::cargo_bin("...")` over `assert_cmd::Command::cargo_bin(...)` or `escargot` when tests need to spawn first-party binaries.
+  - Under Buck2, `CARGO_BIN_EXE_*` may be project-relative (e.g. `buck-out/...`), which breaks if a test changes its working directory. `codex_utils_cargo_bin::cargo_bin` resolves to an absolute path first.
+- When locating fixture files under Buck2, avoid `env!("CARGO_MANIFEST_DIR")` (Buck codegen sets it to `"."`). Prefer deriving paths from `codex_utils_cargo_bin::buck_project_root()` when needed.
 
 ### Integration tests (core)
 
