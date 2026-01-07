@@ -628,17 +628,16 @@ impl ChatWidget {
     }
 
     fn apply_token_info(&mut self, info: TokenUsageInfo) {
-        let percent = self.context_remaining_percent(&info);
+        let percent = self.context_used_percent(&info);
         let used_tokens = self.context_used_tokens(&info, percent.is_some());
         self.bottom_pane.set_context_window(percent, used_tokens);
         self.token_info = Some(info);
     }
 
-    fn context_remaining_percent(&self, info: &TokenUsageInfo) -> Option<i64> {
-        info.model_context_window.map(|window| {
-            info.last_token_usage
-                .percent_of_context_window_remaining(window)
-        })
+    fn context_used_percent(&self, info: &TokenUsageInfo) -> Option<i64> {
+        info.model_context_window
+            .or(self.config.model_context_window)
+            .map(|window| info.last_token_usage.percent_of_context_window_used(window))
     }
 
     fn context_used_tokens(&self, info: &TokenUsageInfo, percent_known: bool) -> Option<i64> {
@@ -1789,9 +1788,9 @@ impl ChatWidget {
                 }
                 self.request_exit();
             }
-            // SlashCommand::Undo => {
-            //     self.app_event_tx.send(AppEvent::CodexOp(Op::Undo));
-            // }
+            SlashCommand::Undo => {
+                self.app_event_tx.send(AppEvent::CodexOp(Op::Undo));
+            }
             SlashCommand::Diff => {
                 self.add_diff_in_progress();
                 let tx = self.app_event_tx.clone();
