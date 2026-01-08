@@ -42,6 +42,8 @@ use codex_core::protocol::SkillErrorInfo;
 use codex_core::protocol::TokenUsage;
 use codex_protocol::ConversationId;
 use codex_protocol::config_types::Language;
+#[cfg(target_os = "windows")]
+use codex_protocol::config_types::SandboxMode;
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::openai_models::ModelUpgrade;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
