@@ -905,6 +905,26 @@ impl App {
                                     .send(AppEvent::UpdateAskForApprovalPolicy(preset.approval));
                                 self.app_event_tx
                                     .send(AppEvent::UpdateSandboxPolicy(preset.sandbox.clone()));
+                                let sandbox_mode = match &preset.sandbox {
+                                    codex_core::protocol::SandboxPolicy::ReadOnly => {
+                                        Some(SandboxMode::ReadOnly)
+                                    }
+                                    codex_core::protocol::SandboxPolicy::WorkspaceWrite {
+                                        ..
+                                    } => Some(SandboxMode::WorkspaceWrite),
+                                    codex_core::protocol::SandboxPolicy::DangerFullAccess => {
+                                        Some(SandboxMode::DangerFullAccess)
+                                    }
+                                    codex_core::protocol::SandboxPolicy::ExternalSandbox {
+                                        ..
+                                    } => None,
+                                };
+                                if let Some(sandbox_mode) = sandbox_mode {
+                                    self.app_event_tx.send(AppEvent::PersistApprovalSelection {
+                                        approval_policy: preset.approval,
+                                        sandbox_mode,
+                                    });
+                                }
                                 let message = match self.config.language {
                                     Language::ZhCn => "已启用 Windows 实验性沙盒。".to_string(),
                                     Language::En => {
@@ -1025,7 +1045,42 @@ impl App {
                     }
                 }
             }
+            AppEvent::PersistApprovalSelection {
+                approval_policy,
+                sandbox_mode,
+            } => {
+                let profile = self.active_profile.as_deref();
+                match ConfigEditsBuilder::new(&self.config.codex_home)
+                    .with_profile(profile)
+                    .set_approval_policy(approval_policy)
+                    .set_sandbox_mode(sandbox_mode)
+                    .apply()
+                    .await
+                {
+                    Ok(()) => {}
+                    Err(err) => {
+                        tracing::error!(
+                            error = %err,
+                            "failed to persist approval selection"
+                        );
+                        let message = match self.config.language {
+                            Language::ZhCn => format!("保存授权设置失败：{err}"),
+                            Language::En => format!("Failed to save approval settings: {err}"),
+                        };
+                        self.chat_widget.add_error_message(message);
+                    }
+                }
+            }
             AppEvent::UpdateAskForApprovalPolicy(policy) => {
+                if let Err(err) = self.config.approval_policy.set(policy) {
+                    tracing::warn!(%err, "failed to set approval policy on app config");
+                    let message = match self.config.language {
+                        Language::ZhCn => format!("设置审批策略失败：{err}"),
+                        Language::En => format!("Failed to set approval policy: {err}"),
+                    };
+                    self.chat_widget.add_error_message(message);
+                    return Ok(true);
+                }
                 self.chat_widget.set_approval_policy(policy);
             }
             AppEvent::UpdateSandboxPolicy(policy) => {

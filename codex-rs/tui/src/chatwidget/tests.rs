@@ -2078,6 +2078,46 @@ async fn preset_matching_ignores_extra_writable_roots() {
 }
 
 #[tokio::test]
+async fn approvals_selection_emits_persist_event() {
+    let (_chat, app_event_tx, mut rx, _op_rx) = make_chatwidget_manual_with_sender().await;
+    let actions = ChatWidget::approval_preset_actions(
+        AskForApproval::OnRequest,
+        SandboxPolicy::new_workspace_write_policy(),
+    );
+
+    assert_eq!(actions.len(), 1);
+    actions[0](&app_event_tx);
+
+    let event = rx.try_recv().expect("override context");
+    assert_matches!(
+        event,
+        AppEvent::CodexOp(Op::OverrideTurnContext {
+            approval_policy: Some(AskForApproval::OnRequest),
+            sandbox_policy: Some(SandboxPolicy::WorkspaceWrite { .. }),
+            ..
+        })
+    );
+    let event = rx.try_recv().expect("update approval policy");
+    assert_matches!(
+        event,
+        AppEvent::UpdateAskForApprovalPolicy(AskForApproval::OnRequest)
+    );
+    let event = rx.try_recv().expect("update sandbox policy");
+    assert_matches!(
+        event,
+        AppEvent::UpdateSandboxPolicy(SandboxPolicy::WorkspaceWrite { .. })
+    );
+    let event = rx.try_recv().expect("persist approval selection");
+    assert_matches!(
+        event,
+        AppEvent::PersistApprovalSelection {
+            approval_policy: AskForApproval::OnRequest,
+            sandbox_mode: SandboxMode::WorkspaceWrite,
+        }
+    );
+}
+
+#[tokio::test]
 async fn full_access_confirmation_popup_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(None).await;
 

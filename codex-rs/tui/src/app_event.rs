@@ -6,6 +6,7 @@ use codex_core::protocol::Event;
 use codex_core::protocol::RateLimitSnapshot;
 use codex_file_search::FileMatch;
 use codex_protocol::config_types::Language;
+use codex_protocol::config_types::SandboxMode;
 use codex_protocol::openai_models::ModelPreset;
 
 use crate::bottom_pane::ApprovalRequest;
@@ -92,6 +93,12 @@ pub(crate) enum AppEvent {
     /// Persist the selected UI language to the appropriate config.
     PersistLanguageSelection {
         language: Language,
+    },
+
+    /// Persist the selected approval policy and sandbox mode to the config.
+    PersistApprovalSelection {
+        approval_policy: AskForApproval,
+        sandbox_mode: SandboxMode,
     },
 
     /// Open the reasoning selection popup after picking a model.

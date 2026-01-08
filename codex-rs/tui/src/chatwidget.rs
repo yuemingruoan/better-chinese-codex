@@ -67,6 +67,7 @@ use codex_core::skills::model::SkillMetadata;
 use codex_protocol::ConversationId;
 use codex_protocol::account::PlanType;
 use codex_protocol::approvals::ElicitationRequestEvent;
+use codex_protocol::config_types::SandboxMode;
 use codex_protocol::parse_command::ParsedCommand;
 use codex_protocol::user_input::UserInput;
 use crossterm::event::KeyCode;
@@ -4046,7 +4047,22 @@ impl ChatWidget {
             }));
             tx.send(AppEvent::UpdateAskForApprovalPolicy(approval));
             tx.send(AppEvent::UpdateSandboxPolicy(sandbox_clone));
+            if let Some(sandbox_mode) = Self::sandbox_mode_for_policy(&sandbox) {
+                tx.send(AppEvent::PersistApprovalSelection {
+                    approval_policy: approval,
+                    sandbox_mode,
+                });
+            }
         })]
+    }
+
+    fn sandbox_mode_for_policy(policy: &SandboxPolicy) -> Option<SandboxMode> {
+        match policy {
+            SandboxPolicy::ReadOnly => Some(SandboxMode::ReadOnly),
+            SandboxPolicy::WorkspaceWrite { .. } => Some(SandboxMode::WorkspaceWrite),
+            SandboxPolicy::DangerFullAccess => Some(SandboxMode::DangerFullAccess),
+            SandboxPolicy::ExternalSandbox { .. } => None,
+        }
     }
 
     fn preset_matches_current(
