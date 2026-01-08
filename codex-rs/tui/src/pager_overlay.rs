@@ -611,6 +611,7 @@ mod tests {
     use super::*;
     use codex_core::protocol::ExecCommandSource;
     use codex_core::protocol::ReviewDecision;
+    use codex_protocol::config_types::Language;
     use insta::assert_snapshot;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -742,9 +743,12 @@ mod tests {
         let apply_begin_cell: Arc<dyn HistoryCell> = Arc::new(new_patch_event(apply_changes, &cwd));
         cells.push(apply_begin_cell);
 
-        let apply_end_cell: Arc<dyn HistoryCell> =
-            history_cell::new_approval_decision_cell(vec!["ls".into()], ReviewDecision::Approved)
-                .into();
+        let apply_end_cell: Arc<dyn HistoryCell> = history_cell::new_approval_decision_cell(
+            vec!["ls".into()],
+            ReviewDecision::Approved,
+            Language::ZhCn,
+        )
+        .into();
         cells.push(apply_end_cell);
 
         let mut exec_cell = crate::exec_cell::new_active_exec_command(
@@ -754,6 +758,7 @@ mod tests {
             ExecCommandSource::Agent,
             None,
             true,
+            Language::ZhCn,
         );
         exec_cell.complete_call(
             "exec-1",

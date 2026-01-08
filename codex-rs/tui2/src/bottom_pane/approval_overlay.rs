@@ -23,6 +23,7 @@ use codex_core::protocol::ExecPolicyAmendment;
 use codex_core::protocol::FileChange;
 use codex_core::protocol::Op;
 use codex_core::protocol::ReviewDecision;
+use codex_protocol::config_types::Language;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
@@ -69,10 +70,16 @@ pub(crate) struct ApprovalOverlay {
     current_complete: bool,
     done: bool,
     features: Features,
+    language: Language,
 }
 
 impl ApprovalOverlay {
-    pub fn new(request: ApprovalRequest, app_event_tx: AppEventSender, features: Features) -> Self {
+    pub fn new(
+        request: ApprovalRequest,
+        app_event_tx: AppEventSender,
+        features: Features,
+        language: Language,
+    ) -> Self {
         let mut view = Self {
             current_request: None,
             current_variant: None,
@@ -83,6 +90,7 @@ impl ApprovalOverlay {
             current_complete: false,
             done: false,
             features,
+            language,
         };
         view.set_current(request);
         view
@@ -192,7 +200,11 @@ impl ApprovalOverlay {
     }
 
     fn handle_exec_decision(&self, id: &str, command: &[String], decision: ReviewDecision) {
-        let cell = history_cell::new_approval_decision_cell(command.to_vec(), decision.clone());
+        let cell = history_cell::new_approval_decision_cell(
+            command.to_vec(),
+            decision.clone(),
+            self.language,
+        );
         self.app_event_tx.send(AppEvent::InsertHistoryCell(cell));
         self.app_event_tx.send(AppEvent::CodexOp(Op::ExecApproval {
             id: id.to_string(),
@@ -530,6 +542,7 @@ fn elicitation_options() -> Vec<ApprovalOption> {
 mod tests {
     use super::*;
     use crate::app_event::AppEvent;
+    use codex_protocol::config_types::Language;
     use pretty_assertions::assert_eq;
     use tokio::sync::mpsc::unbounded_channel;
 
@@ -546,7 +559,12 @@ mod tests {
     fn ctrl_c_aborts_and_clears_queue() {
         let (tx, _rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx);
-        let mut view = ApprovalOverlay::new(make_exec_request(), tx, Features::with_defaults());
+        let mut view = ApprovalOverlay::new(
+            make_exec_request(),
+            tx,
+            Features::with_defaults(),
+            Language::En,
+        );
         view.enqueue_request(make_exec_request());
         assert_eq!(CancellationEvent::Handled, view.on_ctrl_c());
         assert!(view.queue.is_empty());
@@ -557,7 +575,12 @@ mod tests {
     fn shortcut_triggers_selection() {
         let (tx, mut rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx);
-        let mut view = ApprovalOverlay::new(make_exec_request(), tx, Features::with_defaults());
+        let mut view = ApprovalOverlay::new(
+            make_exec_request(),
+            tx,
+            Features::with_defaults(),
+            Language::En,
+        );
         assert!(!view.is_complete());
         view.handle_key_event(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
         // We expect at least one CodexOp message in the queue.
@@ -586,6 +609,7 @@ mod tests {
             },
             tx,
             Features::with_defaults(),
+            Language::En,
         );
         view.handle_key_event(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
         let mut saw_op = false;
@@ -628,6 +652,7 @@ mod tests {
                 features.disable(Feature::ExecPolicy);
                 features
             },
+            Language::En,
         );
         assert_eq!(view.options.len(), 2);
         view.handle_key_event(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
@@ -647,7 +672,7 @@ mod tests {
             proposed_execpolicy_amendment: None,
         };
 
-        let view = ApprovalOverlay::new(exec_request, tx, Features::with_defaults());
+        let view = ApprovalOverlay::new(exec_request, tx, Features::with_defaults(), Language::En);
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, view.desired_height(80)));
         view.render(Rect::new(0, 0, 80, view.desired_height(80)), &mut buf);
 
@@ -673,7 +698,11 @@ mod tests {
             "-lc".into(),
             "git add tui/src/render/mod.rs tui/src/render/renderable.rs".into(),
         ];
-        let cell = history_cell::new_approval_decision_cell(command, ReviewDecision::Approved);
+        let cell = history_cell::new_approval_decision_cell(
+            command,
+            ReviewDecision::Approved,
+            Language::En,
+        );
         let lines = cell.display_lines(28);
         let rendered: Vec<String> = lines
             .iter()
@@ -697,7 +726,12 @@ mod tests {
     fn enter_sets_last_selected_index_without_dismissing() {
         let (tx_raw, mut rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx_raw);
-        let mut view = ApprovalOverlay::new(make_exec_request(), tx, Features::with_defaults());
+        let mut view = ApprovalOverlay::new(
+            make_exec_request(),
+            tx,
+            Features::with_defaults(),
+            Language::En,
+        );
         view.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
         assert!(

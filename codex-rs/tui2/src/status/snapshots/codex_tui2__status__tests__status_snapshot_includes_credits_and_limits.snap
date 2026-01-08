@@ -5,7 +5,7 @@ expression: sanitized
 /status
 
 ╭───────────────────────────────────────────────────────────────────╮
-│  >_ OpenAI Codex (v1.6.1)                                         │
+│  >_ OpenAI Codex (v1.6.2)                                         │
 │                                                                   │
 │ Visit https://chatgpt.com/codex/settings/usage for up-to-date     │
 │ information on rate limits and credits                            │
@@ -18,7 +18,7 @@ expression: sanitized
 │                                                                   │
 │  Token usage:      2K total  (1.4K input + 600 output)            │
 │  Context window:   0% used (2.2K used / 272K)                     │
-│  5h limit:         [███████████░░░░░░░░░] 55% left (resets 09:25) │
-│  Weekly limit:     [██████████████░░░░░░] 70% left (resets 09:55) │
+│  5h limit:         [███████████░░░░░░░░░] 55% left (09:25 reset)  │
+│  Weekly limit:     [██████████████░░░░░░] 70% left (09:55 reset)  │
 │  Credits:          38 credits                                     │
 ╰───────────────────────────────────────────────────────────────────╯

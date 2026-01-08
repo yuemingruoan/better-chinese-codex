@@ -28,11 +28,13 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use unicode_width::UnicodeWidthStr;
 
 use crate::diff_render::display_path_for;
+use crate::i18n::tr;
 use crate::key_hint;
 use crate::text_formatting::truncate_text;
 use crate::tui::FrameRequester;
 use crate::tui::Tui;
 use crate::tui::TuiEvent;
+use codex_protocol::config_types::Language;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::SessionMetaLine;
 
@@ -73,6 +75,7 @@ pub async fn run_resume_picker(
     codex_home: &Path,
     default_provider: &str,
     show_all: bool,
+    language: Language,
 ) -> Result<ResumeSelection> {
     let alt = AltScreenGuard::enter(tui);
     let (bg_tx, bg_rx) = mpsc::unbounded_channel();
@@ -113,6 +116,7 @@ pub async fn run_resume_picker(
         default_provider.clone(),
         show_all,
         filter_cwd,
+        language,
     );
     state.start_initial_load();
     state.request_frame();
@@ -190,6 +194,7 @@ struct PickerState {
     default_provider: String,
     show_all: bool,
     filter_cwd: Option<PathBuf>,
+    language: Language,
 }
 
 struct PaginationState {
@@ -259,6 +264,7 @@ impl PickerState {
         default_provider: String,
         show_all: bool,
         filter_cwd: Option<PathBuf>,
+        language: Language,
     ) -> Self {
         Self {
             codex_home,
@@ -283,6 +289,7 @@ impl PickerState {
             default_provider,
             show_all,
             filter_cwd,
+            language,
         }
     }
 
@@ -429,7 +436,7 @@ impl PickerState {
             self.pagination.reached_scan_cap = true;
         }
 
-        let rows = rows_from_items(page.items);
+        let rows = rows_from_items(page.items, self.language);
         for row in rows {
             if self.seen_paths.insert(row.path.clone()) {
                 self.all_rows.push(row);
@@ -627,11 +634,14 @@ impl PickerState {
     }
 }
 
-fn rows_from_items(items: Vec<ConversationItem>) -> Vec<Row> {
-    items.into_iter().map(|item| head_to_row(&item)).collect()
+fn rows_from_items(items: Vec<ConversationItem>, language: Language) -> Vec<Row> {
+    items
+        .into_iter()
+        .map(|item| head_to_row(&item, language))
+        .collect()
 }
 
-fn head_to_row(item: &ConversationItem) -> Row {
+fn head_to_row(item: &ConversationItem, language: Language) -> Row {
     let created_at = item
         .created_at
         .as_deref()
@@ -647,7 +657,13 @@ fn head_to_row(item: &ConversationItem) -> Row {
     let preview = preview_from_head(&item.head)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| String::from("（暂无消息）"));
+        .unwrap_or_else(|| {
+            match language {
+                Language::ZhCn => "（暂无消息）",
+                Language::En => "(no message)",
+            }
+            .to_string()
+        });
 
     Row {
         path: item.path.clone(),
@@ -718,37 +734,51 @@ fn draw_picker(tui: &mut Tui, state: &PickerState) -> std::io::Result<()> {
         .areas(area);
 
         // Header
-        frame.render_widget_ref(Line::from(vec!["恢复之前的会话".bold().cyan()]), header);
+        frame.render_widget_ref(
+            Line::from(vec![
+                tr(state.language, "恢复之前的会话", "Resume previous session")
+                    .bold()
+                    .cyan(),
+            ]),
+            header,
+        );
 
         // Search line
         let q = if state.query.is_empty() {
-            "输入以搜索".dim().to_string()
+            tr(state.language, "输入以搜索", "Type to search")
+                .dim()
+                .to_string()
         } else {
-            format!("搜索：{}", state.query)
+            format!(
+                "{}{}",
+                tr(state.language, "搜索：", "Search: "),
+                state.query
+            )
         };
         frame.render_widget_ref(Line::from(q), search);
 
-        let metrics = calculate_column_metrics(&state.filtered_rows, state.show_all);
+        let metrics =
+            calculate_column_metrics(&state.filtered_rows, state.show_all, state.language);
 
         // Column headers and list
-        render_column_headers(frame, columns, &metrics);
+        render_column_headers(frame, columns, &metrics, state.language);
         render_list(frame, list, state, &metrics);
 
         // Hint line
         let hint_line: Line = vec![
             key_hint::plain(KeyCode::Enter).into(),
-            " 恢复会话".dim(),
+            tr(state.language, " 恢复会话", " Resume session").dim(),
             "    ".dim(),
             key_hint::plain(KeyCode::Esc).into(),
-            " 开启新会话".dim(),
+            tr(state.language, " 开启新会话", " Start new session").dim(),
             "    ".dim(),
             key_hint::ctrl(KeyCode::Char('c')).into(),
-            " 退出".dim(),
+            tr(state.language, " 退出", " Quit").dim(),
             "    ".dim(),
             key_hint::plain(KeyCode::Up).into(),
             "/".dim(),
             key_hint::plain(KeyCode::Down).into(),
-            " 浏览列表".dim(),
+            tr(state.language, " 浏览列表", " Browse list").dim(),
         ]
         .into();
         frame.render_widget_ref(hint_line, hint);
@@ -865,7 +895,17 @@ fn render_list(
     }
 
     if state.pagination.loading.is_pending() && y < area.y.saturating_add(area.height) {
-        let loading_line: Line = vec!["  ".into(), "正在加载更早的会话…".italic().dim()].into();
+        let loading_line: Line = vec![
+            "  ".into(),
+            tr(
+                state.language,
+                "正在加载更早的会话…",
+                "Loading earlier sessions…",
+            )
+            .italic()
+            .dim(),
+        ]
+        .into();
         let rect = Rect::new(area.x, y, area.width, 1);
         frame.render_widget_ref(loading_line, rect);
     }
@@ -876,52 +916,101 @@ fn render_empty_state_line(state: &PickerState) -> Line<'static> {
         if state.search_state.is_active()
             || (state.pagination.loading.is_pending() && state.pagination.next_cursor.is_some())
         {
-            return vec!["正在搜索…".italic().dim()].into();
+            return vec![tr(state.language, "正在搜索…", "Searching…").italic().dim()].into();
         }
         if state.pagination.reached_scan_cap {
             let msg = format!(
-                "搜索仅扫描了前 {} 个会话，可能还有更多结果",
+                "{}{}",
+                tr(
+                    state.language,
+                    "搜索仅扫描了前 ",
+                    "Search scanned only the first ",
+                ),
                 state.pagination.num_scanned_files
             );
+            let msg = match state.language {
+                Language::ZhCn => format!("{msg} 个会话，可能还有更多结果"),
+                Language::En => format!("{msg} sessions; more results may exist"),
+            };
             return vec![Span::from(msg).italic().dim()].into();
         }
-        return vec!["未找到匹配的搜索结果".italic().dim()].into();
+        return vec![
+            tr(
+                state.language,
+                "未找到匹配的搜索结果",
+                "No matching search results",
+            )
+            .italic()
+            .dim(),
+        ]
+        .into();
     }
 
     if state.all_rows.is_empty() && state.pagination.num_scanned_files == 0 {
-        return vec!["尚无会话记录".italic().dim()].into();
+        return vec![
+            tr(state.language, "尚无会话记录", "No sessions yet")
+                .italic()
+                .dim(),
+        ]
+        .into();
     }
 
     if state.pagination.loading.is_pending() {
-        return vec!["正在加载更早的会话…".italic().dim()].into();
+        return vec![
+            tr(
+                state.language,
+                "正在加载更早的会话…",
+                "Loading earlier sessions…",
+            )
+            .italic()
+            .dim(),
+        ]
+        .into();
     }
 
-    vec!["尚无会话记录".italic().dim()].into()
+    vec![
+        tr(state.language, "尚无会话记录", "No sessions yet")
+            .italic()
+            .dim(),
+    ]
+    .into()
 }
 
-fn human_time_ago(ts: DateTime<Utc>) -> String {
+fn human_time_ago(ts: DateTime<Utc>, language: Language) -> String {
     let now = Utc::now();
     let delta = now - ts;
     let secs = delta.num_seconds();
     if secs < 60 {
         let n = secs.max(0);
-        format!("{n} 秒前")
+        match language {
+            Language::ZhCn => format!("{n} 秒前"),
+            Language::En => format!("{n}s ago"),
+        }
     } else if secs < 60 * 60 {
         let m = secs / 60;
-        format!("{m} 分钟前")
+        match language {
+            Language::ZhCn => format!("{m} 分钟前"),
+            Language::En => format!("{m}m ago"),
+        }
     } else if secs < 60 * 60 * 24 {
         let h = secs / 3600;
-        format!("{h} 小时前")
+        match language {
+            Language::ZhCn => format!("{h} 小时前"),
+            Language::En => format!("{h}h ago"),
+        }
     } else {
         let d = secs / (60 * 60 * 24);
-        format!("{d} 天前")
+        match language {
+            Language::ZhCn => format!("{d} 天前"),
+            Language::En => format!("{d}d ago"),
+        }
     }
 }
 
-fn format_updated_label(row: &Row) -> String {
+fn format_updated_label(row: &Row, language: Language) -> String {
     match (row.updated_at, row.created_at) {
-        (Some(updated), _) => human_time_ago(updated),
-        (None, Some(created)) => human_time_ago(created),
+        (Some(updated), _) => human_time_ago(updated, language),
+        (None, Some(created)) => human_time_ago(created, language),
         (None, None) => "-".to_string(),
     }
 }
@@ -930,6 +1019,7 @@ fn render_column_headers(
     frame: &mut crate::custom_terminal::Frame,
     area: Rect,
     metrics: &ColumnMetrics,
+    language: Language,
 ) {
     if area.height == 0 {
         return;
@@ -939,7 +1029,10 @@ fn render_column_headers(
     if metrics.max_updated_width > 0 {
         let label = format!(
             "{text:<width$}",
-            text = "更新时间",
+            text = match language {
+                Language::ZhCn => "更新时间",
+                Language::En => "Updated",
+            },
             width = metrics.max_updated_width
         );
         spans.push(Span::from(label).bold());
@@ -948,7 +1041,10 @@ fn render_column_headers(
     if metrics.max_branch_width > 0 {
         let label = format!(
             "{text:<width$}",
-            text = "分支",
+            text = match language {
+                Language::ZhCn => "分支",
+                Language::En => "Branch",
+            },
             width = metrics.max_branch_width
         );
         spans.push(Span::from(label).bold());
@@ -957,13 +1053,16 @@ fn render_column_headers(
     if metrics.max_cwd_width > 0 {
         let label = format!(
             "{text:<width$}",
-            text = "工作目录",
+            text = match language {
+                Language::ZhCn => "工作目录",
+                Language::En => "Working dir",
+            },
             width = metrics.max_cwd_width
         );
         spans.push(Span::from(label).bold());
         spans.push("  ".into());
     }
-    spans.push("会话内容".bold());
+    spans.push(tr(language, "会话内容", "Session content").bold());
     frame.render_widget_ref(Line::from(spans), area);
 }
 
@@ -974,7 +1073,7 @@ struct ColumnMetrics {
     labels: Vec<(String, String, String)>,
 }
 
-fn calculate_column_metrics(rows: &[Row], include_cwd: bool) -> ColumnMetrics {
+fn calculate_column_metrics(rows: &[Row], include_cwd: bool, language: Language) -> ColumnMetrics {
     fn right_elide(s: &str, max: usize) -> String {
         if s.chars().count() <= max {
             return s.to_string();
@@ -995,16 +1094,25 @@ fn calculate_column_metrics(rows: &[Row], include_cwd: bool) -> ColumnMetrics {
     }
 
     let mut labels: Vec<(String, String, String)> = Vec::with_capacity(rows.len());
-    let mut max_updated_width = UnicodeWidthStr::width("更新时间");
-    let mut max_branch_width = UnicodeWidthStr::width("分支");
+    let mut max_updated_width = UnicodeWidthStr::width(match language {
+        Language::ZhCn => "更新时间",
+        Language::En => "Updated",
+    });
+    let mut max_branch_width = UnicodeWidthStr::width(match language {
+        Language::ZhCn => "分支",
+        Language::En => "Branch",
+    });
     let mut max_cwd_width = if include_cwd {
-        UnicodeWidthStr::width("工作目录")
+        UnicodeWidthStr::width(match language {
+            Language::ZhCn => "工作目录",
+            Language::En => "Working dir",
+        })
     } else {
         0
     };
 
     for row in rows {
-        let updated = format_updated_label(row);
+        let updated = format_updated_label(row, language);
         let branch_raw = row.git_branch.clone().unwrap_or_default();
         let branch = right_elide(&branch_raw, 24);
         let cwd = if include_cwd {
@@ -1137,7 +1245,7 @@ mod tests {
             created_at: Some("2025-01-02T00:00:00Z".into()),
             updated_at: Some("2025-01-02T00:00:00Z".into()),
         };
-        let rows = rows_from_items(vec![a, b]);
+        let rows = rows_from_items(vec![a, b], Language::En);
         assert_eq!(rows.len(), 2);
         // Preserve the given order even if timestamps differ; backend already provides newest-first.
         assert!(rows[0].preview.contains('A'));
@@ -1154,7 +1262,7 @@ mod tests {
             updated_at: Some("2025-01-01T01:00:00Z".into()),
         };
 
-        let row = head_to_row(&item);
+        let row = head_to_row(&item, Language::En);
         let expected_created = chrono::DateTime::parse_from_rfc3339("2025-01-01T00:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
@@ -1181,6 +1289,7 @@ mod tests {
             String::from("openai"),
             true,
             None,
+            Language::En,
         );
 
         let now = Utc::now();
@@ -1217,7 +1326,7 @@ mod tests {
         state.scroll_top = 0;
         state.update_view_rows(3);
 
-        let metrics = calculate_column_metrics(&state.filtered_rows, state.show_all);
+        let metrics = calculate_column_metrics(&state.filtered_rows, state.show_all, Language::En);
 
         let width: u16 = 80;
         let height: u16 = 6;
@@ -1230,7 +1339,7 @@ mod tests {
             let area = frame.area();
             let segments =
                 Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(area);
-            render_column_headers(&mut frame, segments[0], &metrics);
+            render_column_headers(&mut frame, segments[0], &metrics, Language::En);
             render_list(&mut frame, segments[1], &state, &metrics);
         }
         terminal.flush().expect("flush");
@@ -1330,6 +1439,7 @@ mod tests {
             String::from("openai"),
             true,
             None,
+            Language::En,
         );
 
         let page = RolloutRecorder::list_conversations(
@@ -1343,7 +1453,7 @@ mod tests {
         .await
         .expect("list conversations");
 
-        let rows = rows_from_items(page.items);
+        let rows = rows_from_items(page.items, Language::En);
         state.all_rows = rows.clone();
         state.filtered_rows = rows;
         state.view_rows = Some(4);
@@ -1351,7 +1461,7 @@ mod tests {
         state.scroll_top = 0;
         state.update_view_rows(4);
 
-        let metrics = calculate_column_metrics(&state.filtered_rows, state.show_all);
+        let metrics = calculate_column_metrics(&state.filtered_rows, state.show_all, Language::En);
 
         let width: u16 = 80;
         let height: u16 = 9;
@@ -1378,7 +1488,7 @@ mod tests {
 
             frame.render_widget_ref(Line::from("Type to search".dim()), search);
 
-            render_column_headers(&mut frame, columns, &metrics);
+            render_column_headers(&mut frame, columns, &metrics, Language::En);
             render_list(&mut frame, list, &state, &metrics);
 
             let hint_line: Line = vec![
@@ -1410,6 +1520,7 @@ mod tests {
             String::from("openai"),
             true,
             None,
+            Language::En,
         );
 
         state.reset_pagination();
@@ -1478,6 +1589,7 @@ mod tests {
             String::from("openai"),
             true,
             None,
+            Language::En,
         );
         state.reset_pagination();
         state.ingest_page(page(
@@ -1509,6 +1621,7 @@ mod tests {
             String::from("openai"),
             true,
             None,
+            Language::En,
         );
 
         let mut items = Vec::new();
@@ -1553,6 +1666,7 @@ mod tests {
             String::from("openai"),
             true,
             None,
+            Language::En,
         );
 
         let mut items = Vec::new();
@@ -1597,6 +1711,7 @@ mod tests {
             String::from("openai"),
             true,
             None,
+            Language::En,
         );
         state.reset_pagination();
         state.ingest_page(page(

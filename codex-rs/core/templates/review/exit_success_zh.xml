@@ -1,0 +1,7 @@
+<user_action>
+  <context>用户发起了代码审查任务。以下是审查模型给出的完整输出。用户可以选择一条或多条意见进行处理。</context>
+  <action>review</action>
+  <results>
+  {results}
+  </results>
+</user_action>

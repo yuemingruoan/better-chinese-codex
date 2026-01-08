@@ -1,4 +1,5 @@
 use codex_core::protocol::SandboxPolicy;
+use codex_protocol::config_types::Language;
 use std::path::PathBuf;
 
 /// Returns a warning describing why `--add-dir` entries will be ignored for the
@@ -7,6 +8,7 @@ use std::path::PathBuf;
 pub fn add_dir_warning_message(
     additional_dirs: &[PathBuf],
     sandbox_policy: &SandboxPolicy,
+    language: Language,
 ) -> Option<String> {
     if additional_dirs.is_empty() {
         return None;
@@ -16,19 +18,24 @@ pub fn add_dir_warning_message(
         SandboxPolicy::WorkspaceWrite { .. }
         | SandboxPolicy::DangerFullAccess
         | SandboxPolicy::ExternalSandbox { .. } => None,
-        SandboxPolicy::ReadOnly => Some(format_warning(additional_dirs)),
+        SandboxPolicy::ReadOnly => Some(format_warning(additional_dirs, language)),
     }
 }
 
-fn format_warning(additional_dirs: &[PathBuf]) -> String {
+fn format_warning(additional_dirs: &[PathBuf], language: Language) -> String {
     let joined_paths = additional_dirs
         .iter()
         .map(|path| path.to_string_lossy())
         .collect::<Vec<_>>()
         .join(", ");
-    format!(
-        "由于当前沙箱模式为只读，--add-dir ({joined_paths}) 将被忽略。请切换到 workspace-write 或 danger-full-access 以允许额外的可写根目录。"
-    )
+    match language {
+        Language::ZhCn => format!(
+            "由于当前沙箱模式为只读，--add-dir ({joined_paths}) 将被忽略。请切换到 workspace-write 或 danger-full-access 以允许额外的可写根目录。"
+        ),
+        Language::En => format!(
+            "Since the sandbox is read-only, --add-dir ({joined_paths}) will be ignored. Switch to workspace-write or danger-full-access to allow additional writable roots."
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -36,6 +43,7 @@ mod tests {
     use super::add_dir_warning_message;
     use codex_core::protocol::NetworkAccess;
     use codex_core::protocol::SandboxPolicy;
+    use codex_protocol::config_types::Language;
     use pretty_assertions::assert_eq;
     use std::path::PathBuf;
 
@@ -43,14 +51,20 @@ mod tests {
     fn returns_none_for_workspace_write() {
         let sandbox = SandboxPolicy::new_workspace_write_policy();
         let dirs = vec![PathBuf::from("/tmp/example")];
-        assert_eq!(add_dir_warning_message(&dirs, &sandbox), None);
+        assert_eq!(
+            add_dir_warning_message(&dirs, &sandbox, Language::ZhCn),
+            None
+        );
     }
 
     #[test]
     fn returns_none_for_danger_full_access() {
         let sandbox = SandboxPolicy::DangerFullAccess;
         let dirs = vec![PathBuf::from("/tmp/example")];
-        assert_eq!(add_dir_warning_message(&dirs, &sandbox), None);
+        assert_eq!(
+            add_dir_warning_message(&dirs, &sandbox, Language::ZhCn),
+            None
+        );
     }
 
     #[test]
@@ -59,14 +73,17 @@ mod tests {
             network_access: NetworkAccess::Enabled,
         };
         let dirs = vec![PathBuf::from("/tmp/example")];
-        assert_eq!(add_dir_warning_message(&dirs, &sandbox), None);
+        assert_eq!(
+            add_dir_warning_message(&dirs, &sandbox, Language::ZhCn),
+            None
+        );
     }
 
     #[test]
     fn warns_for_read_only() {
         let sandbox = SandboxPolicy::ReadOnly;
         let dirs = vec![PathBuf::from("relative"), PathBuf::from("/abs")];
-        let message = add_dir_warning_message(&dirs, &sandbox)
+        let message = add_dir_warning_message(&dirs, &sandbox, Language::ZhCn)
             .expect("expected warning for read-only sandbox");
         assert_eq!(
             message,
@@ -78,6 +95,9 @@ mod tests {
     fn returns_none_when_no_additional_dirs() {
         let sandbox = SandboxPolicy::ReadOnly;
         let dirs: Vec<PathBuf> = Vec::new();
-        assert_eq!(add_dir_warning_message(&dirs, &sandbox), None);
+        assert_eq!(
+            add_dir_warning_message(&dirs, &sandbox, Language::ZhCn),
+            None
+        );
     }
 }

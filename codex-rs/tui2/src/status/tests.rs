@@ -14,6 +14,7 @@ use codex_core::protocol::RateLimitWindow;
 use codex_core::protocol::SandboxPolicy;
 use codex_core::protocol::TokenUsage;
 use codex_core::protocol::TokenUsageInfo;
+use codex_protocol::config_types::Language;
 use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::openai_models::ReasoningEffort;
 use insta::assert_snapshot;
@@ -136,7 +137,7 @@ async fn status_snapshot_includes_reasoning_details() {
         credits: None,
         plan_type: None,
     };
-    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at);
+    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at, Language::En);
 
     let model_slug = ModelsManager::get_model_offline(config.model.as_deref());
     let token_info = token_info_for(&model_slug, &config, &usage);
@@ -192,7 +193,7 @@ async fn status_snapshot_includes_monthly_limit() {
         credits: None,
         plan_type: None,
     };
-    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at);
+    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at, Language::En);
 
     let model_slug = ModelsManager::get_model_offline(config.model.as_deref());
     let token_info = token_info_for(&model_slug, &config, &usage);
@@ -236,7 +237,7 @@ async fn status_snapshot_shows_unlimited_credits() {
         }),
         plan_type: None,
     };
-    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at);
+    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at, Language::En);
     let model_slug = ModelsManager::get_model_offline(config.model.as_deref());
     let token_info = token_info_for(&model_slug, &config, &usage);
     let composite = new_status_output(
@@ -279,7 +280,7 @@ async fn status_snapshot_shows_positive_credits() {
         }),
         plan_type: None,
     };
-    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at);
+    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at, Language::En);
     let model_slug = ModelsManager::get_model_offline(config.model.as_deref());
     let token_info = token_info_for(&model_slug, &config, &usage);
     let composite = new_status_output(
@@ -322,7 +323,7 @@ async fn status_snapshot_hides_zero_credits() {
         }),
         plan_type: None,
     };
-    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at);
+    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at, Language::En);
     let model_slug = ModelsManager::get_model_offline(config.model.as_deref());
     let token_info = token_info_for(&model_slug, &config, &usage);
     let composite = new_status_output(
@@ -363,7 +364,7 @@ async fn status_snapshot_hides_when_has_no_credits_flag() {
         }),
         plan_type: None,
     };
-    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at);
+    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at, Language::En);
     let model_slug = ModelsManager::get_model_offline(config.model.as_deref());
     let token_info = token_info_for(&model_slug, &config, &usage);
     let composite = new_status_output(
@@ -459,7 +460,7 @@ async fn status_snapshot_truncates_in_narrow_terminal() {
         credits: None,
         plan_type: None,
     };
-    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at);
+    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at, Language::En);
 
     let model_slug = ModelsManager::get_model_offline(config.model.as_deref());
     let token_info = token_info_for(&model_slug, &config, &usage);
@@ -566,7 +567,7 @@ async fn status_snapshot_includes_credits_and_limits() {
         }),
         plan_type: None,
     };
-    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at);
+    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at, Language::En);
 
     let model_slug = ModelsManager::get_model_offline(config.model.as_deref());
     let token_info = token_info_for(&model_slug, &config, &usage);
@@ -617,7 +618,7 @@ async fn status_snapshot_shows_empty_limits_message() {
         .with_ymd_and_hms(2024, 6, 7, 8, 9, 10)
         .single()
         .expect("timestamp");
-    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at);
+    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at, Language::En);
 
     let model_slug = ModelsManager::get_model_offline(config.model.as_deref());
     let token_info = token_info_for(&model_slug, &config, &usage);
@@ -676,7 +677,7 @@ async fn status_snapshot_shows_stale_limits_message() {
         credits: None,
         plan_type: None,
     };
-    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at);
+    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at, Language::En);
     let now = captured_at + ChronoDuration::minutes(20);
 
     let model_slug = ModelsManager::get_model_offline(config.model.as_deref());
@@ -740,7 +741,7 @@ async fn status_snapshot_cached_limits_hide_credits_without_flag() {
         }),
         plan_type: None,
     };
-    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at);
+    let rate_display = rate_limit_snapshot_display(&snapshot, captured_at, Language::En);
     let now = captured_at + ChronoDuration::minutes(20);
 
     let model_slug = ModelsManager::get_model_offline(config.model.as_deref());

@@ -9,6 +9,7 @@ use chrono::Utc;
 use codex_core::protocol::CreditsSnapshot as CoreCreditsSnapshot;
 use codex_core::protocol::RateLimitSnapshot;
 use codex_core::protocol::RateLimitWindow;
+use codex_protocol::config_types::Language;
 
 const STATUS_LIMIT_BAR_SEGMENTS: usize = 20;
 const STATUS_LIMIT_BAR_FILLED: &str = "█";
@@ -46,12 +47,16 @@ pub(crate) struct RateLimitWindowDisplay {
 }
 
 impl RateLimitWindowDisplay {
-    fn from_window(window: &RateLimitWindow, captured_at: DateTime<Local>) -> Self {
+    fn from_window(
+        window: &RateLimitWindow,
+        captured_at: DateTime<Local>,
+        language: Language,
+    ) -> Self {
         let resets_at = window
             .resets_at
             .and_then(|seconds| DateTime::<Utc>::from_timestamp(seconds, 0))
             .map(|dt| dt.with_timezone(&Local))
-            .map(|dt| format_reset_timestamp(dt, captured_at));
+            .map(|dt| format_reset_timestamp(dt, captured_at, language));
 
         Self {
             used_percent: window.used_percent,
@@ -79,17 +84,18 @@ pub(crate) struct CreditsSnapshotDisplay {
 pub(crate) fn rate_limit_snapshot_display(
     snapshot: &RateLimitSnapshot,
     captured_at: DateTime<Local>,
+    language: Language,
 ) -> RateLimitSnapshotDisplay {
     RateLimitSnapshotDisplay {
         captured_at,
         primary: snapshot
             .primary
             .as_ref()
-            .map(|window| RateLimitWindowDisplay::from_window(window, captured_at)),
+            .map(|window| RateLimitWindowDisplay::from_window(window, captured_at, language)),
         secondary: snapshot
             .secondary
             .as_ref()
-            .map(|window| RateLimitWindowDisplay::from_window(window, captured_at)),
+            .map(|window| RateLimitWindowDisplay::from_window(window, captured_at, language)),
         credits: snapshot.credits.as_ref().map(CreditsSnapshotDisplay::from),
     }
 }
@@ -107,6 +113,7 @@ impl From<&CoreCreditsSnapshot> for CreditsSnapshotDisplay {
 pub(crate) fn compose_rate_limit_data(
     snapshot: Option<&RateLimitSnapshotDisplay>,
     now: DateTime<Local>,
+    language: Language,
 ) -> StatusRateLimitData {
     match snapshot {
         Some(snapshot) => {
@@ -116,10 +123,16 @@ pub(crate) fn compose_rate_limit_data(
                 let label: String = primary
                     .window_minutes
                     .map(get_limits_duration)
-                    .unwrap_or_else(|| "5 小时".to_string());
+                    .unwrap_or_else(|| match language {
+                        Language::ZhCn => "5 小时".to_string(),
+                        Language::En => "5 hours".to_string(),
+                    });
                 let label = capitalize_first(&label);
                 rows.push(StatusRateLimitRow {
-                    label: format!("{label} 限额"),
+                    label: match language {
+                        Language::ZhCn => format!("{label} 限额"),
+                        Language::En => format!("{label} limit"),
+                    },
                     value: StatusRateLimitValue::Window {
                         percent_used: primary.used_percent,
                         resets_at: primary.resets_at.clone(),
@@ -131,10 +144,16 @@ pub(crate) fn compose_rate_limit_data(
                 let label: String = secondary
                     .window_minutes
                     .map(get_limits_duration)
-                    .unwrap_or_else(|| "每周".to_string());
+                    .unwrap_or_else(|| match language {
+                        Language::ZhCn => "每周".to_string(),
+                        Language::En => "weekly".to_string(),
+                    });
                 let label = capitalize_first(&label);
                 rows.push(StatusRateLimitRow {
-                    label: format!("{label} 限额"),
+                    label: match language {
+                        Language::ZhCn => format!("{label} 限额"),
+                        Language::En => format!("{label} limit"),
+                    },
                     value: StatusRateLimitValue::Window {
                         percent_used: secondary.used_percent,
                         resets_at: secondary.resets_at.clone(),
@@ -143,7 +162,7 @@ pub(crate) fn compose_rate_limit_data(
             }
 
             if let Some(credits) = snapshot.credits.as_ref()
-                && let Some(row) = credit_status_row(credits)
+                && let Some(row) = credit_status_row(credits, language)
             {
                 rows.push(row);
             }
@@ -175,29 +194,47 @@ pub(crate) fn render_status_limit_progress_bar(percent_remaining: f64) -> String
     )
 }
 
-pub(crate) fn format_status_limit_summary(percent_remaining: f64) -> String {
-    format!("剩余 {percent_remaining:.0}%")
+pub(crate) fn format_status_limit_summary(percent_remaining: f64, language: Language) -> String {
+    match language {
+        Language::ZhCn => format!("剩余 {percent_remaining:.0}%"),
+        Language::En => format!("{percent_remaining:.0}% left"),
+    }
 }
 
 /// Builds a single `StatusRateLimitRow` for credits when the snapshot indicates
 /// that the account has credit tracking enabled. When credits are unlimited we
 /// show that fact explicitly; otherwise we render the rounded balance in
 /// credits. Accounts with credits = 0 skip this section entirely.
-fn credit_status_row(credits: &CreditsSnapshotDisplay) -> Option<StatusRateLimitRow> {
+fn credit_status_row(
+    credits: &CreditsSnapshotDisplay,
+    language: Language,
+) -> Option<StatusRateLimitRow> {
     if !credits.has_credits {
         return None;
     }
     if credits.unlimited {
         return Some(StatusRateLimitRow {
-            label: "额度".to_string(),
-            value: StatusRateLimitValue::Text("无限额度".to_string()),
+            label: match language {
+                Language::ZhCn => "额度".to_string(),
+                Language::En => "Credits".to_string(),
+            },
+            value: StatusRateLimitValue::Text(match language {
+                Language::ZhCn => "无限额度".to_string(),
+                Language::En => "Unlimited".to_string(),
+            }),
         });
     }
     let balance = credits.balance.as_ref()?;
     let display_balance = format_credit_balance(balance)?;
     Some(StatusRateLimitRow {
-        label: "额度".to_string(),
-        value: StatusRateLimitValue::Text(format!("{display_balance} 额度")),
+        label: match language {
+            Language::ZhCn => "额度".to_string(),
+            Language::En => "Credits".to_string(),
+        },
+        value: StatusRateLimitValue::Text(match language {
+            Language::ZhCn => format!("{display_balance} 额度"),
+            Language::En => format!("{display_balance} credits"),
+        }),
     })
 }
 

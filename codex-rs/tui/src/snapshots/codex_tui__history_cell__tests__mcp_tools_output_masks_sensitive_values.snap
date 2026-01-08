@@ -11,16 +11,16 @@ expression: rendered
     • 认证：Unsupported
     • 命令：docs-server
     • 环境变量：TOKEN=*****, APP_TOKEN=*****
-    • Tools: list
-    • Resources: (none)
-    • Resource templates: (none)
+    • 工具：list
+    • 资源：无
+    • 资源模板：无
 
   • http
     • 状态：已启用
     • 认证：Unsupported
     • URL：https://example.com/mcp
     • HTTP 头：Authorization=*****
-    • Env HTTP headers: X-API-Key=API_KEY_ENV
-    • Tools: ping
-    • Resources: (none)
-    • Resource templates: (none)
+    • Env HTTP 头：X-API-Key=API_KEY_ENV
+    • 工具：ping
+    • 资源：无
+    • 资源模板：无

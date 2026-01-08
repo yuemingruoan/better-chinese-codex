@@ -89,6 +89,7 @@ impl OnboardingScreen {
             !matches!(login_status, LoginStatus::NotAuthenticated),
             tui.frame_requester(),
             config.animations,
+            config.language,
         )));
         if show_login_screen {
             let highlighted_mode = match forced_login_method {
@@ -107,6 +108,7 @@ impl OnboardingScreen {
                 forced_chatgpt_workspace_id,
                 forced_login_method,
                 animations_enabled: config.animations,
+                language: config.language,
             }))
         }
         let is_git_repo = get_git_repo_root(&cwd).is_some();
@@ -124,6 +126,7 @@ impl OnboardingScreen {
                 selection: None,
                 highlighted,
                 error: None,
+                language: config.language,
             }))
         }
         // TODO: add git warning.

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use codex_protocol::config_types::Language;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
@@ -188,6 +189,7 @@ pub(crate) async fn exit_review_mode(
 ) {
     const REVIEW_USER_MESSAGE_ID: &str = "review:rollout:user";
     const REVIEW_ASSISTANT_MESSAGE_ID: &str = "review:rollout:assistant";
+    let language = ctx.client.config().language;
     let (user_message, assistant_message) = if let Some(out) = review_output.clone() {
         let mut findings_str = String::new();
         let text = out.overall_explanation.trim();
@@ -198,15 +200,19 @@ pub(crate) async fn exit_review_mode(
             let block = format_review_findings_block(&out.findings, None);
             findings_str.push_str(&format!("\n{block}"));
         }
-        let rendered =
-            crate::client_common::REVIEW_EXIT_SUCCESS_TMPL.replace("{results}", &findings_str);
+        let rendered = crate::client_common::review_exit_success_template(language)
+            .replace("{results}", &findings_str);
         let assistant_message = render_review_output_text(&out);
         (rendered, assistant_message)
     } else {
-        let rendered = crate::client_common::REVIEW_EXIT_INTERRUPTED_TMPL.to_string();
-        let assistant_message =
-            "Review was interrupted. Please re-run /review and wait for it to complete."
-                .to_string();
+        let rendered = crate::client_common::review_exit_interrupted_template(language).to_string();
+        let assistant_message = match language {
+            Language::ZhCn => "审查已中断。请重新运行 /review 并等待完成。".to_string(),
+            Language::En => {
+                "Review was interrupted. Please re-run /review and wait for it to complete."
+                    .to_string()
+            }
+        };
         (rendered, assistant_message)
     };
 

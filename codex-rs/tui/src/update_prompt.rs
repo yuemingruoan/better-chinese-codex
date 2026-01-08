@@ -1,6 +1,7 @@
 #![cfg(not(debug_assertions))]
 
 use crate::history_cell::padded_emoji;
+use crate::i18n::tr;
 use crate::key_hint;
 use crate::render::Insets;
 use crate::render::renderable::ColumnRenderable;
@@ -13,6 +14,7 @@ use crate::tui::TuiEvent;
 use crate::update_action::UpdateAction;
 use crate::updates;
 use codex_core::config::Config;
+use codex_protocol::config_types::Language;
 use color_eyre::Result;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -43,8 +45,12 @@ pub(crate) async fn run_update_prompt_if_needed(
         return Ok(UpdatePromptOutcome::Continue);
     };
 
-    let mut screen =
-        UpdatePromptScreen::new(tui.frame_requester(), latest_version.clone(), update_action);
+    let mut screen = UpdatePromptScreen::new(
+        tui.frame_requester(),
+        latest_version.clone(),
+        update_action,
+        config.language,
+    );
     tui.draw(u16::MAX, |frame| {
         frame.render_widget_ref(&screen, frame.area());
     })?;
@@ -97,6 +103,7 @@ struct UpdatePromptScreen {
     update_action: UpdateAction,
     highlighted: UpdateSelection,
     selection: Option<UpdateSelection>,
+    language: Language,
 }
 
 impl UpdatePromptScreen {
@@ -104,6 +111,7 @@ impl UpdatePromptScreen {
         request_frame: FrameRequester,
         latest_version: String,
         update_action: UpdateAction,
+        language: Language,
     ) -> Self {
         Self {
             request_frame,
@@ -112,6 +120,7 @@ impl UpdatePromptScreen {
             update_action,
             highlighted: UpdateSelection::UpdateNow,
             selection: None,
+            language,
         }
     }
 
@@ -191,7 +200,7 @@ impl WidgetRef for &UpdatePromptScreen {
         column.push("");
         column.push(Line::from(vec![
             padded_emoji("  ✨").bold().cyan(),
-            "发现新版本！".bold(),
+            tr(self.language, "发现新版本！", "Update available!").bold(),
             " ".into(),
             format!(
                 "{current} -> {latest}",
@@ -203,37 +212,54 @@ impl WidgetRef for &UpdatePromptScreen {
         column.push("");
         column.push(
             Line::from(vec![
-                "请打开发布页面下载最新版：".dim(),
+                tr(
+                    self.language,
+                    "请打开发布页面下载最新版：",
+                    "Release notes: ",
+                )
+                .dim(),
                 release_url.dim().underlined(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.push(
-            Line::from(vec!["页面包含 Windows / macOS / Linux 的安装说明。".dim()])
-                .inset(Insets::tlbr(0, 2, 0, 0)),
+            Line::from(vec![
+                tr(
+                    self.language,
+                    "页面包含 Windows / macOS / Linux 的安装说明。",
+                    "The page includes Windows / macOS / Linux installation instructions.",
+                )
+                .dim(),
+            ])
+            .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.push("");
         column.push(selection_option_row(
             0,
-            "立即打开发布页（默认浏览器）".to_string(),
+            tr(
+                self.language,
+                "立即打开发布页（默认浏览器）",
+                "Open release page now (default browser)",
+            )
+            .to_string(),
             self.highlighted == UpdateSelection::UpdateNow,
         ));
         column.push(selection_option_row(
             1,
-            "暂时跳过".to_string(),
+            tr(self.language, "暂时跳过", "Skip").to_string(),
             self.highlighted == UpdateSelection::NotNow,
         ));
         column.push(selection_option_row(
             2,
-            "本版本内不再提醒".to_string(),
+            tr(self.language, "本版本内不再提醒", "Skip until next version").to_string(),
             self.highlighted == UpdateSelection::DontRemind,
         ));
         column.push("");
         column.push(
             Line::from(vec![
-                "按 ".dim(),
+                tr(self.language, "按 ", "Press ").dim(),
                 key_hint::plain(KeyCode::Enter).into(),
-                " 继续".dim(),
+                tr(self.language, " 继续", " to continue").dim(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );
@@ -256,6 +282,7 @@ mod tests {
             FrameRequester::test_dummy(),
             "9.9.9".into(),
             UpdateAction::NpmGlobalLatest,
+            Language::En,
         )
     }
 

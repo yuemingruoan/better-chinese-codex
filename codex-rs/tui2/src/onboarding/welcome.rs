@@ -13,9 +13,11 @@ use ratatui::widgets::WidgetRef;
 use ratatui::widgets::Wrap;
 
 use crate::ascii_animation::AsciiAnimation;
+use crate::i18n::tr;
 use crate::onboarding::onboarding_screen::KeyboardHandler;
 use crate::onboarding::onboarding_screen::StepStateProvider;
 use crate::tui::FrameRequester;
+use codex_protocol::config_types::Language;
 
 use super::onboarding_screen::StepState;
 
@@ -26,6 +28,7 @@ pub(crate) struct WelcomeWidget {
     pub is_logged_in: bool,
     animation: AsciiAnimation,
     animations_enabled: bool,
+    language: Language,
 }
 
 impl KeyboardHandler for WelcomeWidget {
@@ -48,11 +51,13 @@ impl WelcomeWidget {
         is_logged_in: bool,
         request_frame: FrameRequester,
         animations_enabled: bool,
+        language: Language,
     ) -> Self {
         Self {
             is_logged_in,
             animation: AsciiAnimation::new(request_frame),
             animations_enabled,
+            language,
         }
     }
 }
@@ -76,9 +81,14 @@ impl WidgetRef for &WelcomeWidget {
         }
         lines.push(Line::from(vec![
             "  ".into(),
-            "Welcome to ".into(),
+            tr(self.language, "欢迎使用 ", "Welcome to ").into(),
             "Codex".bold(),
-            ", OpenAI's command-line coding agent".into(),
+            tr(
+                self.language,
+                "，OpenAI 的命令行编程助手",
+                ", OpenAI's command-line coding agent",
+            )
+            .into(),
         ]));
 
         Paragraph::new(lines)
@@ -108,7 +118,7 @@ mod tests {
 
     #[test]
     fn welcome_renders_animation_on_first_draw() {
-        let widget = WelcomeWidget::new(false, FrameRequester::test_dummy(), true);
+        let widget = WelcomeWidget::new(false, FrameRequester::test_dummy(), true, Language::En);
         let area = Rect::new(0, 0, MIN_ANIMATION_WIDTH, MIN_ANIMATION_HEIGHT);
         let mut buf = Buffer::empty(area);
         (&widget).render(area, &mut buf);
@@ -139,6 +149,7 @@ mod tests {
             is_logged_in: false,
             animation: AsciiAnimation::with_variants(FrameRequester::test_dummy(), &VARIANTS, 0),
             animations_enabled: true,
+            language: Language::En,
         };
 
         let before = widget.animation.current_frame();

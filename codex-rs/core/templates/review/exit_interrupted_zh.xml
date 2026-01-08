@@ -1,0 +1,7 @@
+<user_action>
+  <context>用户发起了代码审查任务，但中途中断了。如用户询问，请提示其重新运行 `/review` 并等待完成。</context>
+  <action>review</action>
+  <results>
+  无。
+  </results>
+</user_action>

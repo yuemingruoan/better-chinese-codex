@@ -49,6 +49,7 @@ use codex_core::protocol::ViewImageToolCallEvent;
 use codex_core::protocol::WarningEvent;
 use codex_protocol::ConversationId;
 use codex_protocol::account::PlanType;
+use codex_protocol::config_types::Language;
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::openai_models::ReasoningEffortPreset;
 use codex_protocol::parse_command::ParsedCommand;
@@ -77,11 +78,13 @@ fn set_windows_sandbox_enabled(enabled: bool) {
 async fn test_config() -> Config {
     // Use base defaults to avoid depending on host state.
     let codex_home = std::env::temp_dir();
-    ConfigBuilder::default()
+    let mut config = ConfigBuilder::default()
         .codex_home(codex_home.clone())
         .build()
         .await
-        .expect("config")
+        .expect("config");
+    config.language = Language::ZhCn;
+    config
 }
 
 fn snapshot(percent: f64) -> RateLimitSnapshot {
@@ -169,7 +172,7 @@ async fn entered_review_mode_uses_request_hint() {
 
     let cells = drain_insert_history(&mut rx);
     let banner = lines_to_single_string(cells.last().expect("review banner"));
-    assert_eq!(banner, ">> Code review started: feature branch <<\n");
+    assert_eq!(banner, ">> 代码审查开始：feature branch <<\n");
     assert!(chat.is_review_mode);
 }
 
@@ -188,7 +191,7 @@ async fn entered_review_mode_defaults_to_current_changes_banner() {
 
     let cells = drain_insert_history(&mut rx);
     let banner = lines_to_single_string(cells.last().expect("review banner"));
-    assert_eq!(banner, ">> Code review started: current changes <<\n");
+    assert_eq!(banner, ">> 代码审查开始：current changes <<\n");
     assert!(chat.is_review_mode);
 }
 
@@ -361,6 +364,7 @@ async fn make_chatwidget_manual(
         disable_paste_burst: false,
         animations_enabled: cfg.animations,
         skills: None,
+        language: cfg.language,
     });
     let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("test"));
     let widget = ChatWidget {
@@ -390,7 +394,7 @@ async fn make_chatwidget_manual(
         interrupts: InterruptManager::new(),
         reasoning_buffer: String::new(),
         full_reasoning_buffer: String::new(),
-        current_status_header: String::from("运行中"),
+        current_status_header: String::from("Running"),
         retry_status_header: None,
         conversation_id: None,
         frame_requester: FrameRequester::test_dummy(),
@@ -479,12 +483,48 @@ async fn rate_limit_warnings_emit_thresholds() {
     let mut state = RateLimitWarningState::default();
     let mut warnings: Vec<String> = Vec::new();
 
-    warnings.extend(state.take_warnings(Some(10.0), Some(10079), Some(55.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(55.0), Some(10081), Some(10.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(10.0), Some(10081), Some(80.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(80.0), Some(10081), Some(10.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(10.0), Some(10081), Some(95.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(95.0), Some(10079), Some(10.0), Some(299)));
+    warnings.extend(state.take_warnings(
+        Some(10.0),
+        Some(10079),
+        Some(55.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(55.0),
+        Some(10081),
+        Some(10.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(10.0),
+        Some(10081),
+        Some(80.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(80.0),
+        Some(10081),
+        Some(10.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(10.0),
+        Some(10081),
+        Some(95.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(95.0),
+        Some(10079),
+        Some(10.0),
+        Some(299),
+        Language::En,
+    ));
 
     assert_eq!(
         warnings,
@@ -511,7 +551,7 @@ async fn test_rate_limit_warnings_monthly() {
     let mut state = RateLimitWarningState::default();
     let mut warnings: Vec<String> = Vec::new();
 
-    warnings.extend(state.take_warnings(Some(75.0), Some(43199), None, None));
+    warnings.extend(state.take_warnings(Some(75.0), Some(43199), None, None, Language::En));
     assert_eq!(
         warnings,
         vec![String::from(
@@ -1782,7 +1822,7 @@ async fn review_custom_prompt_escape_navigates_back_then_dismisses() {
     // Verify child view is on top.
     let header = render_bottom_first_row(&chat, 60);
     assert!(
-        header.contains("Custom review instructions"),
+        header.contains("自定义审查指令"),
         "expected custom prompt view header: {header:?}"
     );
 
@@ -1790,7 +1830,7 @@ async fn review_custom_prompt_escape_navigates_back_then_dismisses() {
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     let header = render_bottom_first_row(&chat, 60);
     assert!(
-        header.contains("Select a review preset"),
+        header.contains("选择审查预设"),
         "expected to return to parent review popup: {header:?}"
     );
 
@@ -1818,7 +1858,7 @@ async fn review_branch_picker_escape_navigates_back_then_dismisses() {
     // Verify child view header.
     let header = render_bottom_first_row(&chat, 60);
     assert!(
-        header.contains("Select a base branch"),
+        header.contains("选择基础分支"),
         "expected branch picker header: {header:?}"
     );
 
@@ -1826,7 +1866,7 @@ async fn review_branch_picker_escape_navigates_back_then_dismisses() {
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     let header = render_bottom_first_row(&chat, 60);
     assert!(
-        header.contains("Select a review preset"),
+        header.contains("选择审查预设"),
         "expected to return to parent review popup: {header:?}"
     );
 
@@ -2128,7 +2168,7 @@ async fn single_reasoning_option_skips_selection() {
 
     let popup = render_bottom_popup(&chat, 80);
     assert!(
-        !popup.contains("Select Reasoning Level"),
+        !popup.contains("选择 model-with-single-reasoning 的推理强度"),
         "expected reasoning selection popup to be skipped"
     );
 
@@ -2176,13 +2216,13 @@ async fn reasoning_popup_escape_returns_to_model_popup() {
     chat.open_reasoning_popup(preset);
 
     let before_escape = render_bottom_popup(&chat, 80);
-    assert!(before_escape.contains("Select Reasoning Level"));
+    assert!(before_escape.contains("选择 gpt-5.1-codex-max 的推理强度"));
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
     let after_escape = render_bottom_popup(&chat, 80);
-    assert!(after_escape.contains("Select Model"));
-    assert!(!after_escape.contains("Select Reasoning Level"));
+    assert!(after_escape.contains("选择模型"));
+    assert!(!after_escape.contains("选择 gpt-5.1-codex-max 的推理强度"));
 }
 
 #[tokio::test]
@@ -3316,7 +3356,7 @@ async fn stream_recovery_restores_previous_status_header() {
         .status_widget()
         .expect("status indicator should be visible");
     assert_eq!(status.details(), None);
-    assert_eq!(status.header(), "运行中");
+    assert_eq!(status.header(), "Running");
     assert!(chat.retry_status_header.is_none());
 }
 

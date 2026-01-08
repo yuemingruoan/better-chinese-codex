@@ -359,6 +359,7 @@ async fn make_chatwidget_manual(
         disable_paste_burst: false,
         animations_enabled: cfg.animations,
         skills: None,
+        language: cfg.language,
     });
     let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("test"));
     let widget = ChatWidget {
@@ -475,12 +476,48 @@ async fn rate_limit_warnings_emit_thresholds() {
     let mut state = RateLimitWarningState::default();
     let mut warnings: Vec<String> = Vec::new();
 
-    warnings.extend(state.take_warnings(Some(10.0), Some(10079), Some(55.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(55.0), Some(10081), Some(10.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(10.0), Some(10081), Some(80.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(80.0), Some(10081), Some(10.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(10.0), Some(10081), Some(95.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(95.0), Some(10079), Some(10.0), Some(299)));
+    warnings.extend(state.take_warnings(
+        Some(10.0),
+        Some(10079),
+        Some(55.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(55.0),
+        Some(10081),
+        Some(10.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(10.0),
+        Some(10081),
+        Some(80.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(80.0),
+        Some(10081),
+        Some(10.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(10.0),
+        Some(10081),
+        Some(95.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(95.0),
+        Some(10079),
+        Some(10.0),
+        Some(299),
+        Language::En,
+    ));
 
     assert_eq!(
         warnings,
@@ -507,7 +544,7 @@ async fn test_rate_limit_warnings_monthly() {
     let mut state = RateLimitWarningState::default();
     let mut warnings: Vec<String> = Vec::new();
 
-    warnings.extend(state.take_warnings(Some(75.0), Some(43199), None, None));
+    warnings.extend(state.take_warnings(Some(75.0), Some(43199), None, None, Language::En));
     assert_eq!(
         warnings,
         vec![String::from(

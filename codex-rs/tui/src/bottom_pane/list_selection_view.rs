@@ -534,6 +534,7 @@ mod tests {
     use super::*;
     use crate::app_event::AppEvent;
     use crate::bottom_pane::popup_consts::standard_popup_hint_line;
+    use codex_protocol::config_types::Language;
     use insta::assert_snapshot;
     use ratatui::layout::Rect;
     use tokio::sync::mpsc::unbounded_channel;
@@ -561,7 +562,7 @@ mod tests {
             SelectionViewParams {
                 title: Some("Select Approval Mode".to_string()),
                 subtitle: subtitle.map(str::to_string),
-                footer_hint: Some(standard_popup_hint_line()),
+                footer_hint: Some(standard_popup_hint_line(Language::En)),
                 items,
                 ..Default::default()
             },
@@ -625,7 +626,7 @@ mod tests {
         let mut view = ListSelectionView::new(
             SelectionViewParams {
                 title: Some("Select Approval Mode".to_string()),
-                footer_hint: Some(standard_popup_hint_line()),
+                footer_hint: Some(standard_popup_hint_line(Language::En)),
                 items,
                 is_searchable: true,
                 search_placeholder: Some("Type to search branches".to_string()),

@@ -57,6 +57,7 @@ use crate::history_cell;
 use crate::ui_consts::LIVE_PREFIX_COLS;
 use codex_core::skills::model::SkillMetadata;
 use codex_file_search::FileMatch;
+use codex_protocol::config_types::Language;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
@@ -118,6 +119,7 @@ pub(crate) struct ChatComposer {
     footer_hint_override: Option<Vec<(String, String)>>,
     context_window_percent: Option<i64>,
     context_window_used_tokens: Option<i64>,
+    language: Language,
     skills: Option<Vec<SkillMetadata>>,
     dismissed_skill_popup_token: Option<String>,
 }
@@ -166,6 +168,7 @@ impl ChatComposer {
             footer_hint_override: None,
             context_window_percent: None,
             context_window_used_tokens: None,
+            language: Language::En,
             skills: None,
             dismissed_skill_popup_token: None,
         };
@@ -176,6 +179,13 @@ impl ChatComposer {
 
     pub fn set_skill_mentions(&mut self, skills: Option<Vec<SkillMetadata>>) {
         self.skills = skills;
+    }
+
+    pub fn set_language(&mut self, language: Language) {
+        self.language = language;
+        if let ActivePopup::Command(popup) = &mut self.active_popup {
+            popup.set_language(language);
+        }
     }
 
     fn layout_areas(&self, area: Rect) -> [Rect; 3] {
@@ -1782,8 +1792,11 @@ impl ChatComposer {
             _ => {
                 if is_editing_slash_command_name {
                     let skills_enabled = self.skills_enabled();
-                    let mut command_popup =
-                        CommandPopup::new(self.custom_prompts.clone(), skills_enabled);
+                    let mut command_popup = CommandPopup::new(
+                        self.custom_prompts.clone(),
+                        skills_enabled,
+                        self.language,
+                    );
                     command_popup.on_composer_text_change(first_line.to_string());
                     self.active_popup = ActivePopup::Command(command_popup);
                 }

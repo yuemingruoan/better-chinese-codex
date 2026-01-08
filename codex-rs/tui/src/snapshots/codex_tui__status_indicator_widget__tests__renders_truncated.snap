@@ -2,5 +2,5 @@
 source: tui/src/status_indicator_widget.rs
 expression: terminal.backend()
 ---
-"• 运行中 （0秒 • 按 " Hidden by multi-width symbols: [(3, " "), (5, " "), (7, " "), (10, " "), (13, " "), (18, " ")]
+"• Running (0s • Pres"
 "                    "
