@@ -1,9 +1,8 @@
 ---
 source: tui/src/resume_picker.rs
-assertion_line: 1256
 expression: snapshot
 ---
-  更新时间       分支    工作目录      会话内容
-  42 秒前      -     -         Fix resume picker timestamps
-> 35 分钟前     -     -         Investigate lazy pagination cap
-  2 小时前      -     -         Explain the codebase
+  Updated  Branch  Working dir  Session content
+  42s ago  -       -            Fix resume picker timestamps
+> 35m ago  -       -            Investigate lazy pagination cap
+  2h ago   -       -            Explain the codebase

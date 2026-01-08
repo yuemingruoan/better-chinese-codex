@@ -2,12 +2,13 @@
 source: tui/src/onboarding/trust_directory.rs
 expression: terminal.backend()
 ---
-> 您正在以下目录中运行 Codex：/workspace/project
+> You are running Codex in /workspace/project
 
-  由于该文件夹受版本控制，您可以允许 Codex
-  在此目录下执行操作而无需逐次审批。
+  Since this folder is version controlled, you may wish to allow Codex
+  to work in this folder without asking for approval.
 
-› 1. 是的，允许 Codex 在此目录中执行操作且无需审批                    
-  2. 不，所有修改与命令都需我审批
+› 1. Yes, allow Codex to work in this folder without asking for       
+     approval                                                         
+  2. No, ask me to approve edits and commands
 
-  按下 enter 继续
+  Press enter to continue

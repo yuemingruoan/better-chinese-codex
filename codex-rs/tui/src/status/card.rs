@@ -13,6 +13,7 @@ use codex_core::protocol::TokenUsage;
 use codex_core::protocol::TokenUsageInfo;
 use codex_protocol::ConversationId;
 use codex_protocol::account::PlanType;
+use codex_protocol::config_types::Language;
 use ratatui::prelude::*;
 use ratatui::style::Stylize;
 use std::collections::BTreeSet;
@@ -66,6 +67,7 @@ struct StatusHistoryCell {
     session_id: Option<String>,
     token_usage: StatusTokenUsageData,
     rate_limits: StatusRateLimitData,
+    language: Language,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -110,12 +112,16 @@ impl StatusHistoryCell {
         model_name: &str,
     ) -> Self {
         let config_entries = create_config_summary_entries(config, model_name);
-        let (model_name, model_details) = compose_model_display(model_name, &config_entries);
+        let (model_name, model_details) =
+            compose_model_display(model_name, &config_entries, config.language);
         let approval = config_entries
             .iter()
             .find(|(k, _)| *k == "approval")
             .map(|(_, v)| v.clone())
-            .unwrap_or_else(|| "未知".to_string());
+            .unwrap_or_else(|| match config.language {
+                Language::ZhCn => "未知".to_string(),
+                Language::En => "<unknown>".to_string(),
+            });
         let sandbox = match config.sandbox_policy.get() {
             SandboxPolicy::DangerFullAccess => "danger-full-access".to_string(),
             SandboxPolicy::ReadOnly => "read-only".to_string(),
@@ -128,8 +134,8 @@ impl StatusHistoryCell {
                 }
             }
         };
-        let agents_summary = compose_agents_summary(config);
-        let account = compose_account_display(auth_manager, plan_type);
+        let agents_summary = compose_agents_summary(config, config.language);
+        let account = compose_account_display(auth_manager, plan_type, config.language);
         let session_id = session_id.as_ref().map(std::string::ToString::to_string);
         let default_usage = TokenUsage::default();
         let (context_usage, context_window) = match token_info {
@@ -148,7 +154,7 @@ impl StatusHistoryCell {
             output: total_usage.output_tokens,
             context_window,
         };
-        let rate_limits = compose_rate_limit_data(rate_limits, now);
+        let rate_limits = compose_rate_limit_data(rate_limits, now, config.language);
 
         Self {
             model_name,
@@ -161,6 +167,7 @@ impl StatusHistoryCell {
             session_id,
             token_usage,
             rate_limits,
+            language: config.language,
         }
     }
 
@@ -171,14 +178,33 @@ impl StatusHistoryCell {
 
         vec![
             Span::from(total_fmt),
-            Span::from(" 总计 "),
-            Span::from("（").dim(),
+            Span::from(match self.language {
+                Language::ZhCn => " 总计 ",
+                Language::En => " total ",
+            }),
+            Span::from(match self.language {
+                Language::ZhCn => "（",
+                Language::En => " (",
+            })
+            .dim(),
             Span::from(input_fmt).dim(),
-            Span::from(" 输入").dim(),
+            Span::from(match self.language {
+                Language::ZhCn => " 输入",
+                Language::En => " input",
+            })
+            .dim(),
             Span::from(" + ").dim(),
             Span::from(output_fmt).dim(),
-            Span::from(" 输出").dim(),
-            Span::from("）").dim(),
+            Span::from(match self.language {
+                Language::ZhCn => " 输出",
+                Language::En => " output",
+            })
+            .dim(),
+            Span::from(match self.language {
+                Language::ZhCn => "）",
+                Language::En => ")",
+            })
+            .dim(),
         ]
     }
 
@@ -189,12 +215,27 @@ impl StatusHistoryCell {
         let window_fmt = format_tokens_compact(context.window);
 
         Some(vec![
-            Span::from(format!("已用 {percent}%")),
-            Span::from("（").dim(),
+            Span::from(match self.language {
+                Language::ZhCn => format!("已用 {percent}%"),
+                Language::En => format!("{percent}% used"),
+            }),
+            Span::from(match self.language {
+                Language::ZhCn => "（",
+                Language::En => " (",
+            })
+            .dim(),
             Span::from(used_fmt).dim(),
-            Span::from(" 已用 / ").dim(),
+            Span::from(match self.language {
+                Language::ZhCn => " 已用 / ",
+                Language::En => " used / ",
+            })
+            .dim(),
             Span::from(window_fmt).dim(),
-            Span::from("）").dim(),
+            Span::from(match self.language {
+                Language::ZhCn => "）",
+                Language::En => ")",
+            })
+            .dim(),
         ])
     }
 
@@ -206,7 +247,15 @@ impl StatusHistoryCell {
         match &self.rate_limits {
             StatusRateLimitData::Available(rows_data) => {
                 if rows_data.is_empty() {
-                    return vec![formatter.line("限制", vec![Span::from("暂无数据").dim()])];
+                    let label = match self.language {
+                        Language::ZhCn => "限制",
+                        Language::En => "Limits",
+                    };
+                    let value = match self.language {
+                        Language::ZhCn => "暂无数据",
+                        Language::En => "data not available yet",
+                    };
+                    return vec![formatter.line(label, vec![Span::from(value).dim()])];
                 }
 
                 self.rate_limit_row_lines(rows_data, available_inner_width, formatter)
@@ -215,13 +264,28 @@ impl StatusHistoryCell {
                 let mut lines =
                     self.rate_limit_row_lines(rows_data, available_inner_width, formatter);
                 lines.push(formatter.line(
-                    "警告",
-                    vec![Span::from("限额数据可能已过期，请开始新的对话刷新。").dim()],
+                    match self.language {
+                        Language::ZhCn => "警告",
+                        Language::En => "Warning",
+                    },
+                    vec![Span::from(match self.language {
+                        Language::ZhCn => "限额数据可能已过期，请开始新的对话刷新。",
+                        Language::En => "Limit data may be stale; start a new chat to refresh.",
+                    })
+                    .dim()],
                 ));
                 lines
             }
             StatusRateLimitData::Missing => {
-                vec![formatter.line("限制", vec![Span::from("暂无数据").dim()])]
+                let label = match self.language {
+                    Language::ZhCn => "限制",
+                    Language::En => "Limits",
+                };
+                let value = match self.language {
+                    Language::ZhCn => "暂无数据",
+                    Language::En => "data not available yet",
+                };
+                vec![formatter.line(label, vec![Span::from(value).dim()])]
             }
         }
     }
@@ -244,13 +308,20 @@ impl StatusHistoryCell {
                     let value_spans = vec![
                         Span::from(render_status_limit_progress_bar(percent_remaining)),
                         Span::from(" "),
-                        Span::from(format_status_limit_summary(percent_remaining)),
+                        Span::from(format_status_limit_summary(
+                            percent_remaining,
+                            self.language,
+                        )),
                     ];
                     let base_spans = formatter.full_spans(row.label.as_str(), value_spans);
                     let base_line = Line::from(base_spans.clone());
 
                     if let Some(resets_at) = resets_at.as_ref() {
-                        let resets_span = Span::from(format!("（{resets_at} 重置）")).dim();
+                        let resets_span = Span::from(match self.language {
+                            Language::ZhCn => format!("（{resets_at} 重置）"),
+                            Language::En => format!("({resets_at} reset)"),
+                        })
+                        .dim();
                         let mut inline_spans = base_spans.clone();
                         inline_spans.push(Span::from(" ").dim());
                         inline_spans.push(resets_span.clone());
@@ -283,7 +354,14 @@ impl StatusHistoryCell {
         match &self.rate_limits {
             StatusRateLimitData::Available(rows) => {
                 if rows.is_empty() {
-                    push_label(labels, seen, "限制");
+                    push_label(
+                        labels,
+                        seen,
+                        match self.language {
+                            Language::ZhCn => "限制",
+                            Language::En => "Limits",
+                        },
+                    );
                 } else {
                     for row in rows {
                         push_label(labels, seen, row.label.as_str());
@@ -294,15 +372,30 @@ impl StatusHistoryCell {
                 for row in rows {
                     push_label(labels, seen, row.label.as_str());
                 }
-                push_label(labels, seen, "警告");
+                push_label(
+                    labels,
+                    seen,
+                    match self.language {
+                        Language::ZhCn => "警告",
+                        Language::En => "Warning",
+                    },
+                );
             }
-            StatusRateLimitData::Missing => push_label(labels, seen, "限制"),
+            StatusRateLimitData::Missing => push_label(
+                labels,
+                seen,
+                match self.language {
+                    Language::ZhCn => "限制",
+                    Language::En => "Limits",
+                },
+            ),
         }
     }
 }
 
 impl HistoryCell for StatusHistoryCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let language = self.language;
         let mut lines: Vec<Line<'static>> = Vec::new();
         lines.push(Line::from(vec![
             Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
@@ -324,26 +417,66 @@ impl HistoryCell for StatusHistoryCell {
                 (None, Some(plan)) => plan.clone(),
                 (None, None) => "ChatGPT".to_string(),
             },
-            StatusAccountDisplay::ApiKey => {
-                "已配置 API 密钥（运行 codex login 以使用 ChatGPT）".to_string()
-            }
+            StatusAccountDisplay::ApiKey => match language {
+                Language::ZhCn => "已配置 API 密钥（运行 codex login 以使用 ChatGPT）".to_string(),
+                Language::En => "API key configured (run codex login to use ChatGPT)".to_string(),
+            },
         });
 
-        let mut labels: Vec<String> = vec!["模型", "目录", "审批", "沙箱", "Agents.md"]
-            .into_iter()
-            .map(str::to_string)
-            .collect();
+        let label_model = match language {
+            Language::ZhCn => "模型",
+            Language::En => "Model",
+        };
+        let label_directory = match language {
+            Language::ZhCn => "目录",
+            Language::En => "Directory",
+        };
+        let label_approval = match language {
+            Language::ZhCn => "审批",
+            Language::En => "Approval",
+        };
+        let label_sandbox = match language {
+            Language::ZhCn => "沙箱",
+            Language::En => "Sandbox",
+        };
+        let label_account = match language {
+            Language::ZhCn => "帐号",
+            Language::En => "Account",
+        };
+        let label_session = match language {
+            Language::ZhCn => "会话",
+            Language::En => "Session",
+        };
+        let label_token_usage = match language {
+            Language::ZhCn => "Token 使用",
+            Language::En => "Token usage",
+        };
+        let label_context_window = match language {
+            Language::ZhCn => "上下文窗口",
+            Language::En => "Context window",
+        };
+
+        let mut labels: Vec<String> = vec![
+            label_model,
+            label_directory,
+            label_approval,
+            label_sandbox,
+            "Agents.md",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
         let mut seen: BTreeSet<String> = labels.iter().cloned().collect();
 
         if account_value.is_some() {
-            push_label(&mut labels, &mut seen, "帐号");
+            push_label(&mut labels, &mut seen, label_account);
         }
         if self.session_id.is_some() {
-            push_label(&mut labels, &mut seen, "会话");
+            push_label(&mut labels, &mut seen, label_session);
         }
-        push_label(&mut labels, &mut seen, "Token 使用");
+        push_label(&mut labels, &mut seen, label_token_usage);
         if self.token_usage.context_window.is_some() {
-            push_label(&mut labels, &mut seen, "上下文窗口");
+            push_label(&mut labels, &mut seen, label_context_window);
         }
 
         self.collect_rate_limit_labels(&mut seen, &mut labels);
@@ -352,13 +485,27 @@ impl HistoryCell for StatusHistoryCell {
         let value_width = formatter.value_width(available_inner_width);
 
         let note_first_line = Line::from(vec![
-            Span::from("访问 ").cyan(),
+            Span::from(match language {
+                Language::ZhCn => "访问 ",
+                Language::En => "Visit ",
+            })
+            .cyan(),
             "https://chatgpt.com/codex/settings/usage"
                 .cyan()
                 .underlined(),
-            Span::from(" 获取最新的").cyan(),
+            Span::from(match language {
+                Language::ZhCn => " 获取最新的",
+                Language::En => " for up-to-date",
+            })
+            .cyan(),
         ]);
-        let note_second_line = Line::from(vec![Span::from("速率限制与额度信息").cyan()]);
+        let note_second_line = Line::from(vec![
+            Span::from(match language {
+                Language::ZhCn => "速率限制与额度信息",
+                Language::En => "information on rate limits and credits",
+            })
+            .cyan(),
+        ]);
         let note_lines = word_wrap_lines(
             [note_first_line, note_second_line],
             RtOptions::new(available_inner_width),
@@ -375,28 +522,28 @@ impl HistoryCell for StatusHistoryCell {
 
         let directory_value = format_directory_display(&self.directory, Some(value_width));
 
-        lines.push(formatter.line("模型", model_spans));
-        lines.push(formatter.line("目录", vec![Span::from(directory_value)]));
-        lines.push(formatter.line("审批", vec![Span::from(self.approval.clone())]));
-        lines.push(formatter.line("沙箱", vec![Span::from(self.sandbox.clone())]));
+        lines.push(formatter.line(label_model, model_spans));
+        lines.push(formatter.line(label_directory, vec![Span::from(directory_value)]));
+        lines.push(formatter.line(label_approval, vec![Span::from(self.approval.clone())]));
+        lines.push(formatter.line(label_sandbox, vec![Span::from(self.sandbox.clone())]));
         lines.push(formatter.line("Agents.md", vec![Span::from(self.agents_summary.clone())]));
 
         if let Some(account_value) = account_value {
-            lines.push(formatter.line("帐号", vec![Span::from(account_value)]));
+            lines.push(formatter.line(label_account, vec![Span::from(account_value)]));
         }
 
         if let Some(session) = self.session_id.as_ref() {
-            lines.push(formatter.line("会话", vec![Span::from(session.clone())]));
+            lines.push(formatter.line(label_session, vec![Span::from(session.clone())]));
         }
 
         lines.push(Line::from(Vec::<Span<'static>>::new()));
         // Hide token usage only for ChatGPT subscribers
         if !matches!(self.account, Some(StatusAccountDisplay::ChatGpt { .. })) {
-            lines.push(formatter.line("Token 使用", self.token_usage_spans()));
+            lines.push(formatter.line(label_token_usage, self.token_usage_spans()));
         }
 
         if let Some(spans) = self.context_window_spans() {
-            lines.push(formatter.line("上下文窗口", spans));
+            lines.push(formatter.line(label_context_window, spans));
         }
 
         lines.extend(self.rate_limit_lines(available_inner_width, &formatter));

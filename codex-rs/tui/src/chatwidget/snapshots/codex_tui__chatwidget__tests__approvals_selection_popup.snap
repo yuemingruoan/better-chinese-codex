@@ -2,12 +2,11 @@
 source: tui/src/chatwidget/tests.rs
 expression: popup
 ---
-  Select Approval Mode
+  选 择 授 权 模 式
 
-› 1. Read Only (current)  Requires approval to edit files and run commands.
-  2. Agent                Read and edit files, and run commands.
-  3. Agent (full access)  Codex can edit files outside this workspace and run
-                          commands with network access. Exercise caution when
-                          using.
+› 1. 只 读  (current)    编 辑 文 件 与 运 行 命 令 需 确 认 。
+  2. 代 理               可 读 写 文 件 并 运 行 命 令 。
+  3. 代 理 （ 完 全 访 问 ）   Codex 可 编 辑 工 作 区 外 的 文 件 并 运 行 含 网 络 访 问 的 命 令 。 使 用
+                       时 请 谨 慎 。
 
-  Press enter to confirm or esc to go back
+  按  enter 确 认 ， 或  esc 返 回

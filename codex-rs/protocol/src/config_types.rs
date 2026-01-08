@@ -46,6 +46,30 @@ pub enum Verbosity {
     High,
 }
 
+#[derive(Debug, Serialize, Default, Clone, Copy, PartialEq, Eq, Display, JsonSchema, TS)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum Language {
+    #[default]
+    En,
+    ZhCn,
+}
+
+impl<'de> Deserialize<'de> for Language {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        let normalized = raw.trim().to_lowercase();
+        Ok(match normalized.as_str() {
+            "en" | "en-us" | "en_us" => Self::En,
+            "zh-cn" | "zh_cn" | "zh-hans" | "zh" => Self::ZhCn,
+            _ => Self::En,
+        })
+    }
+}
+
 #[derive(
     Deserialize, Debug, Clone, Copy, PartialEq, Default, Serialize, Display, JsonSchema, TS,
 )]

@@ -40,9 +40,11 @@ use ratatui::widgets::Paragraph;
 use ratatui::widgets::WidgetRef;
 use unicode_width::UnicodeWidthStr;
 
+use crate::i18n::tr;
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
 use crate::transcript_selection::TRANSCRIPT_GUTTER_COLS;
+use codex_protocol::config_types::Language;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// The shortcut we advertise and accept for "copy selection".
@@ -108,15 +110,17 @@ pub(crate) struct TranscriptCopyUi {
     shortcut: CopySelectionShortcut,
     dragging: bool,
     affordance_rect: Option<Rect>,
+    language: Language,
 }
 
 impl TranscriptCopyUi {
     /// Creates a new instance using the provided shortcut.
-    pub(crate) fn new_with_shortcut(shortcut: CopySelectionShortcut) -> Self {
+    pub(crate) fn new_with_shortcut(shortcut: CopySelectionShortcut, language: Language) -> Self {
         Self {
             shortcut,
             dragging: false,
             affordance_rect: None,
+            language,
         }
     }
 
@@ -134,6 +138,10 @@ impl TranscriptCopyUi {
 
     pub(crate) fn clear_affordance(&mut self) {
         self.affordance_rect = None;
+    }
+
+    pub(crate) fn set_language(&mut self, language: Language) {
+        self.language = language;
     }
 
     /// Returns `true` if the last rendered pill contains `(x, y)`.
@@ -265,7 +273,8 @@ impl TranscriptCopyUi {
         let key_label: Span<'static> = self.key_binding().into();
         let key_label = key_label.content.as_ref().to_string();
 
-        let pill_text = format!(" ⧉ copy {key_label} ");
+        let copy_label = tr(self.language, "复制", "copy");
+        let pill_text = format!(" ⧉ {copy_label} {key_label} ");
         let pill_width = UnicodeWidthStr::width(pill_text.as_str());
         if pill_width == 0 || area.width == 0 {
             return;
@@ -298,7 +307,7 @@ impl TranscriptCopyUi {
             Span::styled(" ", base_style),
             Span::styled("⧉", icon_style),
             Span::styled(" ", base_style),
-            Span::styled("copy", bold_style),
+            Span::styled(copy_label, bold_style),
             Span::styled(" ", base_style),
             Span::styled(key_label, base_style),
         ];
@@ -336,7 +345,8 @@ mod tests {
             }
         }
 
-        let mut ui = TranscriptCopyUi::new_with_shortcut(CopySelectionShortcut::CtrlY);
+        let mut ui =
+            TranscriptCopyUi::new_with_shortcut(CopySelectionShortcut::CtrlY, Language::En);
         ui.render_copy_pill(area, &mut buf, (1, 2), (1, 6), 0, 3);
 
         let rendered = buf_to_string(&buf, area);
@@ -356,7 +366,8 @@ mod tests {
             }
         }
 
-        let mut ui = TranscriptCopyUi::new_with_shortcut(CopySelectionShortcut::CtrlShiftC);
+        let mut ui =
+            TranscriptCopyUi::new_with_shortcut(CopySelectionShortcut::CtrlShiftC, Language::En);
         ui.render_copy_pill(area, &mut buf, (2, 2), (2, 6), 0, 3);
 
         let rendered = buf_to_string(&buf, area);
@@ -378,7 +389,8 @@ mod tests {
             }
         }
 
-        let mut ui = TranscriptCopyUi::new_with_shortcut(CopySelectionShortcut::CtrlShiftC);
+        let mut ui =
+            TranscriptCopyUi::new_with_shortcut(CopySelectionShortcut::CtrlShiftC, Language::En);
         ui.render_copy_pill(area, &mut buf, (1, 2), (1, 6), 0, 3);
 
         let rendered = buf_to_string(&buf, area);

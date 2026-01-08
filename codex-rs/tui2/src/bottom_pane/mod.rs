@@ -51,6 +51,7 @@ pub(crate) enum CancellationEvent {
 
 pub(crate) use chat_composer::ChatComposer;
 pub(crate) use chat_composer::InputResult;
+use codex_protocol::config_types::Language;
 use codex_protocol::custom_prompts::CustomPrompt;
 
 use crate::status_indicator_widget::StatusIndicatorWidget;
@@ -74,6 +75,7 @@ pub(crate) struct BottomPane {
     ctrl_c_quit_hint: bool,
     esc_backtrack_hint: bool,
     animations_enabled: bool,
+    language: Language,
 
     /// Inline status indicator shown above the composer while a task is running.
     status: Option<StatusIndicatorWidget>,
@@ -92,6 +94,7 @@ pub(crate) struct BottomPaneParams {
     pub(crate) disable_paste_burst: bool,
     pub(crate) animations_enabled: bool,
     pub(crate) skills: Option<Vec<SkillMetadata>>,
+    pub(crate) language: Language,
 }
 
 impl BottomPane {
@@ -105,6 +108,7 @@ impl BottomPane {
             disable_paste_burst,
             animations_enabled,
             skills,
+            language,
         } = params;
         let mut composer = ChatComposer::new(
             has_input_focus,
@@ -114,6 +118,7 @@ impl BottomPane {
             disable_paste_burst,
         );
         composer.set_skill_mentions(skills);
+        composer.set_language(language);
 
         Self {
             composer,
@@ -127,6 +132,7 @@ impl BottomPane {
             queued_user_messages: QueuedUserMessages::new(),
             esc_backtrack_hint: false,
             animations_enabled,
+            language,
             context_window_percent: None,
             context_window_used_tokens: None,
         }
@@ -134,6 +140,18 @@ impl BottomPane {
 
     pub fn set_skills(&mut self, skills: Option<Vec<SkillMetadata>>) {
         self.composer.set_skill_mentions(skills);
+        self.request_redraw();
+    }
+
+    pub(crate) fn set_language(&mut self, language: Language) {
+        if self.language == language {
+            return;
+        }
+        self.language = language;
+        self.composer.set_language(language);
+        if let Some(status) = self.status.as_mut() {
+            status.set_language(language);
+        }
         self.request_redraw();
     }
 
@@ -332,6 +350,7 @@ impl BottomPane {
                         self.app_event_tx.clone(),
                         self.frame_requester.clone(),
                         self.animations_enabled,
+                        self.language,
                     ));
                 }
                 if let Some(status) = self.status.as_mut() {
@@ -358,6 +377,7 @@ impl BottomPane {
                 self.app_event_tx.clone(),
                 self.frame_requester.clone(),
                 self.animations_enabled,
+                self.language,
             ));
             self.request_redraw();
         }
@@ -455,7 +475,12 @@ impl BottomPane {
         };
 
         // Otherwise create a new approval modal overlay.
-        let modal = ApprovalOverlay::new(request, self.app_event_tx.clone(), features.clone());
+        let modal = ApprovalOverlay::new(
+            request,
+            self.app_event_tx.clone(),
+            features.clone(),
+            self.language,
+        );
         self.pause_status_timer_for_modal();
         self.push_view(Box::new(modal));
     }
@@ -619,6 +644,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
         pane.push_approval_request(exec_request(), &features);
         assert_eq!(CancellationEvent::Handled, pane.on_ctrl_c());
@@ -642,6 +668,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         // Create an approval modal (active view).
@@ -676,6 +703,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         // Start a running task so the status indicator is active above the composer.
@@ -743,6 +771,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         // Begin a task: show initial status.
@@ -770,6 +799,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         // Activate spinner (status view replaces composer) with no live ring.
@@ -801,6 +831,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         pane.set_task_running(true);
@@ -829,6 +860,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         pane.set_task_running(true);

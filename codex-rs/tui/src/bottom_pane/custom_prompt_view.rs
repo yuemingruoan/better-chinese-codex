@@ -20,6 +20,7 @@ use super::CancellationEvent;
 use super::bottom_pane_view::BottomPaneView;
 use super::textarea::TextArea;
 use super::textarea::TextAreaState;
+use codex_protocol::config_types::Language;
 
 /// Callback invoked when the user submits a custom prompt.
 pub(crate) type PromptSubmitted = Box<dyn Fn(String) + Send + Sync>;
@@ -30,6 +31,7 @@ pub(crate) struct CustomPromptView {
     placeholder: String,
     context_label: Option<String>,
     on_submit: PromptSubmitted,
+    language: Language,
 
     // UI state
     textarea: TextArea,
@@ -42,6 +44,7 @@ impl CustomPromptView {
         title: String,
         placeholder: String,
         context_label: Option<String>,
+        language: Language,
         on_submit: PromptSubmitted,
     ) -> Self {
         Self {
@@ -49,6 +52,7 @@ impl CustomPromptView {
             placeholder,
             context_label,
             on_submit,
+            language,
             textarea: TextArea::new(),
             textarea_state: RefCell::new(TextAreaState::default()),
             complete: false,
@@ -201,7 +205,7 @@ impl Renderable for CustomPromptView {
 
         let hint_y = hint_blank_y.saturating_add(1);
         if hint_y < area.y.saturating_add(area.height) {
-            Paragraph::new(standard_popup_hint_line()).render(
+            Paragraph::new(standard_popup_hint_line(self.language)).render(
                 Rect {
                     x: area.x,
                     y: hint_y,

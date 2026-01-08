@@ -3,13 +3,13 @@ source: tui/src/model_migration.rs
 expression: terminal.backend()
 ---
 
-> Codex 已升级，欢迎使用 gpt-5.1-codex-mini。
+> Codex just got an upgrade. Introducing gpt-5.1-codex-mini.
 
-  我们建议从 gpt-5-codex-mini 切换到 gpt-5.1-codex-mini。
+  We recommend switching from gpt-5-codex-mini to
+  gpt-5.1-codex-mini.
 
   Optimized for codex. Cheaper, faster, but less capable.
-  了解更多
-  gpt-5.1-codex-mini：https://www.codex.com/models/gpt-5.1-c
-  odex-mini
+  Learn more about gpt-5.1-codex-mini at
+  https://www.codex.com/models/gpt-5.1-codex-mini
 
-  按 Enter 继续
+  Press enter to continue

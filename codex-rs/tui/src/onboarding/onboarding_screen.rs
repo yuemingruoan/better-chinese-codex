@@ -84,11 +84,13 @@ impl OnboardingScreen {
         let forced_login_method = config.forced_login_method;
         let codex_home = config.codex_home;
         let cli_auth_credentials_store_mode = config.cli_auth_credentials_store_mode;
+        let language = config.language;
         let mut steps: Vec<Step> = Vec::new();
         steps.push(Step::Welcome(WelcomeWidget::new(
             !matches!(login_status, LoginStatus::NotAuthenticated),
             tui.frame_requester(),
             config.animations,
+            language,
         )));
         if show_login_screen {
             let highlighted_mode = match forced_login_method {
@@ -107,6 +109,7 @@ impl OnboardingScreen {
                 forced_chatgpt_workspace_id,
                 forced_login_method,
                 animations_enabled: config.animations,
+                language,
             }))
         }
         let is_git_repo = get_git_repo_root(&cwd).is_some();
@@ -124,6 +127,7 @@ impl OnboardingScreen {
                 selection: None,
                 highlighted,
                 error: None,
+                language,
             }))
         }
         // TODO: add git warning.

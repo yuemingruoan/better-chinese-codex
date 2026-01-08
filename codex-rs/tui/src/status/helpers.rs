@@ -7,6 +7,7 @@ use codex_core::AuthManager;
 use codex_core::config::Config;
 use codex_core::project_doc::discover_project_doc_paths;
 use codex_protocol::account::PlanType;
+use codex_protocol::config_types::Language;
 use std::path::Path;
 use unicode_width::UnicodeWidthStr;
 
@@ -19,24 +20,36 @@ fn normalize_agents_display_path(path: &Path) -> String {
 pub(crate) fn compose_model_display(
     model_name: &str,
     entries: &[(&str, String)],
+    language: Language,
 ) -> (String, Vec<String>) {
     let mut details: Vec<String> = Vec::new();
     if let Some((_, effort)) = entries.iter().find(|(k, _)| *k == "reasoning effort") {
-        details.push(format!("推理 {}", effort.to_ascii_lowercase()));
+        let effort = effort.to_ascii_lowercase();
+        details.push(match language {
+            Language::ZhCn => format!("推理 {effort}"),
+            Language::En => format!("reasoning {effort}"),
+        });
     }
     if let Some((_, summary)) = entries.iter().find(|(k, _)| *k == "reasoning summaries") {
         let summary = summary.trim();
         if summary.eq_ignore_ascii_case("none") || summary.eq_ignore_ascii_case("off") {
-            details.push("概述已关闭".to_string());
+            details.push(match language {
+                Language::ZhCn => "概述已关闭".to_string(),
+                Language::En => "summaries off".to_string(),
+            });
         } else if !summary.is_empty() {
-            details.push(format!("摘要 {}", summary.to_ascii_lowercase()));
+            let summary = summary.to_ascii_lowercase();
+            details.push(match language {
+                Language::ZhCn => format!("摘要 {summary}"),
+                Language::En => format!("summaries {summary}"),
+            });
         }
     }
 
     (model_name.to_string(), details)
 }
 
-pub(crate) fn compose_agents_summary(config: &Config) -> String {
+pub(crate) fn compose_agents_summary(config: &Config, language: Language) -> String {
     match discover_project_doc_paths(config) {
         Ok(paths) => {
             let mut rels: Vec<String> = Vec::new();
@@ -44,7 +57,10 @@ pub(crate) fn compose_agents_summary(config: &Config) -> String {
                 let file_name = p
                     .file_name()
                     .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "未知".to_string());
+                    .unwrap_or_else(|| match language {
+                        Language::ZhCn => "未知".to_string(),
+                        Language::En => "<unknown>".to_string(),
+                    });
                 let display = if let Some(parent) = p.parent() {
                     if parent == config.cwd {
                         file_name.clone()
@@ -75,18 +91,25 @@ pub(crate) fn compose_agents_summary(config: &Config) -> String {
                 rels.push(display);
             }
             if rels.is_empty() {
-                "无".to_string()
+                match language {
+                    Language::ZhCn => "无".to_string(),
+                    Language::En => "<none>".to_string(),
+                }
             } else {
                 rels.join(", ")
             }
         }
-        Err(_) => "无".to_string(),
+        Err(_) => match language {
+            Language::ZhCn => "无".to_string(),
+            Language::En => "<none>".to_string(),
+        },
     }
 }
 
 pub(crate) fn compose_account_display(
     auth_manager: &AuthManager,
     plan: Option<PlanType>,
+    language: Language,
 ) -> Option<StatusAccountDisplay> {
     let auth = auth_manager.auth()?;
 
@@ -95,7 +118,12 @@ pub(crate) fn compose_account_display(
             let email = auth.get_account_email();
             let plan = plan
                 .map(|plan_type| title_case(format!("{plan_type:?}").as_str()))
-                .or_else(|| Some("Unknown".to_string()));
+                .or_else(|| {
+                    Some(match language {
+                        Language::ZhCn => "未知".to_string(),
+                        Language::En => "Unknown".to_string(),
+                    })
+                });
             Some(StatusAccountDisplay::ChatGpt { email, plan })
         }
         AuthMode::ApiKey => Some(StatusAccountDisplay::ApiKey),
@@ -166,12 +194,19 @@ pub(crate) fn format_directory_display(directory: &Path, max_width: Option<usize
     formatted
 }
 
-pub(crate) fn format_reset_timestamp(dt: DateTime<Local>, captured_at: DateTime<Local>) -> String {
+pub(crate) fn format_reset_timestamp(
+    dt: DateTime<Local>,
+    captured_at: DateTime<Local>,
+    language: Language,
+) -> String {
     let time = dt.format("%H:%M").to_string();
     if dt.date_naive() == captured_at.date_naive() {
         time
     } else {
-        format!("{time} · {}", dt.format("%-d %b"))
+        match language {
+            Language::ZhCn => format!("{time} · {}", dt.format("%-d %b")),
+            Language::En => format!("{time} on {}", dt.format("%-d %b")),
+        }
     }
 }
 

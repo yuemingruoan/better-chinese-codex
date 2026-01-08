@@ -5,6 +5,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use codex_core::protocol::Op;
+use codex_protocol::config_types::Language;
 use crossterm::event::KeyCode;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -35,6 +36,7 @@ pub(crate) struct StatusIndicatorWidget {
     header: String,
     details: Option<String>,
     show_interrupt_hint: bool,
+    language: Language,
 
     elapsed_running: Duration,
     last_resume_at: Instant,
@@ -46,19 +48,37 @@ pub(crate) struct StatusIndicatorWidget {
 
 // Format elapsed seconds into a compact human-friendly form used by the status line.
 // Examples: 0s, 59s, 1m 00s, 59m 59s, 1h 00m 00s, 2h 03m 09s
-pub fn fmt_elapsed_compact(elapsed_secs: u64) -> String {
-    if elapsed_secs < 60 {
-        return format!("{elapsed_secs}秒");
+pub fn fmt_elapsed_compact(language: Language, elapsed_secs: u64) -> String {
+    match language {
+        Language::ZhCn => {
+            if elapsed_secs < 60 {
+                return format!("{elapsed_secs}秒");
+            }
+            if elapsed_secs < 3600 {
+                let minutes = elapsed_secs / 60;
+                let seconds = elapsed_secs % 60;
+                return format!("{minutes}分 {seconds:02}秒");
+            }
+            let hours = elapsed_secs / 3600;
+            let minutes = (elapsed_secs % 3600) / 60;
+            let seconds = elapsed_secs % 60;
+            format!("{hours}小时 {minutes:02}分 {seconds:02}秒")
+        }
+        Language::En => {
+            if elapsed_secs < 60 {
+                return format!("{elapsed_secs}s");
+            }
+            if elapsed_secs < 3600 {
+                let minutes = elapsed_secs / 60;
+                let seconds = elapsed_secs % 60;
+                return format!("{minutes}m {seconds:02}s");
+            }
+            let hours = elapsed_secs / 3600;
+            let minutes = (elapsed_secs % 3600) / 60;
+            let seconds = elapsed_secs % 60;
+            format!("{hours}h {minutes:02}m {seconds:02}s")
+        }
     }
-    if elapsed_secs < 3600 {
-        let minutes = elapsed_secs / 60;
-        let seconds = elapsed_secs % 60;
-        return format!("{minutes}分 {seconds:02}秒");
-    }
-    let hours = elapsed_secs / 3600;
-    let minutes = (elapsed_secs % 3600) / 60;
-    let seconds = elapsed_secs % 60;
-    format!("{hours}小时 {minutes:02}分 {seconds:02}秒")
 }
 
 impl StatusIndicatorWidget {
@@ -66,11 +86,16 @@ impl StatusIndicatorWidget {
         app_event_tx: AppEventSender,
         frame_requester: FrameRequester,
         animations_enabled: bool,
+        language: Language,
     ) -> Self {
         Self {
-            header: String::from("运行中"),
+            header: match language {
+                Language::ZhCn => String::from("运行中"),
+                Language::En => String::from("Running"),
+            },
             details: None,
             show_interrupt_hint: true,
+            language,
             elapsed_running: Duration::ZERO,
             last_resume_at: Instant::now(),
             is_paused: false,
@@ -109,6 +134,10 @@ impl StatusIndicatorWidget {
 
     pub(crate) fn set_interrupt_hint_visible(&mut self, visible: bool) {
         self.show_interrupt_hint = visible;
+    }
+
+    pub(crate) fn set_language(&mut self, language: Language) {
+        self.language = language;
     }
 
     #[cfg(test)]
@@ -205,7 +234,7 @@ impl Renderable for StatusIndicatorWidget {
             .schedule_frame_in(Duration::from_millis(32));
         let now = Instant::now();
         let elapsed_duration = self.elapsed_duration_at(now);
-        let pretty_elapsed = fmt_elapsed_compact(elapsed_duration.as_secs());
+        let pretty_elapsed = fmt_elapsed_compact(self.language, elapsed_duration.as_secs());
 
         let mut spans = Vec::with_capacity(5);
         spans.push(spinner(Some(self.last_resume_at), self.animations_enabled));
@@ -217,13 +246,21 @@ impl Renderable for StatusIndicatorWidget {
         }
         spans.push(" ".into());
         if self.show_interrupt_hint {
+            let (prefix, suffix) = match self.language {
+                Language::ZhCn => (format!("（{pretty_elapsed} • 按 "), " 以中断）"),
+                Language::En => (format!("({pretty_elapsed} • Press "), " to interrupt)"),
+            };
             spans.extend(vec![
-                format!("（{pretty_elapsed} • 按 ").dim(),
+                prefix.dim(),
                 key_hint::plain(KeyCode::Esc).into(),
-                " 以中断）".dim(),
+                suffix.dim(),
             ]);
         } else {
-            spans.push(format!("（{pretty_elapsed}）").dim());
+            let idle = match self.language {
+                Language::ZhCn => format!("（{pretty_elapsed}）"),
+                Language::En => format!("({pretty_elapsed})"),
+            };
+            spans.push(idle.dim());
         }
 
         let mut lines = Vec::new();
@@ -253,19 +290,45 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
-    fn fmt_elapsed_compact_formats_seconds_minutes_hours() {
-        assert_eq!(fmt_elapsed_compact(0), "0秒");
-        assert_eq!(fmt_elapsed_compact(1), "1秒");
-        assert_eq!(fmt_elapsed_compact(59), "59秒");
-        assert_eq!(fmt_elapsed_compact(60), "1分 00秒");
-        assert_eq!(fmt_elapsed_compact(61), "1分 01秒");
-        assert_eq!(fmt_elapsed_compact(3 * 60 + 5), "3分 05秒");
-        assert_eq!(fmt_elapsed_compact(59 * 60 + 59), "59分 59秒");
-        assert_eq!(fmt_elapsed_compact(3600), "1小时 00分 00秒");
-        assert_eq!(fmt_elapsed_compact(3600 + 60 + 1), "1小时 01分 01秒");
+    fn fmt_elapsed_compact_formats_seconds_minutes_hours_zh_cn() {
+        assert_eq!(fmt_elapsed_compact(Language::ZhCn, 0), "0秒");
+        assert_eq!(fmt_elapsed_compact(Language::ZhCn, 1), "1秒");
+        assert_eq!(fmt_elapsed_compact(Language::ZhCn, 59), "59秒");
+        assert_eq!(fmt_elapsed_compact(Language::ZhCn, 60), "1分 00秒");
+        assert_eq!(fmt_elapsed_compact(Language::ZhCn, 61), "1分 01秒");
+        assert_eq!(fmt_elapsed_compact(Language::ZhCn, 3 * 60 + 5), "3分 05秒");
         assert_eq!(
-            fmt_elapsed_compact(25 * 3600 + 2 * 60 + 3),
+            fmt_elapsed_compact(Language::ZhCn, 59 * 60 + 59),
+            "59分 59秒"
+        );
+        assert_eq!(fmt_elapsed_compact(Language::ZhCn, 3600), "1小时 00分 00秒");
+        assert_eq!(
+            fmt_elapsed_compact(Language::ZhCn, 3600 + 60 + 1),
+            "1小时 01分 01秒"
+        );
+        assert_eq!(
+            fmt_elapsed_compact(Language::ZhCn, 25 * 3600 + 2 * 60 + 3),
             "25小时 02分 03秒"
+        );
+    }
+
+    #[test]
+    fn fmt_elapsed_compact_formats_seconds_minutes_hours_en() {
+        assert_eq!(fmt_elapsed_compact(Language::En, 0), "0s");
+        assert_eq!(fmt_elapsed_compact(Language::En, 1), "1s");
+        assert_eq!(fmt_elapsed_compact(Language::En, 59), "59s");
+        assert_eq!(fmt_elapsed_compact(Language::En, 60), "1m 00s");
+        assert_eq!(fmt_elapsed_compact(Language::En, 61), "1m 01s");
+        assert_eq!(fmt_elapsed_compact(Language::En, 3 * 60 + 5), "3m 05s");
+        assert_eq!(fmt_elapsed_compact(Language::En, 59 * 60 + 59), "59m 59s");
+        assert_eq!(fmt_elapsed_compact(Language::En, 3600), "1h 00m 00s");
+        assert_eq!(
+            fmt_elapsed_compact(Language::En, 3600 + 60 + 1),
+            "1h 01m 01s"
+        );
+        assert_eq!(
+            fmt_elapsed_compact(Language::En, 25 * 3600 + 2 * 60 + 3),
+            "25h 02m 03s"
         );
     }
 
@@ -273,7 +336,12 @@ mod tests {
     fn renders_with_working_header() {
         let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx_raw);
-        let w = StatusIndicatorWidget::new(tx, crate::tui::FrameRequester::test_dummy(), true);
+        let w = StatusIndicatorWidget::new(
+            tx,
+            crate::tui::FrameRequester::test_dummy(),
+            true,
+            Language::En,
+        );
 
         // Render into a fixed-size test terminal and snapshot the backend.
         let mut terminal = Terminal::new(TestBackend::new(80, 2)).expect("terminal");
@@ -287,7 +355,12 @@ mod tests {
     fn renders_truncated() {
         let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx_raw);
-        let w = StatusIndicatorWidget::new(tx, crate::tui::FrameRequester::test_dummy(), true);
+        let w = StatusIndicatorWidget::new(
+            tx,
+            crate::tui::FrameRequester::test_dummy(),
+            true,
+            Language::En,
+        );
 
         // Render into a fixed-size test terminal and snapshot the backend.
         let mut terminal = Terminal::new(TestBackend::new(20, 2)).expect("terminal");
@@ -301,7 +374,12 @@ mod tests {
     fn renders_wrapped_details_panama_two_lines() {
         let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx_raw);
-        let mut w = StatusIndicatorWidget::new(tx, crate::tui::FrameRequester::test_dummy(), false);
+        let mut w = StatusIndicatorWidget::new(
+            tx,
+            crate::tui::FrameRequester::test_dummy(),
+            false,
+            Language::En,
+        );
         w.update_details(Some("A man a plan a canal panama".to_string()));
         w.set_interrupt_hint_visible(false);
 
@@ -322,8 +400,12 @@ mod tests {
     fn timer_pauses_when_requested() {
         let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx_raw);
-        let mut widget =
-            StatusIndicatorWidget::new(tx, crate::tui::FrameRequester::test_dummy(), true);
+        let mut widget = StatusIndicatorWidget::new(
+            tx,
+            crate::tui::FrameRequester::test_dummy(),
+            true,
+            Language::En,
+        );
 
         let baseline = Instant::now();
         widget.last_resume_at = baseline;
@@ -344,7 +426,12 @@ mod tests {
     fn details_overflow_adds_ellipsis() {
         let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx_raw);
-        let mut w = StatusIndicatorWidget::new(tx, crate::tui::FrameRequester::test_dummy(), true);
+        let mut w = StatusIndicatorWidget::new(
+            tx,
+            crate::tui::FrameRequester::test_dummy(),
+            true,
+            Language::En,
+        );
         w.update_details(Some("abcd abcd abcd abcd".to_string()));
 
         let lines = w.wrapped_details_lines(6);

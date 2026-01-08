@@ -20,6 +20,7 @@ use crate::app_event_sender::AppEventSender;
 use crate::history_cell;
 use crate::render::renderable::Renderable;
 use codex_core::protocol::SessionSource;
+use codex_protocol::config_types::Language;
 
 use super::CancellationEvent;
 use super::bottom_pane_view::BottomPaneView;
@@ -38,6 +39,7 @@ pub(crate) struct FeedbackNoteView {
     rollout_path: Option<PathBuf>,
     app_event_tx: AppEventSender,
     include_logs: bool,
+    language: Language,
 
     // UI state
     textarea: TextArea,
@@ -52,6 +54,7 @@ impl FeedbackNoteView {
         rollout_path: Option<PathBuf>,
         app_event_tx: AppEventSender,
         include_logs: bool,
+        language: Language,
     ) -> Self {
         Self {
             category,
@@ -59,6 +62,7 @@ impl FeedbackNoteView {
             rollout_path,
             app_event_tx,
             include_logs,
+            language,
             textarea: TextArea::new(),
             textarea_state: RefCell::new(TextAreaState::default()),
             complete: false,
@@ -280,7 +284,7 @@ impl Renderable for FeedbackNoteView {
 
         let hint_y = hint_blank_y.saturating_add(1);
         if hint_y < area.y.saturating_add(area.height) {
-            Paragraph::new(standard_popup_hint_line()).render(
+            Paragraph::new(standard_popup_hint_line(self.language)).render(
                 Rect {
                     x: area.x,
                     y: hint_y,
@@ -347,7 +351,9 @@ fn issue_url_for_category(category: FeedbackCategory, thread_id: &str) -> Option
 // Build the selection popup params for feedback categories.
 pub(crate) fn feedback_selection_params(
     app_event_tx: AppEventSender,
+    language: Language,
 ) -> super::SelectionViewParams {
+    let _ = language;
     super::SelectionViewParams {
         title: Some("How was this?".to_string()),
         items: vec![
@@ -403,6 +409,7 @@ pub(crate) fn feedback_upload_consent_params(
     app_event_tx: AppEventSender,
     category: FeedbackCategory,
     rollout_path: Option<std::path::PathBuf>,
+    language: Language,
 ) -> super::SelectionViewParams {
     use super::popup_consts::standard_popup_hint_line;
     let yes_action: super::SelectionAction = Box::new({
@@ -441,7 +448,7 @@ pub(crate) fn feedback_upload_consent_params(
     }
 
     super::SelectionViewParams {
-        footer_hint: Some(standard_popup_hint_line()),
+        footer_hint: Some(standard_popup_hint_line(language)),
         items: vec![
             super::SelectionItem {
                 name: "Yes".to_string(),
@@ -473,6 +480,7 @@ mod tests {
     use super::*;
     use crate::app_event::AppEvent;
     use crate::app_event_sender::AppEventSender;
+    use codex_protocol::config_types::Language;
 
     fn render(view: &FeedbackNoteView, width: u16) -> String {
         let height = view.desired_height(width);
@@ -508,7 +516,7 @@ mod tests {
         let (tx_raw, _rx) = tokio::sync::mpsc::unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx_raw);
         let snapshot = codex_feedback::CodexFeedback::new().snapshot(None);
-        FeedbackNoteView::new(category, snapshot, None, tx, true)
+        FeedbackNoteView::new(category, snapshot, None, tx, true, Language::En)
     }
 
     #[test]

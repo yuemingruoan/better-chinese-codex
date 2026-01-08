@@ -1,7 +1,10 @@
 use crate::config::CONFIG_TOML_FILE;
 use crate::config::types::McpServerConfig;
 use crate::config::types::Notice;
+use crate::protocol::AskForApproval;
 use anyhow::Context;
+use codex_protocol::config_types::Language;
+use codex_protocol::config_types::SandboxMode;
 use codex_protocol::config_types::TrustLevel;
 use codex_protocol::openai_models::ReasoningEffort;
 use std::collections::BTreeMap;
@@ -22,6 +25,10 @@ pub enum ConfigEdit {
         model: Option<String>,
         effort: Option<ReasoningEffort>,
     },
+    /// Update the approval policy for command execution.
+    SetApprovalPolicy(AskForApproval),
+    /// Update the sandbox mode for tool execution.
+    SetSandboxMode(SandboxMode),
     /// Toggle the acknowledgement flag under `[notice]`.
     SetNoticeHideFullAccessWarning(bool),
     /// Toggle the Windows world-writable directories warning acknowledgement flag.
@@ -265,6 +272,12 @@ impl ConfigDocument {
                 );
                 mutated
             }),
+            ConfigEdit::SetApprovalPolicy(policy) => {
+                Ok(self.write_profile_value(&["approval_policy"], Some(value(policy.to_string()))))
+            }
+            ConfigEdit::SetSandboxMode(mode) => {
+                Ok(self.write_profile_value(&["sandbox_mode"], Some(value(mode.to_string()))))
+            }
             ConfigEdit::SetNoticeHideFullAccessWarning(acknowledged) => Ok(self.write_value(
                 Scope::Global,
                 &[Notice::TABLE_KEY, "hide_full_access_warning"],
@@ -596,6 +609,25 @@ impl ConfigEditsBuilder {
         self
     }
 
+    pub fn set_approval_policy(mut self, approval_policy: AskForApproval) -> Self {
+        self.edits
+            .push(ConfigEdit::SetApprovalPolicy(approval_policy));
+        self
+    }
+
+    pub fn set_sandbox_mode(mut self, sandbox_mode: SandboxMode) -> Self {
+        self.edits.push(ConfigEdit::SetSandboxMode(sandbox_mode));
+        self
+    }
+
+    pub fn set_language(mut self, language: Language) -> Self {
+        self.edits.push(ConfigEdit::SetPath {
+            segments: vec!["language".to_string()],
+            value: value(language.to_string()),
+        });
+        self
+    }
+
     pub fn set_hide_full_access_warning(mut self, acknowledged: bool) -> Self {
         self.edits
             .push(ConfigEdit::SetNoticeHideFullAccessWarning(acknowledged));
@@ -691,6 +723,9 @@ impl ConfigEditsBuilder {
 mod tests {
     use super::*;
     use crate::config::types::McpServerTransportConfig;
+    use crate::protocol::AskForApproval;
+    use codex_protocol::config_types::Language;
+    use codex_protocol::config_types::SandboxMode;
     use codex_protocol::openai_models::ReasoningEffort;
     use pretty_assertions::assert_eq;
     use tempfile::tempdir;
@@ -720,6 +755,38 @@ model_reasoning_effort = "high"
     }
 
     #[test]
+    fn blocking_set_approval_and_sandbox_mode_profile_scoped() {
+        let tmp = tempdir().expect("tmpdir");
+        let codex_home = tmp.path();
+
+        ConfigEditsBuilder::new(codex_home)
+            .with_profile(Some("fast"))
+            .set_approval_policy(AskForApproval::OnFailure)
+            .set_sandbox_mode(SandboxMode::WorkspaceWrite)
+            .apply_blocking()
+            .expect("persist");
+
+        let raw = std::fs::read_to_string(codex_home.join(CONFIG_TOML_FILE)).expect("read config");
+        let value: TomlValue = toml::from_str(&raw).expect("parse config");
+        let profiles_tbl = value
+            .get("profiles")
+            .and_then(|v| v.as_table())
+            .expect("profiles table");
+        let fast_tbl = profiles_tbl
+            .get("fast")
+            .and_then(|v| v.as_table())
+            .expect("fast profile");
+        assert_eq!(
+            fast_tbl.get("approval_policy").and_then(|v| v.as_str()),
+            Some("on-failure")
+        );
+        assert_eq!(
+            fast_tbl.get("sandbox_mode").and_then(|v| v.as_str()),
+            Some("workspace-write")
+        );
+    }
+
+    #[test]
     fn builder_with_edits_applies_custom_paths() {
         let tmp = tempdir().expect("tmpdir");
         let codex_home = tmp.path();
@@ -735,6 +802,21 @@ model_reasoning_effort = "high"
         let contents =
             std::fs::read_to_string(codex_home.join(CONFIG_TOML_FILE)).expect("read config");
         assert_eq!(contents, "enabled = true\n");
+    }
+
+    #[test]
+    fn blocking_set_language_top_level() {
+        let tmp = tempdir().expect("tmpdir");
+        let codex_home = tmp.path();
+
+        ConfigEditsBuilder::new(codex_home)
+            .set_language(Language::ZhCn)
+            .apply_blocking()
+            .expect("persist");
+
+        let contents =
+            std::fs::read_to_string(codex_home.join(CONFIG_TOML_FILE)).expect("read config");
+        assert_eq!(contents, "language = \"zh-cn\"\n");
     }
 
     #[test]

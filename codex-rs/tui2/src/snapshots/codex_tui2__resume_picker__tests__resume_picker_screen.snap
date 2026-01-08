@@ -2,7 +2,7 @@
 source: tui2/src/resume_picker.rs
 expression: snapshot
 ---
-Resume a previous session
+Resume previous session
 Type to search
   Updated  Branch  CWD  Conversation
 No sessions yet
@@ -10,4 +10,4 @@ No sessions yet
 
 
 
-enter to resume     esc to start new     ctrl + c to quit
+enter Resume session    esc Start new session    ctrl + c Quit

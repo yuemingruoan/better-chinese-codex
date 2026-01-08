@@ -14,6 +14,7 @@ use ratatui::widgets::Paragraph;
 use ratatui::widgets::WidgetRef;
 use ratatui::widgets::Wrap;
 
+use crate::i18n::tr;
 use crate::key_hint;
 use crate::onboarding::onboarding_screen::KeyboardHandler;
 use crate::onboarding::onboarding_screen::StepStateProvider;
@@ -22,6 +23,7 @@ use crate::render::renderable::ColumnRenderable;
 use crate::render::renderable::Renderable;
 use crate::render::renderable::RenderableExt as _;
 use crate::selection_list::selection_option_row;
+use codex_protocol::config_types::Language;
 
 use super::onboarding_screen::StepState;
 pub(crate) struct TrustDirectoryWidget {
@@ -31,6 +33,7 @@ pub(crate) struct TrustDirectoryWidget {
     pub selection: Option<TrustDirectorySelection>,
     pub highlighted: TrustDirectorySelection,
     pub error: Option<String>,
+    pub language: Language,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,19 +44,33 @@ pub enum TrustDirectorySelection {
 
 impl WidgetRef for &TrustDirectoryWidget {
     fn render_ref(&self, area: Rect, buf: &mut Buffer) {
+        let language = self.language;
         let mut column = ColumnRenderable::new();
 
         column.push(Line::from(vec![
             "> ".into(),
-            "您正在以下目录中运行 Codex：".bold(),
+            tr(
+                language,
+                "您正在以下目录中运行 Codex：",
+                "You are running Codex in ",
+            )
+            .bold(),
             self.cwd.to_string_lossy().to_string().into(),
         ]));
         column.push("");
 
         let guidance = if self.is_git_repo {
-            "由于该文件夹受版本控制，您可以允许 Codex 在此目录下执行操作而无需逐次审批。"
+            tr(
+                language,
+                "由于该文件夹受版本控制，您可以允许 Codex 在此目录下执行操作而无需逐次审批。",
+                "Since this folder is version controlled, you may wish to allow Codex to work in this folder without asking for approval.",
+            )
         } else {
-            "由于该文件夹没有版本控制，推荐您对所有编辑与命令都进行审批。"
+            tr(
+                language,
+                "由于该文件夹没有版本控制，推荐您对所有编辑与命令都进行审批。",
+                "Since this folder is not version controlled, we recommend requiring approval of all edits and commands.",
+            )
         };
 
         column.push(
@@ -66,19 +83,38 @@ impl WidgetRef for &TrustDirectoryWidget {
         let mut options: Vec<(&str, TrustDirectorySelection)> = Vec::new();
         if self.is_git_repo {
             options.push((
-                "是的，允许 Codex 在此目录中执行操作且无需审批",
+                tr(
+                    language,
+                    "是的，允许 Codex 在此目录中执行操作且无需审批",
+                    "Yes, allow Codex to work in this folder without asking for approval",
+                ),
                 TrustDirectorySelection::Trust,
             ));
             options.push((
-                "不，所有修改与命令都需我审批",
+                tr(
+                    language,
+                    "不，所有修改与命令都需我审批",
+                    "No, ask me to approve edits and commands",
+                ),
                 TrustDirectorySelection::DontTrust,
             ));
         } else {
             options.push((
-                "允许 Codex 在此目录中执行操作且无需审批",
+                tr(
+                    language,
+                    "允许 Codex 在此目录中执行操作且无需审批",
+                    "Allow Codex to work in this folder without asking for approval",
+                ),
                 TrustDirectorySelection::Trust,
             ));
-            options.push(("所有修改与命令都需审批", TrustDirectorySelection::DontTrust));
+            options.push((
+                tr(
+                    language,
+                    "所有修改与命令都需审批",
+                    "Require approval of edits and commands",
+                ),
+                TrustDirectorySelection::DontTrust,
+            ));
         }
 
         for (idx, (text, selection)) in options.iter().enumerate() {
@@ -103,9 +139,9 @@ impl WidgetRef for &TrustDirectoryWidget {
 
         column.push(
             Line::from(vec![
-                "按下 ".dim(),
+                tr(language, "按下 ", "Press ").dim(),
                 key_hint::plain(KeyCode::Enter).into(),
-                " 继续".dim(),
+                tr(language, " 继续", " to continue").dim(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );
@@ -153,7 +189,10 @@ impl TrustDirectoryWidget {
             resolve_root_git_project_for_trust(&self.cwd).unwrap_or_else(|| self.cwd.clone());
         if let Err(e) = set_project_trust_level(&self.codex_home, &target, TrustLevel::Trusted) {
             tracing::error!("Failed to set project trusted: {e:?}");
-            self.error = Some(format!("为 {} 设置信任状态失败：{e}", target.display()));
+            self.error = Some(match self.language {
+                Language::ZhCn => format!("为 {} 设置信任状态失败：{e}", target.display()),
+                Language::En => format!("Failed to set trust level for {}: {e}", target.display()),
+            });
         }
 
         self.selection = Some(TrustDirectorySelection::Trust);
@@ -199,6 +238,7 @@ mod tests {
             selection: None,
             highlighted: TrustDirectorySelection::DontTrust,
             error: None,
+            language: Language::En,
         };
 
         let release = KeyEvent {
@@ -223,6 +263,7 @@ mod tests {
             selection: None,
             highlighted: TrustDirectorySelection::Trust,
             error: None,
+            language: Language::En,
         };
 
         let mut terminal = Terminal::new(VT100Backend::new(70, 14)).expect("terminal");

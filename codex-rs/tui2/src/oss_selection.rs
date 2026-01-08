@@ -1,6 +1,3 @@
-use std::io;
-use std::sync::LazyLock;
-
 use codex_core::DEFAULT_LMSTUDIO_PORT;
 use codex_core::DEFAULT_OLLAMA_PORT;
 use codex_core::LMSTUDIO_OSS_PROVIDER_ID;
@@ -35,7 +32,11 @@ use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
 use ratatui::widgets::WidgetRef;
 use ratatui::widgets::Wrap;
+use std::io;
 use std::time::Duration;
+
+use crate::i18n::tr;
+use codex_protocol::config_types::Language;
 
 #[derive(Clone)]
 struct ProviderOption {
@@ -60,25 +61,8 @@ struct SelectOption {
     provider_id: &'static str,
 }
 
-static OSS_SELECT_OPTIONS: LazyLock<Vec<SelectOption>> = LazyLock::new(|| {
-    vec![
-        SelectOption {
-            label: Line::from(vec!["L".underlined(), "M Studio".into()]),
-            description: "Local LM Studio server (default port 1234)",
-            key: KeyCode::Char('l'),
-            provider_id: LMSTUDIO_OSS_PROVIDER_ID,
-        },
-        SelectOption {
-            label: Line::from(vec!["O".underlined(), "llama".into()]),
-            description: "Local Ollama server (default port 11434)",
-            key: KeyCode::Char('o'),
-            provider_id: OLLAMA_OSS_PROVIDER_ID,
-        },
-    ]
-});
-
 pub struct OssSelectionWidget<'a> {
-    select_options: &'a Vec<SelectOption>,
+    select_options: Vec<SelectOption>,
     confirmation_prompt: Paragraph<'a>,
 
     /// Currently selected index in *select* mode.
@@ -89,10 +73,15 @@ pub struct OssSelectionWidget<'a> {
     done: bool,
 
     selection: Option<String>,
+    language: Language,
 }
 
 impl OssSelectionWidget<'_> {
-    fn new(lmstudio_status: ProviderStatus, ollama_status: ProviderStatus) -> io::Result<Self> {
+    fn new(
+        lmstudio_status: ProviderStatus,
+        ollama_status: ProviderStatus,
+        language: Language,
+    ) -> io::Result<Self> {
         let providers = vec![
             ProviderOption {
                 name: "LM Studio".to_string(),
@@ -107,10 +96,19 @@ impl OssSelectionWidget<'_> {
         let mut contents: Vec<Line> = vec![
             Line::from(vec![
                 "? ".fg(Color::Blue),
-                "Select an open-source provider".bold(),
+                tr(
+                    language,
+                    "选择开源模型提供者",
+                    "Choose an open-source provider",
+                )
+                .bold(),
             ]),
             Line::from(""),
-            Line::from("  Choose which local AI server to use for your session."),
+            Line::from(tr(
+                language,
+                "  请选择本地 AI 服务，之后可以记住该偏好。",
+                "  Choose a local AI service; your preference can be saved.",
+            )),
             Line::from(""),
         ];
 
@@ -124,21 +122,56 @@ impl OssSelectionWidget<'_> {
             ]));
         }
         contents.push(Line::from(""));
-        contents.push(Line::from("  ● Running  ○ Not Running").add_modifier(Modifier::DIM));
+        contents.push(
+            Line::from(match language {
+                Language::ZhCn => "  ● 运行中  ○ 未运行",
+                Language::En => "  ● Running  ○ Not running",
+            })
+            .add_modifier(Modifier::DIM),
+        );
 
         contents.push(Line::from(""));
         contents.push(
-            Line::from("  Press Enter to select • Ctrl+C to exit").add_modifier(Modifier::DIM),
+            Line::from(tr(
+                language,
+                "  按 Enter 选择 • Ctrl+C 退出",
+                "  Press Enter to select • Ctrl+C to quit",
+            ))
+            .add_modifier(Modifier::DIM),
         );
 
         let confirmation_prompt = Paragraph::new(contents).wrap(Wrap { trim: false });
 
+        let select_options = vec![
+            SelectOption {
+                label: Line::from(vec!["L".underlined(), "M Studio".into()]),
+                description: tr(
+                    language,
+                    "本地 LM Studio 服务（默认端口 1234）",
+                    "Local LM Studio service (default port 1234)",
+                ),
+                key: KeyCode::Char('l'),
+                provider_id: LMSTUDIO_OSS_PROVIDER_ID,
+            },
+            SelectOption {
+                label: Line::from(vec!["O".underlined(), "llama".into()]),
+                description: tr(
+                    language,
+                    "本地 Ollama 服务（默认端口 11434）",
+                    "Local Ollama service (default port 11434)",
+                ),
+                key: KeyCode::Char('o'),
+                provider_id: OLLAMA_OSS_PROVIDER_ID,
+            },
+        ];
+
         Ok(Self {
-            select_options: &OSS_SELECT_OPTIONS,
+            select_options,
             confirmation_prompt,
             selected_option: 0,
             done: false,
             selection: None,
+            language,
         })
     }
 
@@ -254,7 +287,7 @@ impl WidgetRef for &OssSelectionWidget<'_> {
         ])
         .areas(response_chunk.inner(Margin::new(1, 0)));
 
-        Line::from("Select provider?").render(title_area, buf);
+        Line::from(tr(self.language, "选择提供方？", "Select provider?")).render(title_area, buf);
 
         self.confirmation_prompt.clone().render(prompt_chunk, buf);
         let areas = Layout::horizontal(
@@ -283,7 +316,10 @@ fn get_status_symbol_and_color(status: &ProviderStatus) -> (&'static str, Color)
     }
 }
 
-pub async fn select_oss_provider(codex_home: &std::path::Path) -> io::Result<String> {
+pub async fn select_oss_provider(
+    codex_home: &std::path::Path,
+    language: Language,
+) -> io::Result<String> {
     // Check provider statuses first
     let lmstudio_status = check_lmstudio_status().await;
     let ollama_status = check_ollama_status().await;
@@ -303,7 +339,7 @@ pub async fn select_oss_provider(codex_home: &std::path::Path) -> io::Result<Str
         }
     }
 
-    let mut widget = OssSelectionWidget::new(lmstudio_status, ollama_status)?;
+    let mut widget = OssSelectionWidget::new(lmstudio_status, ollama_status, language)?;
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();

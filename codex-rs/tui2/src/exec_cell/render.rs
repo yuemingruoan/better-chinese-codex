@@ -5,6 +5,7 @@ use super::model::ExecCall;
 use super::model::ExecCell;
 use crate::exec_command::strip_bash_lc_and_escape;
 use crate::history_cell::HistoryCell;
+use crate::i18n::tr;
 use crate::render::highlight::highlight_bash_to_lines;
 use crate::render::line_utils::prefix_lines;
 use crate::render::line_utils::push_owned_lines;
@@ -16,6 +17,7 @@ use codex_ansi_escape::ansi_escape_line;
 use codex_common::elapsed::format_duration;
 use codex_core::bash::extract_bash_command;
 use codex_core::protocol::ExecCommandSource;
+use codex_protocol::config_types::Language;
 use codex_protocol::parse_command::ParsedCommand;
 use itertools::Itertools;
 use ratatui::prelude::*;
@@ -42,8 +44,9 @@ pub(crate) fn new_active_exec_command(
     source: ExecCommandSource,
     interaction_input: Option<String>,
     animations_enabled: bool,
+    language: Language,
 ) -> ExecCell {
-    ExecCell::new(
+    ExecCell::new_with_language(
         ExecCall {
             call_id,
             command,
@@ -55,10 +58,15 @@ pub(crate) fn new_active_exec_command(
             interaction_input,
         },
         animations_enabled,
+        language,
     )
 }
 
-fn format_unified_exec_interaction(command: &[String], input: Option<&str>) -> String {
+fn format_unified_exec_interaction(
+    command: &[String],
+    input: Option<&str>,
+    language: Language,
+) -> String {
     let command_display = if let Some((_, script)) = extract_bash_command(command) {
         script.to_string()
     } else {
@@ -67,9 +75,19 @@ fn format_unified_exec_interaction(command: &[String], input: Option<&str>) -> S
     match input {
         Some(data) if !data.is_empty() => {
             let preview = summarize_interaction_input(data);
-            format!("Interacted with `{command_display}`, sent `{preview}`")
+            match language {
+                Language::ZhCn => {
+                    format!("与 `{command_display}` 交互，发送 `{preview}`")
+                }
+                Language::En => {
+                    format!("Interacted with `{command_display}`, sent `{preview}`")
+                }
+            }
         }
-        _ => format!("Waited for `{command_display}`"),
+        _ => match language {
+            Language::ZhCn => format!("等待 `{command_display}`"),
+            Language::En => format!("Waited for `{command_display}`"),
+        },
     }
 }
 
@@ -97,6 +115,7 @@ pub(crate) struct OutputLines {
 pub(crate) fn output_lines(
     output: Option<&CommandOutput>,
     params: OutputLinesParams,
+    language: Language,
 ) -> OutputLines {
     let OutputLinesParams {
         line_limit,
@@ -152,7 +171,11 @@ pub(crate) fn output_lines(
     };
     if show_ellipsis {
         let omitted = total - 2 * line_limit;
-        out.push(format!("… +{omitted} lines").into());
+        let label = match language {
+            Language::ZhCn => format!("… +{omitted} 行"),
+            Language::En => format!("… +{omitted} lines"),
+        };
+        out.push(label.into());
     }
 
     let tail_start = if show_ellipsis {
@@ -234,7 +257,7 @@ impl HistoryCell for ExecCell {
                 let duration = call
                     .duration
                     .map(format_duration)
-                    .unwrap_or_else(|| "unknown".to_string());
+                    .unwrap_or_else(|| tr(self.language(), "未知", "unknown").to_string());
                 let mut result: Line = if output.exit_code == 0 {
                     Line::from("✓".green().bold())
                 } else {
@@ -254,6 +277,7 @@ impl HistoryCell for ExecCell {
 impl ExecCell {
     fn exploring_display_lines(&self, width: u16) -> Vec<Line<'static>> {
         let mut out: Vec<Line<'static>> = Vec::new();
+        let language = self.language();
         out.push(Line::from(vec![
             if self.is_active() {
                 spinner(self.active_start_time(), self.animations_enabled())
@@ -262,9 +286,9 @@ impl ExecCell {
             },
             " ".into(),
             if self.is_active() {
-                "Exploring".bold()
+                tr(language, "正在执行", "Exploring").bold()
             } else {
-                "Explored".bold()
+                tr(language, "已完成", "Explored").bold()
             },
         ]));
 
@@ -306,7 +330,10 @@ impl ExecCell {
                     })
                     .unique();
                 vec![(
-                    "Read",
+                    match language {
+                        Language::ZhCn => "读取",
+                        Language::En => "Read",
+                    },
                     Itertools::intersperse(names.into_iter().map(Into::into), ", ".dim()).collect(),
                 )]
             } else {
@@ -314,23 +341,51 @@ impl ExecCell {
                 for parsed in &call.parsed {
                     match parsed {
                         ParsedCommand::Read { name, .. } => {
-                            lines.push(("Read", vec![name.clone().into()]));
+                            lines.push((
+                                match language {
+                                    Language::ZhCn => "读取",
+                                    Language::En => "Read",
+                                },
+                                vec![name.clone().into()],
+                            ));
                         }
                         ParsedCommand::ListFiles { cmd, path } => {
-                            lines.push(("List", vec![path.clone().unwrap_or(cmd.clone()).into()]));
+                            lines.push((
+                                match language {
+                                    Language::ZhCn => "列出",
+                                    Language::En => "List",
+                                },
+                                vec![path.clone().unwrap_or(cmd.clone()).into()],
+                            ));
                         }
                         ParsedCommand::Search { cmd, query, path } => {
                             let spans = match (query, path) {
                                 (Some(q), Some(p)) => {
-                                    vec![q.clone().into(), " in ".dim(), p.clone().into()]
+                                    vec![
+                                        q.clone().into(),
+                                        tr(language, " 于 ", " in ").dim(),
+                                        p.clone().into(),
+                                    ]
                                 }
                                 (Some(q), None) => vec![q.clone().into()],
                                 _ => vec![cmd.clone().into()],
                             };
-                            lines.push(("Search", spans));
+                            lines.push((
+                                match language {
+                                    Language::ZhCn => "搜索",
+                                    Language::En => "Search",
+                                },
+                                spans,
+                            ));
                         }
                         ParsedCommand::Unknown { cmd } => {
-                            lines.push(("Run", vec![cmd.clone().into()]));
+                            lines.push((
+                                match language {
+                                    Language::ZhCn => "运行",
+                                    Language::En => "Run",
+                                },
+                                vec![cmd.clone().into()],
+                            ));
                         }
                     }
                 }
@@ -359,6 +414,7 @@ impl ExecCell {
         let [call] = &self.calls.as_slice() else {
             panic!("Expected exactly one call in a command display cell");
         };
+        let language = self.language();
         let layout = EXEC_DISPLAY_LAYOUT;
         let success = call.output.as_ref().map(|o| o.exit_code == 0);
         let bullet = match success {
@@ -370,11 +426,11 @@ impl ExecCell {
         let title = if is_interaction {
             ""
         } else if self.is_active() {
-            "Running"
+            tr(language, "执行中", "Running")
         } else if call.is_user_shell_command() {
-            "You ran"
+            tr(language, "您运行的", "You ran")
         } else {
-            "Ran"
+            tr(language, "已运行", "Ran")
         };
 
         let mut header_line = if is_interaction {
@@ -385,7 +441,11 @@ impl ExecCell {
         let header_prefix_width = header_line.width();
 
         let cmd_display = if call.is_unified_exec_interaction() {
-            format_unified_exec_interaction(&call.command, call.interaction_input.as_deref())
+            format_unified_exec_interaction(
+                &call.command,
+                call.interaction_input.as_deref(),
+                language,
+            )
         } else {
             strip_bash_lc_and_escape(&call.command)
         };
@@ -419,10 +479,8 @@ impl ExecCell {
 
         let mut lines: Vec<Line<'static>> = vec![header_line];
 
-        let continuation_lines = Self::limit_lines_from_start(
-            &continuation_lines,
-            layout.command_continuation_max_lines,
-        );
+        let continuation_lines =
+            self.limit_lines_from_start(&continuation_lines, layout.command_continuation_max_lines);
         if !continuation_lines.is_empty() {
             lines.extend(prefix_lines(
                 continuation_lines,
@@ -445,6 +503,7 @@ impl ExecCell {
                     include_angle_pipe: false,
                     include_prefix: false,
                 },
+                language,
             );
             let display_limit = if call.is_user_shell_command() {
                 USER_SHELL_TOOL_CALL_MAX_LINES
@@ -455,7 +514,7 @@ impl ExecCell {
             if raw_output.lines.is_empty() {
                 if !call.is_unified_exec_interaction() {
                     lines.extend(prefix_lines(
-                        vec![Line::from("(no output)".dim())],
+                        vec![Line::from(tr(language, "（无输出）", "(no output)").dim())],
                         Span::from(layout.output_block.initial_prefix).dim(),
                         Span::from(layout.output_block.subsequent_prefix),
                     ));
@@ -476,7 +535,7 @@ impl ExecCell {
                 }
 
                 let trimmed_output =
-                    Self::truncate_lines_middle(&wrapped_output, display_limit, raw_output.omitted);
+                    self.truncate_lines_middle(&wrapped_output, display_limit, raw_output.omitted);
 
                 if !trimmed_output.is_empty() {
                     lines.extend(prefix_lines(
@@ -491,20 +550,21 @@ impl ExecCell {
         lines
     }
 
-    fn limit_lines_from_start(lines: &[Line<'static>], keep: usize) -> Vec<Line<'static>> {
+    fn limit_lines_from_start(&self, lines: &[Line<'static>], keep: usize) -> Vec<Line<'static>> {
         if lines.len() <= keep {
             return lines.to_vec();
         }
         if keep == 0 {
-            return vec![Self::ellipsis_line(lines.len())];
+            return vec![self.ellipsis_line(lines.len())];
         }
 
         let mut out: Vec<Line<'static>> = lines[..keep].to_vec();
-        out.push(Self::ellipsis_line(lines.len() - keep));
+        out.push(self.ellipsis_line(lines.len() - keep));
         out
     }
 
     fn truncate_lines_middle(
+        &self,
         lines: &[Line<'static>],
         max: usize,
         omitted_hint: Option<usize>,
@@ -526,7 +586,7 @@ impl ExecCell {
                 .len()
                 .saturating_sub(usize::from(omitted_hint.is_some()));
             let omitted = base + extra;
-            return vec![Self::ellipsis_line(omitted)];
+            return vec![self.ellipsis_line(omitted)];
         }
 
         let head = (max - 1) / 2;
@@ -542,7 +602,7 @@ impl ExecCell {
             .len()
             .saturating_sub(head + tail)
             .saturating_sub(usize::from(omitted_hint.is_some()));
-        out.push(Self::ellipsis_line(base + additional));
+        out.push(self.ellipsis_line(base + additional));
 
         if tail > 0 {
             out.extend(lines[lines.len() - tail..].iter().cloned());
@@ -551,8 +611,12 @@ impl ExecCell {
         out
     }
 
-    fn ellipsis_line(omitted: usize) -> Line<'static> {
-        Line::from(vec![format!("… +{omitted} lines").dim()])
+    fn ellipsis_line(&self, omitted: usize) -> Line<'static> {
+        let label = match self.language() {
+            Language::ZhCn => format!("… +{omitted} 行"),
+            Language::En => format!("… +{omitted} lines"),
+        };
+        Line::from(vec![label.dim()])
     }
 }
 
@@ -646,6 +710,7 @@ mod tests {
                 include_angle_pipe: false,
                 include_prefix: false,
             },
+            Language::En,
         );
         let output_wrap_width = layout.output_block.wrap_width(width);
         let output_opts =

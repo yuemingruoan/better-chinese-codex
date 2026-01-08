@@ -359,6 +359,7 @@ async fn make_chatwidget_manual(
         disable_paste_burst: false,
         animations_enabled: cfg.animations,
         skills: None,
+        language: cfg.language,
     });
     let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("test"));
     let widget = ChatWidget {
@@ -475,12 +476,48 @@ async fn rate_limit_warnings_emit_thresholds() {
     let mut state = RateLimitWarningState::default();
     let mut warnings: Vec<String> = Vec::new();
 
-    warnings.extend(state.take_warnings(Some(10.0), Some(10079), Some(55.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(55.0), Some(10081), Some(10.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(10.0), Some(10081), Some(80.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(80.0), Some(10081), Some(10.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(10.0), Some(10081), Some(95.0), Some(299)));
-    warnings.extend(state.take_warnings(Some(95.0), Some(10079), Some(10.0), Some(299)));
+    warnings.extend(state.take_warnings(
+        Some(10.0),
+        Some(10079),
+        Some(55.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(55.0),
+        Some(10081),
+        Some(10.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(10.0),
+        Some(10081),
+        Some(80.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(80.0),
+        Some(10081),
+        Some(10.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(10.0),
+        Some(10081),
+        Some(95.0),
+        Some(299),
+        Language::En,
+    ));
+    warnings.extend(state.take_warnings(
+        Some(95.0),
+        Some(10079),
+        Some(10.0),
+        Some(299),
+        Language::En,
+    ));
 
     assert_eq!(
         warnings,
@@ -507,7 +544,7 @@ async fn test_rate_limit_warnings_monthly() {
     let mut state = RateLimitWarningState::default();
     let mut warnings: Vec<String> = Vec::new();
 
-    warnings.extend(state.take_warnings(Some(75.0), Some(43199), None, None));
+    warnings.extend(state.take_warnings(Some(75.0), Some(43199), None, None, Language::En));
     assert_eq!(
         warnings,
         vec![String::from(
@@ -1771,6 +1808,46 @@ async fn preset_matching_ignores_extra_writable_roots() {
     assert!(
         !ChatWidget::preset_matches_current(AskForApproval::Never, &current_sandbox, &preset),
         "approval mismatch should prevent matching the preset"
+    );
+}
+
+#[tokio::test]
+async fn approvals_selection_emits_persist_event() {
+    let (_chat, app_event_tx, mut rx, _op_rx) = make_chatwidget_manual_with_sender().await;
+    let actions = ChatWidget::approval_preset_actions(
+        AskForApproval::OnRequest,
+        SandboxPolicy::new_workspace_write_policy(),
+    );
+
+    assert_eq!(actions.len(), 1);
+    actions[0](&app_event_tx);
+
+    let event = rx.try_recv().expect("override context");
+    assert_matches!(
+        event,
+        AppEvent::CodexOp(Op::OverrideTurnContext {
+            approval_policy: Some(AskForApproval::OnRequest),
+            sandbox_policy: Some(SandboxPolicy::WorkspaceWrite { .. }),
+            ..
+        })
+    );
+    let event = rx.try_recv().expect("update approval policy");
+    assert_matches!(
+        event,
+        AppEvent::UpdateAskForApprovalPolicy(AskForApproval::OnRequest)
+    );
+    let event = rx.try_recv().expect("update sandbox policy");
+    assert_matches!(
+        event,
+        AppEvent::UpdateSandboxPolicy(SandboxPolicy::WorkspaceWrite { .. })
+    );
+    let event = rx.try_recv().expect("persist approval selection");
+    assert_matches!(
+        event,
+        AppEvent::PersistApprovalSelection {
+            approval_policy: AskForApproval::OnRequest,
+            sandbox_mode: SandboxMode::WorkspaceWrite,
+        }
     );
 }
 

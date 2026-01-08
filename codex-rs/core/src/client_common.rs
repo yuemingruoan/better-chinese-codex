@@ -3,6 +3,7 @@ use crate::error::Result;
 use crate::models_manager::model_family::ModelFamily;
 pub use codex_api::common::ResponseEvent;
 use codex_apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
+use codex_protocol::config_types::Language;
 use codex_protocol::models::ResponseItem;
 use futures::Stream;
 use serde::Deserialize;
@@ -19,9 +20,27 @@ use tokio::sync::mpsc;
 pub const REVIEW_PROMPT: &str = include_str!("../review_prompt.md");
 
 // Centralized templates for review-related user messages
-pub const REVIEW_EXIT_SUCCESS_TMPL: &str = include_str!("../templates/review/exit_success.xml");
-pub const REVIEW_EXIT_INTERRUPTED_TMPL: &str =
+pub const REVIEW_EXIT_SUCCESS_TMPL_EN: &str = include_str!("../templates/review/exit_success.xml");
+pub const REVIEW_EXIT_SUCCESS_TMPL_ZH: &str =
+    include_str!("../templates/review/exit_success_zh.xml");
+pub const REVIEW_EXIT_INTERRUPTED_TMPL_EN: &str =
     include_str!("../templates/review/exit_interrupted.xml");
+pub const REVIEW_EXIT_INTERRUPTED_TMPL_ZH: &str =
+    include_str!("../templates/review/exit_interrupted_zh.xml");
+
+pub fn review_exit_success_template(language: Language) -> &'static str {
+    match language {
+        Language::ZhCn => REVIEW_EXIT_SUCCESS_TMPL_ZH,
+        Language::En => REVIEW_EXIT_SUCCESS_TMPL_EN,
+    }
+}
+
+pub fn review_exit_interrupted_template(language: Language) -> &'static str {
+    match language {
+        Language::ZhCn => REVIEW_EXIT_INTERRUPTED_TMPL_ZH,
+        Language::En => REVIEW_EXIT_INTERRUPTED_TMPL_EN,
+    }
+}
 
 /// API request payload for a single model turn
 #[derive(Default, Debug, Clone)]

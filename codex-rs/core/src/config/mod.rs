@@ -33,6 +33,7 @@ use crate::protocol::SandboxPolicy;
 use codex_app_server_protocol::Tools;
 use codex_app_server_protocol::UserSavedConfig;
 use codex_protocol::config_types::ForcedLoginMethod;
+use codex_protocol::config_types::Language;
 use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::config_types::SandboxMode;
 use codex_protocol::config_types::TrustLevel;
@@ -148,6 +149,9 @@ pub struct Config {
 
     /// Compact prompt override.
     pub compact_prompt: Option<String>,
+
+    /// Preferred UI language.
+    pub language: Language,
 
     /// Optional external notifier command. When set, Codex will spawn this
     /// program after each completed *turn* (i.e. when the agent finishes
@@ -761,6 +765,9 @@ pub struct ConfigToml {
     /// output will be hyperlinked using the specified URI scheme.
     pub file_opener: Option<UriBasedFileOpener>,
 
+    /// Preferred UI language. Defaults to English when unset or unrecognized.
+    pub language: Option<Language>,
+
     /// Collection of settings that are specific to the TUI.
     pub tui: Option<Tui>,
 
@@ -1331,6 +1338,7 @@ impl Config {
             base_instructions,
             developer_instructions,
             compact_prompt,
+            language: cfg.language.unwrap_or_default(),
             // The config.toml omits "_mode" because it's a config file. However, "_mode"
             // is important in code to differentiate the mode from the store implementation.
             cli_auth_credentials_store_mode: cfg.cli_auth_credentials_store.unwrap_or_default(),
@@ -1585,6 +1593,26 @@ persistence = "none"
             }),
             history_no_persistence_cfg.history
         );
+    }
+
+    #[test]
+    fn language_parsing_defaults_to_english() {
+        let config = r#"
+language = "unknown"
+"#;
+        let parsed =
+            toml::from_str::<ConfigToml>(config).expect("TOML deserialization should succeed");
+        assert_eq!(parsed.language, Some(Language::En));
+    }
+
+    #[test]
+    fn language_parsing_accepts_zh_cn() {
+        let config = r#"
+language = "zh-cn"
+"#;
+        let parsed =
+            toml::from_str::<ConfigToml>(config).expect("TOML deserialization should succeed");
+        assert_eq!(parsed.language, Some(Language::ZhCn));
     }
 
     #[test]
@@ -3200,6 +3228,7 @@ model_verbosity = "high"
                 base_instructions: None,
                 developer_instructions: None,
                 compact_prompt: None,
+                language: Language::En,
                 forced_chatgpt_workspace_id: None,
                 forced_login_method: None,
                 include_apply_patch_tool: false,
@@ -3283,6 +3312,7 @@ model_verbosity = "high"
             base_instructions: None,
             developer_instructions: None,
             compact_prompt: None,
+            language: Language::En,
             forced_chatgpt_workspace_id: None,
             forced_login_method: None,
             include_apply_patch_tool: false,
@@ -3381,6 +3411,7 @@ model_verbosity = "high"
             base_instructions: None,
             developer_instructions: None,
             compact_prompt: None,
+            language: Language::En,
             forced_chatgpt_workspace_id: None,
             forced_login_method: None,
             include_apply_patch_tool: false,
@@ -3465,6 +3496,7 @@ model_verbosity = "high"
             base_instructions: None,
             developer_instructions: None,
             compact_prompt: None,
+            language: Language::En,
             forced_chatgpt_workspace_id: None,
             forced_login_method: None,
             include_apply_patch_tool: false,

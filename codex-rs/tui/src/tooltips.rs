@@ -1,20 +1,33 @@
 use codex_core::features::FEATURES;
+use codex_protocol::config_types::Language;
 use lazy_static::lazy_static;
 use rand::Rng;
 
 const ANNOUNCEMENT_TIP_URL: &str =
     "https://raw.githubusercontent.com/openai/codex/main/announcement_tip.toml";
-const RAW_TOOLTIPS: &str = include_str!("../tooltips.txt");
+const RAW_TOOLTIPS_EN: &str = include_str!("../tooltips.txt");
+const RAW_TOOLTIPS_ZH: &str = include_str!("../tooltips_zh.txt");
 
 lazy_static! {
-    static ref TOOLTIPS: Vec<&'static str> = RAW_TOOLTIPS
+    static ref TOOLTIPS_EN: Vec<&'static str> = RAW_TOOLTIPS_EN
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .collect();
-    static ref ALL_TOOLTIPS: Vec<&'static str> = {
+    static ref TOOLTIPS_ZH: Vec<&'static str> = RAW_TOOLTIPS_ZH
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect();
+    static ref ALL_TOOLTIPS_EN: Vec<&'static str> = {
         let mut tips = Vec::new();
-        tips.extend(TOOLTIPS.iter().copied());
+        tips.extend(TOOLTIPS_EN.iter().copied());
+        tips.extend(beta_tooltips());
+        tips
+    };
+    static ref ALL_TOOLTIPS_ZH: Vec<&'static str> = {
+        let mut tips = Vec::new();
+        tips.extend(TOOLTIPS_ZH.iter().copied());
         tips.extend(beta_tooltips());
         tips
     };
@@ -28,21 +41,23 @@ fn beta_tooltips() -> Vec<&'static str> {
 }
 
 /// Pick a random tooltip to show to the user when starting Codex.
-pub(crate) fn random_tooltip() -> Option<String> {
+pub(crate) fn random_tooltip(language: Language) -> Option<String> {
     if let Some(announcement) = announcement::fetch_announcement_tip() {
         return Some(announcement);
     }
     let mut rng = rand::rng();
-    pick_tooltip(&mut rng).map(str::to_string)
+    pick_tooltip(&mut rng, language).map(str::to_string)
 }
 
-fn pick_tooltip<R: Rng + ?Sized>(rng: &mut R) -> Option<&'static str> {
-    if ALL_TOOLTIPS.is_empty() {
+fn pick_tooltip<R: Rng + ?Sized>(rng: &mut R, language: Language) -> Option<&'static str> {
+    let tooltips = match language {
+        Language::ZhCn => &*ALL_TOOLTIPS_ZH,
+        Language::En => &*ALL_TOOLTIPS_EN,
+    };
+    if tooltips.is_empty() {
         None
     } else {
-        ALL_TOOLTIPS
-            .get(rng.random_range(0..ALL_TOOLTIPS.len()))
-            .copied()
+        tooltips.get(rng.random_range(0..tooltips.len())).copied()
     }
 }
 
@@ -195,18 +210,18 @@ mod tests {
     #[test]
     fn random_tooltip_returns_some_tip_when_available() {
         let mut rng = StdRng::seed_from_u64(42);
-        assert!(pick_tooltip(&mut rng).is_some());
+        assert!(pick_tooltip(&mut rng, Language::En).is_some());
     }
 
     #[test]
     fn random_tooltip_is_reproducible_with_seed() {
         let expected = {
             let mut rng = StdRng::seed_from_u64(7);
-            pick_tooltip(&mut rng)
+            pick_tooltip(&mut rng, Language::En)
         };
 
         let mut rng = StdRng::seed_from_u64(7);
-        assert_eq!(expected, pick_tooltip(&mut rng));
+        assert_eq!(expected, pick_tooltip(&mut rng, Language::En));
     }
 
     #[test]

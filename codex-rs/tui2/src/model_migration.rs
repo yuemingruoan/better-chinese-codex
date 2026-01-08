@@ -1,3 +1,4 @@
+use crate::i18n::tr;
 use crate::key_hint;
 use crate::render::Insets;
 use crate::render::renderable::ColumnRenderable;
@@ -7,6 +8,7 @@ use crate::selection_list::selection_option_row;
 use crate::tui::FrameRequester;
 use crate::tui::Tui;
 use crate::tui::TuiEvent;
+use codex_protocol::config_types::Language;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
@@ -34,6 +36,7 @@ pub(crate) struct ModelMigrationCopy {
     pub heading: Vec<Span<'static>>,
     pub content: Vec<Line<'static>>,
     pub can_opt_out: bool,
+    pub language: Language,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,10 +50,16 @@ impl MigrationMenuOption {
         [Self::TryNewModel, Self::UseExistingModel]
     }
 
-    fn label(self) -> &'static str {
-        match self {
-            Self::TryNewModel => "Try new model",
-            Self::UseExistingModel => "Use existing model",
+    fn label(self, language: Language) -> &'static str {
+        match language {
+            Language::ZhCn => match self {
+                Self::TryNewModel => "试用新模型",
+                Self::UseExistingModel => "继续使用当前模型",
+            },
+            Language::En => match self {
+                Self::TryNewModel => "Try new model",
+                Self::UseExistingModel => "Use existing model",
+            },
         }
     }
 }
@@ -61,38 +70,55 @@ pub(crate) fn migration_copy_for_models(
     target_display_name: String,
     target_description: Option<String>,
     can_opt_out: bool,
+    language: Language,
 ) -> ModelMigrationCopy {
-    let heading_text = Span::from(format!("Try {target_display_name}")).bold();
+    let heading_text = Span::from(match language {
+        Language::ZhCn => format!("试用 {target_display_name}"),
+        Language::En => format!("Try {target_display_name}"),
+    })
+    .bold();
     let description_line = target_description
         .filter(|desc| !desc.is_empty())
         .map(Line::from)
         .unwrap_or_else(|| {
-            Line::from(format!(
-                "{target_display_name} is recommended for better performance and reliability."
-            ))
+            Line::from(match language {
+                Language::ZhCn => {
+                    format!("推荐使用 {target_display_name}，以获得更好的性能与稳定性。")
+                }
+                Language::En => format!(
+                    "{target_display_name} is recommended for better performance and reliability."
+                ),
+            })
         });
 
     let mut content = vec![
-        Line::from(format!(
-            "We recommend switching from {current_model} to {target_model}."
-        )),
+        Line::from(match language {
+            Language::ZhCn => format!("我们建议从 {current_model} 切换到 {target_model}。"),
+            Language::En => {
+                format!("We recommend switching from {current_model} to {target_model}.")
+            }
+        }),
         Line::from(""),
         description_line,
         Line::from(""),
     ];
 
     if can_opt_out {
-        content.push(Line::from(format!(
-            "You can continue using {current_model} if you prefer."
-        )));
+        content.push(Line::from(match language {
+            Language::ZhCn => format!("如果你愿意，也可以继续使用 {current_model}。"),
+            Language::En => format!("You can continue using {current_model} if you prefer."),
+        }));
     } else {
-        content.push(Line::from("Press enter to continue".dim()));
+        content.push(Line::from(
+            tr(language, "按 Enter 继续", "Press enter to continue").dim(),
+        ));
     }
 
     ModelMigrationCopy {
         heading: vec![heading_text],
         content,
         can_opt_out,
+        language,
     }
 }
 
@@ -274,16 +300,20 @@ impl ModelMigrationScreen {
     fn render_menu(&self, column: &mut ColumnRenderable) {
         column.push(Line::from(""));
         column.push(
-            Paragraph::new("Choose how you'd like Codex to proceed.")
-                .wrap(Wrap { trim: false })
-                .inset(Insets::tlbr(0, 2, 0, 0)),
+            Paragraph::new(tr(
+                self.copy.language,
+                "请选择 Codex 接下来的处理方式。",
+                "Choose how you'd like Codex to proceed.",
+            ))
+            .wrap(Wrap { trim: false })
+            .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.push(Line::from(""));
 
         for (idx, option) in MigrationMenuOption::all().into_iter().enumerate() {
             column.push(selection_option_row(
                 idx,
-                option.label().to_string(),
+                option.label(self.copy.language).to_string(),
                 self.highlighted_option == option,
             ));
         }
@@ -291,13 +321,13 @@ impl ModelMigrationScreen {
         column.push(Line::from(""));
         column.push(
             Line::from(vec![
-                "Use ".dim(),
+                tr(self.copy.language, "使用 ", "Use ").dim(),
                 key_hint::plain(KeyCode::Up).into(),
                 "/".dim(),
                 key_hint::plain(KeyCode::Down).into(),
-                " to move, press ".dim(),
+                tr(self.copy.language, " 切换，按 ", " to move, press ").dim(),
                 key_hint::plain(KeyCode::Enter).into(),
-                " to confirm".dim(),
+                tr(self.copy.language, " 确认", " to confirm").dim(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );
@@ -336,6 +366,7 @@ mod tests {
     use crate::custom_terminal::Terminal;
     use crate::test_backend::VT100Backend;
     use crate::tui::FrameRequester;
+    use codex_protocol::config_types::Language;
     use crossterm::event::KeyCode;
     use crossterm::event::KeyEvent;
     use insta::assert_snapshot;
@@ -357,6 +388,7 @@ mod tests {
                 "gpt-5.1-codex-max".to_string(),
                 Some("Codex-optimized flagship for deep and fast reasoning.".to_string()),
                 true,
+                Language::En,
             ),
         );
 
@@ -383,6 +415,7 @@ mod tests {
                 "gpt-5.1".to_string(),
                 Some("Broad world knowledge with strong general reasoning.".to_string()),
                 false,
+                Language::En,
             ),
         );
         {
@@ -407,6 +440,7 @@ mod tests {
                 "gpt-5.1-codex-max".to_string(),
                 Some("Codex-optimized flagship for deep and fast reasoning.".to_string()),
                 false,
+                Language::En,
             ),
         );
         {
@@ -431,6 +465,7 @@ mod tests {
                 "gpt-5.1-codex-mini".to_string(),
                 Some("Optimized for codex. Cheaper, faster, but less capable.".to_string()),
                 false,
+                Language::En,
             ),
         );
         {
@@ -451,6 +486,7 @@ mod tests {
                 "gpt-new".to_string(),
                 Some("Latest recommended model for better performance.".to_string()),
                 true,
+                Language::En,
             ),
         );
 
@@ -477,6 +513,7 @@ mod tests {
                 "gpt-new".to_string(),
                 Some("Latest recommended model for better performance.".to_string()),
                 true,
+                Language::En,
             ),
         );
 

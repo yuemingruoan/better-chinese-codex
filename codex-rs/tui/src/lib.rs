@@ -51,6 +51,7 @@ mod file_search;
 mod frames;
 mod get_git_diff;
 mod history_cell;
+mod i18n;
 pub mod insert_history;
 mod key_hint;
 pub mod live_wrap;
@@ -172,6 +173,7 @@ pub async fn run_main(
             std::process::exit(1);
         }
     };
+    let language = config_toml.language.unwrap_or_default();
 
     let model_provider_override = if cli.oss {
         let resolved = resolve_oss_provider(
@@ -184,7 +186,7 @@ pub async fn run_main(
             Some(provider)
         } else {
             // No provider configured, prompt the user
-            let provider = oss_selection::select_oss_provider(&codex_home).await?;
+            let provider = oss_selection::select_oss_provider(&codex_home, language).await?;
             if provider == "__CANCELLED__" {
                 return Err(std::io::Error::other(
                     "OSS provider selection was cancelled by user",
@@ -226,7 +228,9 @@ pub async fn run_main(
 
     let config = load_config_or_exit(cli_kv_overrides.clone(), overrides.clone()).await;
 
-    if let Some(warning) = add_dir_warning_message(&cli.add_dir, config.sandbox_policy.get()) {
+    if let Some(warning) =
+        add_dir_warning_message(&cli.add_dir, config.sandbox_policy.get(), config.language)
+    {
         #[allow(clippy::print_stderr)]
         {
             eprintln!("Error adding directories: {warning}");
@@ -475,6 +479,7 @@ async fn run_ratatui_app(
             &config.codex_home,
             &config.model_provider_id,
             cli.resume_show_all,
+            config.language,
         )
         .await?
         {

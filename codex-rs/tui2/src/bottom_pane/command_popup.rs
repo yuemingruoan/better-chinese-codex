@@ -6,11 +6,13 @@ use super::popup_consts::MAX_POPUP_ROWS;
 use super::scroll_state::ScrollState;
 use super::selection_popup_common::GenericDisplayRow;
 use super::selection_popup_common::render_rows;
+use crate::i18n::tr;
 use crate::render::Insets;
 use crate::render::RectExt;
 use crate::slash_command::SlashCommand;
 use crate::slash_command::built_in_slash_commands;
 use codex_common::fuzzy_match::fuzzy_match;
+use codex_protocol::config_types::Language;
 use codex_protocol::custom_prompts::CustomPrompt;
 use codex_protocol::custom_prompts::PROMPTS_CMD_PREFIX;
 use std::collections::HashSet;
@@ -28,10 +30,15 @@ pub(crate) struct CommandPopup {
     builtins: Vec<(&'static str, SlashCommand)>,
     prompts: Vec<CustomPrompt>,
     state: ScrollState,
+    language: Language,
 }
 
 impl CommandPopup {
-    pub(crate) fn new(mut prompts: Vec<CustomPrompt>, skills_enabled: bool) -> Self {
+    pub(crate) fn new(
+        mut prompts: Vec<CustomPrompt>,
+        skills_enabled: bool,
+        language: Language,
+    ) -> Self {
         let builtins: Vec<(&'static str, SlashCommand)> = built_in_slash_commands()
             .into_iter()
             .filter(|(_, cmd)| skills_enabled || *cmd != SlashCommand::Skills)
@@ -45,6 +52,7 @@ impl CommandPopup {
             builtins,
             prompts,
             state: ScrollState::new(),
+            language,
         }
     }
 
@@ -57,6 +65,10 @@ impl CommandPopup {
         prompts.retain(|p| !exclude.contains(&p.name));
         prompts.sort_by(|a, b| a.name.cmp(&b.name));
         self.prompts = prompts;
+    }
+
+    pub(crate) fn set_language(&mut self, language: Language) {
+        self.language = language;
     }
 
     pub(crate) fn prompt(&self, idx: usize) -> Option<&CustomPrompt> {
@@ -164,15 +176,15 @@ impl CommandPopup {
             .into_iter()
             .map(|(item, indices, _)| {
                 let (name, description) = match item {
-                    CommandItem::Builtin(cmd) => {
-                        (format!("/{}", cmd.command()), cmd.description().to_string())
-                    }
+                    CommandItem::Builtin(cmd) => (
+                        format!("/{}", cmd.command()),
+                        cmd.description(self.language).to_string(),
+                    ),
                     CommandItem::UserPrompt(i) => {
                         let prompt = &self.prompts[i];
-                        let description = prompt
-                            .description
-                            .clone()
-                            .unwrap_or_else(|| "send saved prompt".to_string());
+                        let description = prompt.description.clone().unwrap_or_else(|| {
+                            tr(self.language, "发送已保存的提示词", "Send saved prompt").to_string()
+                        });
                         (
                             format!("/{PROMPTS_CMD_PREFIX}:{}", prompt.name),
                             description,
@@ -235,7 +247,7 @@ mod tests {
 
     #[test]
     fn filter_includes_init_when_typing_prefix() {
-        let mut popup = CommandPopup::new(Vec::new(), false);
+        let mut popup = CommandPopup::new(Vec::new(), false, Language::En);
         // Simulate the composer line starting with '/in' so the popup filters
         // matching commands by prefix.
         popup.on_composer_text_change("/in".to_string());
@@ -255,7 +267,7 @@ mod tests {
 
     #[test]
     fn selecting_init_by_exact_match() {
-        let mut popup = CommandPopup::new(Vec::new(), false);
+        let mut popup = CommandPopup::new(Vec::new(), false, Language::En);
         popup.on_composer_text_change("/init".to_string());
 
         // When an exact match exists, the selected command should be that
@@ -270,7 +282,7 @@ mod tests {
 
     #[test]
     fn model_is_first_suggestion_for_mo() {
-        let mut popup = CommandPopup::new(Vec::new(), false);
+        let mut popup = CommandPopup::new(Vec::new(), false, Language::En);
         popup.on_composer_text_change("/mo".to_string());
         let matches = popup.filtered_items();
         match matches.first() {
@@ -300,7 +312,7 @@ mod tests {
                 argument_hint: None,
             },
         ];
-        let popup = CommandPopup::new(prompts, false);
+        let popup = CommandPopup::new(prompts, false, Language::En);
         let items = popup.filtered_items();
         let mut prompt_names: Vec<String> = items
             .into_iter()
@@ -325,6 +337,7 @@ mod tests {
                 argument_hint: None,
             }],
             false,
+            Language::En,
         );
         let items = popup.filtered_items();
         let has_collision_prompt = items.into_iter().any(|it| match it {
@@ -348,6 +361,7 @@ mod tests {
                 argument_hint: None,
             }],
             false,
+            Language::En,
         );
         let rows = popup.rows_from_matches(vec![(CommandItem::UserPrompt(0), None, 0)]);
         let description = rows.first().and_then(|row| row.description.as_deref());
@@ -368,15 +382,16 @@ mod tests {
                 argument_hint: None,
             }],
             false,
+            Language::En,
         );
         let rows = popup.rows_from_matches(vec![(CommandItem::UserPrompt(0), None, 0)]);
         let description = rows.first().and_then(|row| row.description.as_deref());
-        assert_eq!(description, Some("send saved prompt"));
+        assert_eq!(description, Some("Send saved prompt"));
     }
 
     #[test]
     fn fuzzy_filter_matches_subsequence_for_ac() {
-        let mut popup = CommandPopup::new(Vec::new(), false);
+        let mut popup = CommandPopup::new(Vec::new(), false, Language::En);
         popup.on_composer_text_change("/ac".to_string());
 
         let cmds: Vec<&str> = popup

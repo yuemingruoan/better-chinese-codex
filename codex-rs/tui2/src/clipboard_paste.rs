@@ -1,4 +1,6 @@
 use std::path::Path;
+
+use codex_protocol::config_types::Language;
 use std::path::PathBuf;
 use tempfile::Builder;
 
@@ -35,6 +37,20 @@ impl EncodedImageFormat {
             EncodedImageFormat::Png => "PNG",
             EncodedImageFormat::Jpeg => "JPEG",
             EncodedImageFormat::Other => "IMG",
+        }
+    }
+}
+
+impl PasteImageError {
+    pub fn to_message(&self, language: Language) -> String {
+        match (language, self) {
+            (Language::ZhCn, Self::ClipboardUnavailable(msg)) => {
+                format!("剪贴板不可用：{msg}")
+            }
+            (Language::ZhCn, Self::NoImage(msg)) => format!("剪贴板中没有图片：{msg}"),
+            (Language::ZhCn, Self::EncodeFailed(msg)) => format!("无法编码图片：{msg}"),
+            (Language::ZhCn, Self::IoError(msg)) => format!("I/O 错误：{msg}"),
+            (Language::En, _) => self.to_string(),
         }
     }
 }

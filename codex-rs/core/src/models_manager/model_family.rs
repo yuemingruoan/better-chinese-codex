@@ -95,6 +95,14 @@ impl ModelFamily {
         self
     }
 
+    pub fn auto_compact_token_limit(&self) -> Option<i64> {
+        self.context_window.map(Self::default_auto_compact_limit)
+    }
+
+    const fn default_auto_compact_limit(context_window: i64) -> i64 {
+        (context_window * 9) / 10
+    }
+
     fn apply_remote_overrides(&mut self, model: ModelInfo) {
         let ModelInfo {
             slug: _,

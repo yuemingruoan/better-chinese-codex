@@ -766,3 +766,117 @@ async fn manual_compact_twice_preserves_latest_user_messages() {
     ];
     assert_eq!(final_output, expected);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auto_compact_triggers_at_ninety_percent_of_max_context_window() {
+    skip_if_no_network!();
+
+    let server = start_mock_server().await;
+
+    let sse1 = sse(vec![
+        ev_assistant_message("m1", FIRST_REPLY),
+        ev_completed_with_tokens("r1", 800),
+    ]);
+    let sse2 = sse(vec![
+        ev_assistant_message("m2", SECOND_LARGE_REPLY),
+        ev_completed_with_tokens("r2", 880),
+    ]);
+    let sse3 = sse(vec![
+        ev_assistant_message("m3", "THIRD_REPLY"),
+        ev_completed_with_tokens("r3", 920),
+    ]);
+    let sse_auto = sse(vec![
+        ev_assistant_message("m4", SUMMARY_TEXT),
+        ev_completed_with_tokens("r4", 120),
+    ]);
+    let sse4 = sse(vec![
+        ev_assistant_message("m5", FINAL_REPLY),
+        ev_completed_with_tokens("r5", 150),
+    ]);
+
+    mount_sse_sequence(&server, vec![sse1, sse2, sse3, sse_auto, sse4]).await;
+
+    let model_provider = non_openai_model_provider(&server);
+
+    let home = TempDir::new().unwrap();
+    let mut config = load_default_config_for_test(&home).await;
+    config.model_provider = model_provider;
+    config.model_context_window = Some(1_000);
+    set_test_compact_prompt(&mut config);
+    let conversation_manager = ConversationManager::with_models_provider(
+        CodexAuth::from_api_key("dummy"),
+        config.model_provider.clone(),
+    );
+    let codex = conversation_manager
+        .new_conversation(config)
+        .await
+        .unwrap()
+        .conversation;
+
+    let first_user = "auto-compact-under";
+    let second_user = "auto-compact-between";
+    let third_user = "auto-compact-over";
+    let fourth_user = "auto-compact-follow-up";
+
+    for message in [first_user, second_user, third_user] {
+        codex
+            .submit(Op::UserInput {
+                items: vec![UserInput::Text {
+                    text: message.into(),
+                }],
+                final_output_json_schema: None,
+            })
+            .await
+            .unwrap();
+        wait_for_event(&codex, |ev| matches!(ev, EventMsg::TaskComplete(_))).await;
+    }
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: fourth_user.into(),
+            }],
+            final_output_json_schema: None,
+        })
+        .await
+        .unwrap();
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::ContextCompacted(_))).await;
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TaskComplete(_))).await;
+
+    let requests = get_responses_requests(&server).await;
+    assert_eq!(
+        requests.len(),
+        5,
+        "expected 4 user turns plus 1 auto compact request"
+    );
+
+    let bodies: Vec<String> = requests
+        .iter()
+        .map(|req| std::str::from_utf8(&req.body).unwrap_or("").to_string())
+        .collect();
+
+    assert!(
+        body_contains_text(&bodies[2], third_user),
+        "third request should be the third user input"
+    );
+    assert!(
+        !body_contains_text(&bodies[2], SUMMARIZATION_PROMPT),
+        "auto compact should not trigger below 90% of the max context window"
+    );
+
+    let auto_indices: Vec<usize> = bodies
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, body)| body_contains_text(body, SUMMARIZATION_PROMPT).then_some(idx))
+        .collect();
+    assert_eq!(
+        auto_indices,
+        vec![3],
+        "auto compact should trigger once before the final user turn"
+    );
+
+    assert!(
+        body_contains_text(&bodies[4], fourth_user),
+        "final request should include the follow-up user message"
+    );
+}

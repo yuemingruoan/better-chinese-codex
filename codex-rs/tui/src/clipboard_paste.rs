@@ -1,3 +1,5 @@
+use codex_protocol::config_types::Language;
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use tempfile::Builder;
@@ -23,6 +25,55 @@ impl std::fmt::Display for PasteImageError {
     }
 }
 impl std::error::Error for PasteImageError {}
+
+impl PasteImageError {
+    fn localized_detail<'a>(&'a self, language: Language, msg: &'a str) -> Cow<'a, str> {
+        match (language, msg) {
+            (Language::En, "无效的 RGBA 缓冲区") => Cow::Borrowed("Invalid RGBA buffer"),
+            (Language::En, "Android 上暂不支持粘贴剪贴板图像") => {
+                Cow::Borrowed("Clipboard image paste is not supported on Android")
+            }
+            _ => Cow::Borrowed(msg),
+        }
+    }
+
+    pub fn to_message(&self, language: Language) -> String {
+        match self {
+            PasteImageError::ClipboardUnavailable(msg) => format!(
+                "{}: {}",
+                match language {
+                    Language::ZhCn => "剪贴板不可用",
+                    Language::En => "Clipboard unavailable",
+                },
+                self.localized_detail(language, msg)
+            ),
+            PasteImageError::NoImage(msg) => format!(
+                "{}: {}",
+                match language {
+                    Language::ZhCn => "剪贴板中没有图像",
+                    Language::En => "No image in clipboard",
+                },
+                self.localized_detail(language, msg)
+            ),
+            PasteImageError::EncodeFailed(msg) => format!(
+                "{}: {}",
+                match language {
+                    Language::ZhCn => "无法编码图像",
+                    Language::En => "Failed to encode image",
+                },
+                self.localized_detail(language, msg)
+            ),
+            PasteImageError::IoError(msg) => format!(
+                "{}: {}",
+                match language {
+                    Language::ZhCn => "I/O 错误",
+                    Language::En => "I/O error",
+                },
+                self.localized_detail(language, msg)
+            ),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EncodedImageFormat {
