@@ -11,13 +11,13 @@ Execution steps (in order)
 1. **Environment check**: Ensure current directory is the project root; if `.codex/task.md` is missing, stop and notify.
 2. **Branch management**: Branch was already created and checked out by the system tool; no manual git commands needed.
 3. **Read the plan**: Read `.codex/task.md`, list the task IDs, implementation notes, and verification methods you will execute.
-4. **Create visible TODO list**: Use the built-in Plan/TODO tool to sync the task table into visible TODOs; split into smaller sub-items if needed (implementation vs verification).
+4. **Track progress**: Treat `.codex/task.md` as the source of truth and update the completion checkbox there; optionally sync into the Plan/TODO tool for visibility and split into smaller sub-items if needed (implementation vs verification).
 5. **Task execution loop** (for each task/subtask):
    - **Read/locate**: Inspect relevant code/docs to confirm current state.
    - **Test first**: If coverage is missing, add/adjust tests first; record planned commands.
    - **Implement**: Use `apply_patch` for minimal changes.
    - **Verify**: Run relevant commands (e.g., `just fmt`, `cargo test -p <crate>`, `cargo insta test`), capture results/log highlights.
-   - **Mark progress**: Check off items in Plan/TODO and report status + test results in the reply.
+   - **Mark progress**: Check off completion status in `.codex/task.md` first (`[ ]`→`[x]`), optionally sync to Plan/TODO, and report status + test results in the reply.
    - **Snapshot**: The system tool will handle commits at phase end; if an early commit is needed, explain why and scope in the report.
 6. **End-of-phase checks**: Run required formatting/tests per plan:
    - Formatting: run project formatting commands (`just fmt`, `npm run fmt`, `pnpm lint --fix`, etc.).

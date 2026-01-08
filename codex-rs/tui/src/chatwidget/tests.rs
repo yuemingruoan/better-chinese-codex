@@ -1,6 +1,7 @@
 use super::*;
 use crate::app_event::AppEvent;
 use crate::app_event_sender::AppEventSender;
+use crate::i18n::tr;
 use crate::test_backend::VT100Backend;
 use crate::tui::FrameRequester;
 use assert_matches::assert_matches;
@@ -1462,7 +1463,11 @@ async fn slash_init_skips_when_project_doc_exists() {
         "info message should mention the existing file: {rendered:?}"
     );
     assert!(
-        rendered.contains("Skipping /init"),
+        rendered.contains(tr(
+            chat.config.language,
+            "为避免覆盖已跳过 /init",
+            "Skipping /init"
+        )),
         "info message should explain why /init was skipped: {rendered:?}"
     );
     assert_eq!(
@@ -1529,7 +1534,11 @@ async fn slash_rollout_handles_missing_path() {
     );
     let rendered = lines_to_single_string(&cells[0]);
     assert!(
-        rendered.contains("not available"),
+        rendered.contains(tr(
+            chat.config.language,
+            "当前尚无 rollout 路径。",
+            "Rollout path is not available yet."
+        )),
         "expected missing rollout path message: {rendered}"
     );
 }
@@ -1566,7 +1575,11 @@ async fn undo_success_events_render_info_messages() {
 
     let completed = lines_to_single_string(&cells[0]);
     assert!(
-        completed.contains("Undo completed successfully."),
+        completed.contains(tr(
+            chat.config.language,
+            "撤销已完成。",
+            "Undo completed successfully."
+        )),
         "expected default success message, got {completed:?}"
     );
 }
@@ -1822,7 +1835,11 @@ async fn review_custom_prompt_escape_navigates_back_then_dismisses() {
     // Verify child view is on top.
     let header = render_bottom_first_row(&chat, 60);
     assert!(
-        header.contains("自定义审查指令"),
+        collapse_whitespace(&header).contains(tr(
+            chat.config.language,
+            "自定义审查指令",
+            "Custom review instructions"
+        )),
         "expected custom prompt view header: {header:?}"
     );
 
@@ -1830,7 +1847,11 @@ async fn review_custom_prompt_escape_navigates_back_then_dismisses() {
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     let header = render_bottom_first_row(&chat, 60);
     assert!(
-        header.contains("选择审查预设"),
+        collapse_whitespace(&header).contains(tr(
+            chat.config.language,
+            "选择审查预设",
+            "Choose a review preset"
+        )),
         "expected to return to parent review popup: {header:?}"
     );
 
@@ -1858,7 +1879,11 @@ async fn review_branch_picker_escape_navigates_back_then_dismisses() {
     // Verify child view header.
     let header = render_bottom_first_row(&chat, 60);
     assert!(
-        header.contains("选择基础分支"),
+        collapse_whitespace(&header).contains(tr(
+            chat.config.language,
+            "选择基础分支",
+            "Choose base branch"
+        )),
         "expected branch picker header: {header:?}"
     );
 
@@ -1866,7 +1891,11 @@ async fn review_branch_picker_escape_navigates_back_then_dismisses() {
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     let header = render_bottom_first_row(&chat, 60);
     assert!(
-        header.contains("选择审查预设"),
+        collapse_whitespace(&header).contains(tr(
+            chat.config.language,
+            "选择审查预设",
+            "Choose a review preset"
+        )),
         "expected to return to parent review popup: {header:?}"
     );
 
@@ -1898,6 +1927,10 @@ fn render_bottom_first_row(chat: &ChatWidget, width: u16) -> String {
         }
     }
     String::new()
+}
+
+fn collapse_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<String>()
 }
 
 fn render_bottom_popup(chat: &ChatWidget, width: u16) -> String {
@@ -2216,13 +2249,18 @@ async fn reasoning_popup_escape_returns_to_model_popup() {
     chat.open_reasoning_popup(preset);
 
     let before_escape = render_bottom_popup(&chat, 80);
-    assert!(before_escape.contains("选择 gpt-5.1-codex-max 的推理强度"));
+    let expected_reasoning_header = match chat.config.language {
+        Language::ZhCn => "选择 gpt-5.1-codex-max 的推理强度".to_string(),
+        Language::En => "Select Reasoning Level for gpt-5.1-codex-max".to_string(),
+    };
+    assert!(collapse_whitespace(&before_escape).contains(&expected_reasoning_header));
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
     let after_escape = render_bottom_popup(&chat, 80);
-    assert!(after_escape.contains("选择模型"));
-    assert!(!after_escape.contains("选择 gpt-5.1-codex-max 的推理强度"));
+    let expected_model_header = tr(chat.config.language, "选择模型", "Select Model");
+    assert!(collapse_whitespace(&after_escape).contains(expected_model_header));
+    assert!(!collapse_whitespace(&after_escape).contains(&expected_reasoning_header));
 }
 
 #[tokio::test]
@@ -2368,7 +2406,11 @@ async fn approvals_popup_navigation_skips_disabled() {
         .expect("render approvals popup after disabled selection");
     let screen = terminal.backend().vt100().screen().contents();
     assert!(
-        screen.contains("Select Approval Mode"),
+        screen.contains(tr(
+            chat.config.language,
+            "选择授权模式",
+            "Select Approval Mode"
+        )),
         "popup should remain open after selecting a disabled entry"
     );
     assert!(
@@ -3270,7 +3312,7 @@ async fn plan_update_renders_history_cell() {
     assert!(!cells.is_empty(), "expected plan update cell to be sent");
     let blob = lines_to_single_string(cells.last().unwrap());
     assert!(
-        blob.contains("Updated Plan"),
+        blob.contains(tr(chat.config.language, "计划已更新", "Updated Plan")),
         "missing plan header: {blob:?}"
     );
     assert!(blob.contains("Explore codebase"));
@@ -3356,7 +3398,10 @@ async fn stream_recovery_restores_previous_status_header() {
         .status_widget()
         .expect("status indicator should be visible");
     assert_eq!(status.details(), None);
-    assert_eq!(status.header(), "Running");
+    assert_eq!(
+        status.header(),
+        tr(chat.config.language, "运行中", "Running")
+    );
     assert!(chat.retry_status_header.is_none());
 }
 

@@ -3,6 +3,9 @@ use std::sync::Arc;
 use crate::Prompt;
 use crate::codex::Session;
 use crate::codex::TurnContext;
+use crate::compact::content_items_to_text;
+use crate::compact::is_task_md_message;
+use crate::compact::task_md_message;
 use crate::error::Result as CodexResult;
 use crate::protocol::CompactedItem;
 use crate::protocol::ContextCompactedEvent;
@@ -63,6 +66,23 @@ async fn run_remote_compact_task_inner_impl(
 
     if !ghost_snapshots.is_empty() {
         new_history.extend(ghost_snapshots);
+    }
+
+    if let Some(message) = task_md_message(&turn_context.cwd) {
+        let already_present = new_history.iter().any(|item| match item {
+            ResponseItem::Message { content, .. } => content_items_to_text(content)
+                .as_deref()
+                .map(is_task_md_message)
+                .unwrap_or(false),
+            _ => false,
+        });
+        if !already_present {
+            new_history.push(ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![codex_protocol::models::ContentItem::InputText { text: message }],
+            });
+        }
     }
     sess.replace_history(new_history.clone()).await;
     sess.recompute_token_usage(turn_context).await;

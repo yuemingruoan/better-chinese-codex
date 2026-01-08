@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::ModelProviderInfo;
@@ -31,6 +32,9 @@ use tracing::error;
 pub const SUMMARIZATION_PROMPT: &str = include_str!("../templates/compact/prompt.md");
 pub const SUMMARY_PREFIX: &str = include_str!("../templates/compact/summary_prefix.md");
 const COMPACT_USER_MESSAGE_MAX_TOKENS: usize = 20_000;
+const TASK_MD_MAX_TOKENS: usize = 8_000;
+const TASK_MD_PREFIX_LINE: &str = "[[SDD_TASK_MD]]\n";
+const TASK_MD_RELATIVE_PATH: &str = ".codex/task.md";
 
 pub(crate) fn should_use_remote_compact_task(
     session: &Session,
@@ -39,14 +43,66 @@ pub(crate) fn should_use_remote_compact_task(
     provider.is_openai() && session.enabled(Feature::RemoteCompaction)
 }
 
+fn build_compact_inputs(turn_context: &TurnContext) -> (Vec<UserInput>, Option<String>) {
+    let prompt = turn_context.compact_prompt().to_string();
+    let task_md_message = task_md_message(&turn_context.cwd);
+    let mut input = Vec::new();
+    if let Some(message) = task_md_message.as_ref() {
+        input.push(UserInput::Text {
+            text: message.clone(),
+        });
+    }
+    input.push(UserInput::Text { text: prompt });
+    (input, task_md_message)
+}
+
+fn inject_compact_extras(
+    turn_context: &TurnContext,
+    mut input: Vec<UserInput>,
+) -> (Vec<UserInput>, Option<String>) {
+    let task_md_message = task_md_message(&turn_context.cwd);
+    if let Some(message) = task_md_message.as_ref() {
+        let already_present = input.iter().any(|item| match item {
+            UserInput::Text { text } => is_task_md_message(text),
+            _ => false,
+        });
+        if !already_present {
+            input.insert(
+                0,
+                UserInput::Text {
+                    text: message.clone(),
+                },
+            );
+        }
+    }
+    (input, task_md_message)
+}
+
+pub(crate) fn task_md_message(cwd: &Path) -> Option<String> {
+    let path = cwd.join(TASK_MD_RELATIVE_PATH);
+    let content = std::fs::read_to_string(path).ok()?;
+    let content = content.trim();
+    if content.is_empty() {
+        return None;
+    }
+    let mut message = format!("{TASK_MD_PREFIX_LINE}{content}");
+    if approx_token_count(&message) > TASK_MD_MAX_TOKENS {
+        message = truncate_text(&message, TruncationPolicy::Tokens(TASK_MD_MAX_TOKENS));
+    }
+    Some(message)
+}
+
+pub(crate) fn is_task_md_message(message: &str) -> bool {
+    message.starts_with(TASK_MD_PREFIX_LINE)
+}
+
 pub(crate) async fn run_inline_auto_compact_task(
     sess: Arc<Session>,
     turn_context: Arc<TurnContext>,
 ) {
-    let prompt = turn_context.compact_prompt().to_string();
-    let input = vec![UserInput::Text { text: prompt }];
+    let (input, task_md_message) = build_compact_inputs(&turn_context);
 
-    run_compact_task_inner(sess, turn_context, input).await;
+    run_compact_task_inner(sess, turn_context, input, task_md_message).await;
 }
 
 pub(crate) async fn run_compact_task(
@@ -58,13 +114,15 @@ pub(crate) async fn run_compact_task(
         model_context_window: turn_context.client.get_model_context_window(),
     });
     sess.send_event(&turn_context, start_event).await;
-    run_compact_task_inner(sess.clone(), turn_context, input).await;
+    let (input, task_md_message) = inject_compact_extras(&turn_context, input);
+    run_compact_task_inner(sess.clone(), turn_context, input, task_md_message).await;
 }
 
 async fn run_compact_task_inner(
     sess: Arc<Session>,
     turn_context: Arc<TurnContext>,
     input: Vec<UserInput>,
+    task_md_message: Option<String>,
 ) {
     let initial_input_for_turn: ResponseInputItem = ResponseInputItem::from(input);
 
@@ -162,7 +220,12 @@ async fn run_compact_task_inner(
     let user_messages = collect_user_messages(&history_snapshot);
 
     let initial_context = sess.build_initial_context(turn_context.as_ref());
-    let mut new_history = build_compacted_history(initial_context, &user_messages, &summary_text);
+    let mut new_history = build_compacted_history_with_task(
+        initial_context,
+        &user_messages,
+        &summary_text,
+        task_md_message.as_deref(),
+    );
     let ghost_snapshots: Vec<ResponseItem> = history_snapshot
         .iter()
         .filter(|item| matches!(item, ResponseItem::GhostSnapshot { .. }))
@@ -211,10 +274,11 @@ pub(crate) fn collect_user_messages(items: &[ResponseItem]) -> Vec<String> {
         .iter()
         .filter_map(|item| match crate::event_mapping::parse_turn_item(item) {
             Some(TurnItem::UserMessage(user)) => {
-                if is_summary_message(&user.message()) {
+                let message = user.message();
+                if is_summary_message(message.as_str()) || is_task_md_message(message.as_str()) {
                     None
                 } else {
-                    Some(user.message())
+                    Some(message)
                 }
             }
             _ => None,
@@ -231,10 +295,20 @@ pub(crate) fn build_compacted_history(
     user_messages: &[String],
     summary_text: &str,
 ) -> Vec<ResponseItem> {
+    build_compacted_history_with_task(initial_context, user_messages, summary_text, None)
+}
+
+pub(crate) fn build_compacted_history_with_task(
+    initial_context: Vec<ResponseItem>,
+    user_messages: &[String],
+    summary_text: &str,
+    task_md_message: Option<&str>,
+) -> Vec<ResponseItem> {
     build_compacted_history_with_limit(
         initial_context,
         user_messages,
         summary_text,
+        task_md_message,
         COMPACT_USER_MESSAGE_MAX_TOKENS,
     )
 }
@@ -243,6 +317,7 @@ fn build_compacted_history_with_limit(
     mut history: Vec<ResponseItem>,
     user_messages: &[String],
     summary_text: &str,
+    task_md_message: Option<&str>,
     max_tokens: usize,
 ) -> Vec<ResponseItem> {
     let mut selected_messages: Vec<String> = Vec::new();
@@ -271,6 +346,16 @@ fn build_compacted_history_with_limit(
             role: "user".to_string(),
             content: vec![ContentItem::InputText {
                 text: message.clone(),
+            }],
+        });
+    }
+
+    if let Some(task_md_message) = task_md_message {
+        history.push(ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: task_md_message.to_string(),
             }],
         });
     }
@@ -417,6 +502,30 @@ mod tests {
     }
 
     #[test]
+    fn collect_user_messages_filters_task_md_entries() {
+        let items = vec![
+            ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText {
+                    text: format!("{TASK_MD_PREFIX_LINE}# Task\n- [ ] A"),
+                }],
+            },
+            ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText {
+                    text: "keep me".to_string(),
+                }],
+            },
+        ];
+
+        let collected = collect_user_messages(&items);
+
+        assert_eq!(vec!["keep me".to_string()], collected);
+    }
+
+    #[test]
     fn build_token_limited_compacted_history_truncates_overlong_user_messages() {
         // Use a small truncation limit so the test remains fast while still validating
         // that oversized user content is truncated.
@@ -426,6 +535,7 @@ mod tests {
             Vec::new(),
             std::slice::from_ref(&big),
             "SUMMARY",
+            None,
             max_tokens,
         );
         assert_eq!(history.len(), 2);
