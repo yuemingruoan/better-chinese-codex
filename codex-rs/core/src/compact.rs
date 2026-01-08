@@ -39,6 +39,16 @@ pub(crate) fn should_use_remote_compact_task(
     provider.is_openai() && session.enabled(Feature::RemoteCompaction)
 }
 
+pub(crate) async fn run_inline_auto_compact_task(
+    sess: Arc<Session>,
+    turn_context: Arc<TurnContext>,
+) {
+    let prompt = turn_context.compact_prompt().to_string();
+    let input = vec![UserInput::Text { text: prompt }];
+
+    run_compact_task_inner(sess, turn_context, input).await;
+}
+
 pub(crate) async fn run_compact_task(
     sess: Arc<Session>,
     turn_context: Arc<TurnContext>,

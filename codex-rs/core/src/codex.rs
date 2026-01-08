@@ -13,6 +13,9 @@ use crate::agent::AgentStatus;
 use crate::agent::agent_status_from_event;
 use crate::client_common::REVIEW_PROMPT;
 use crate::compact;
+use crate::compact::run_inline_auto_compact_task;
+use crate::compact::should_use_remote_compact_task;
+use crate::compact_remote::run_inline_remote_auto_compact_task;
 use crate::exec_policy::ExecPolicyManager;
 use crate::features::Feature;
 use crate::features::Features;
@@ -771,6 +774,11 @@ impl Session {
             .next_internal_sub_id
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         format!("internal-{id}")
+    }
+
+    async fn get_total_token_usage(&self) -> i64 {
+        let state = self.state.lock().await;
+        state.get_total_token_usage()
     }
 
     async fn record_initial_history(&self, conversation_history: InitialHistory) {
@@ -2343,8 +2351,16 @@ pub(crate) async fn run_task(
         return None;
     }
 
-    // NOTE: Automatic compaction was intentionally removed; only explicit Op::Compact should
-    // trigger compaction. Keep this behavior when rebasing upstream changes.
+    let auto_compact_limit = turn_context
+        .client
+        .get_model_family()
+        .auto_compact_token_limit()
+        .unwrap_or(i64::MAX);
+    let total_usage_tokens = sess.get_total_token_usage().await;
+    if total_usage_tokens >= auto_compact_limit {
+        run_auto_compact(&sess, &turn_context).await;
+    }
+
     let event = EventMsg::TaskStarted(TaskStartedEvent {
         model_context_window: turn_context.client.get_model_context_window(),
     });
@@ -2428,6 +2444,16 @@ pub(crate) async fn run_task(
                     needs_follow_up,
                     last_agent_message: turn_last_agent_message,
                 } = turn_output;
+                let total_usage_tokens = sess.get_total_token_usage().await;
+                let token_limit_reached = total_usage_tokens >= auto_compact_limit;
+
+                // As long as compaction works well in getting us way below the token limit, we
+                // shouldn't worry about being in an infinite loop.
+                if token_limit_reached && needs_follow_up {
+                    run_auto_compact(&sess, &turn_context).await;
+                    continue;
+                }
+
                 if !needs_follow_up {
                     last_agent_message = turn_last_agent_message;
                     sess.notifier()
@@ -2464,6 +2490,14 @@ pub(crate) async fn run_task(
     }
 
     last_agent_message
+}
+
+async fn run_auto_compact(sess: &Arc<Session>, turn_context: &Arc<TurnContext>) {
+    if should_use_remote_compact_task(sess.as_ref(), &turn_context.client.get_provider()) {
+        run_inline_remote_auto_compact_task(Arc::clone(sess), Arc::clone(turn_context)).await;
+    } else {
+        run_inline_auto_compact_task(Arc::clone(sess), Arc::clone(turn_context)).await;
+    }
 }
 
 #[instrument(level = "trace",

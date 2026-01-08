@@ -11,6 +11,13 @@ use crate::protocol::RolloutItem;
 use crate::protocol::TaskStartedEvent;
 use codex_protocol::models::ResponseItem;
 
+pub(crate) async fn run_inline_remote_auto_compact_task(
+    sess: Arc<Session>,
+    turn_context: Arc<TurnContext>,
+) {
+    run_remote_compact_task_inner(&sess, &turn_context).await;
+}
+
 pub(crate) async fn run_remote_compact_task(sess: Arc<Session>, turn_context: Arc<TurnContext>) {
     let start_event = EventMsg::TaskStarted(TaskStartedEvent {
         model_context_window: turn_context.client.get_model_context_window(),
