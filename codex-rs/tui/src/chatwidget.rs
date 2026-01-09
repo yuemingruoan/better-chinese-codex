@@ -169,6 +169,8 @@ const SDD_PLAN_PROMPT_ZH: &str = include_str!("../prompt_for_sdd_plan.md");
 const SDD_PLAN_PROMPT_EN: &str = include_str!("../prompt_for_sdd_plan_en.md");
 const SDD_EXEC_PROMPT_ZH: &str = include_str!("../prompt_for_sdd_execute.md");
 const SDD_EXEC_PROMPT_EN: &str = include_str!("../prompt_for_sdd_execute_en.md");
+const SDD_MERGE_PROMPT_ZH: &str = include_str!("../prompt_for_sdd_merge.md");
+const SDD_MERGE_PROMPT_EN: &str = include_str!("../prompt_for_sdd_merge_en.md");
 const SDD_BRANCH_PREFIX: &str = "sdd/";
 const SDD_BASE_BRANCH: &str = "develop-main";
 const CHECKPOINT_PROMPT_ZH: &str = include_str!("../prompt_for_checkpoint_command.md");
@@ -199,6 +201,13 @@ fn sdd_exec_prompt_template(language: Language) -> &'static str {
     match language {
         Language::ZhCn => SDD_EXEC_PROMPT_ZH,
         Language::En => SDD_EXEC_PROMPT_EN,
+    }
+}
+
+fn sdd_merge_prompt_template(language: Language) -> &'static str {
+    match language {
+        Language::ZhCn => SDD_MERGE_PROMPT_ZH,
+        Language::En => SDD_MERGE_PROMPT_EN,
     }
 }
 // Track information about an in-flight exec command.
@@ -406,7 +415,6 @@ struct SddDevelopState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum SddGitPendingAction {
     CreateBranch { description: String },
-    FinalizeMerge,
     AbandonBranch,
 }
 
@@ -749,18 +757,6 @@ impl ChatWidget {
                         ),
                     );
                     self.open_sdd_dev_options();
-                }
-                SddGitPendingAction::FinalizeMerge => {
-                    self.sdd_state = None;
-                    self.add_info_message(
-                        tr(
-                            self.config.language,
-                            "已完成合并操作，请继续后续流程。",
-                            "Merge finished. Please continue with the next steps.",
-                        )
-                        .to_string(),
-                        None,
-                    );
                 }
                 SddGitPendingAction::AbandonBranch => {
                     self.sdd_state = None;
@@ -2639,26 +2635,25 @@ impl ChatWidget {
             );
             return;
         }
-        let commit_message = self.sdd_commit_message(&state.description);
-        let branch_name = state.branch_name.clone();
-        self.sdd_state = Some(state);
-        self.sdd_pending_git_action = Some(SddGitPendingAction::FinalizeMerge);
+        let prompt = self.build_sdd_merge_prompt(&state.description, &state.branch_name);
+        self.sdd_pending_git_action = None;
         self.sdd_git_action_failed = false;
-        self.submit_op(Op::SddGitAction {
-            action: SddGitAction::FinalizeMerge {
-                name: branch_name,
-                base: SDD_BASE_BRANCH.to_string(),
-                commit_message,
-            },
-        });
+        self.send_user_inputs(prompt, Vec::new());
         self.add_info_message(
             tr(
                 language,
-                "已启动合并流程（提交并合并到基线分支）。",
-                "Merge started (commit and merge into the base branch).",
+                "已发送合并更新指引，请按提示通过 PR 完成合并与清理。",
+                "Merge guidance sent. Please follow the instructions to merge via PR and clean up.",
             )
             .to_string(),
-            None,
+            Some(
+                tr(
+                    language,
+                    "如需继续修改，请再次运行 /sdd-develop 选择其它选项。",
+                    "If you need more changes, run /sdd-develop again to choose another option.",
+                )
+                .to_string(),
+            ),
         );
     }
 
@@ -2736,11 +2731,6 @@ impl ChatWidget {
         format!("{SDD_BRANCH_PREFIX}{slug}")
     }
 
-    fn sdd_commit_message(&self, description: &str) -> String {
-        let slug = Self::sdd_slug(description);
-        format!("sdd: {slug}")
-    }
-
     fn sdd_slug(description: &str) -> String {
         let mut slug = String::new();
         let mut prev_dash = false;
@@ -2790,6 +2780,28 @@ impl ChatWidget {
                 "{}\n\n{}",
                 sdd_exec_prompt_template(self.config.language),
                 description_block
+            )
+        }
+    }
+
+    fn build_sdd_merge_prompt(&self, description: &str, branch_name: &str) -> String {
+        let template = sdd_merge_prompt_template(self.config.language).trim();
+        let context_block = format!(
+            "{}\n{description}\n{}\n{branch_name}",
+            tr(
+                self.config.language,
+                "需求描述：",
+                "Requirement description:"
+            ),
+            tr(self.config.language, "分支名：", "Branch:")
+        );
+        if template.is_empty() {
+            context_block
+        } else {
+            format!(
+                "{}\n\n{}",
+                sdd_merge_prompt_template(self.config.language),
+                context_block
             )
         }
     }
