@@ -9,6 +9,7 @@ use crate::render::renderable::Renderable;
 use crate::render::renderable::RenderableItem;
 use crate::tui::FrameRequester;
 use bottom_pane_view::BottomPaneView;
+use codex_common::token_usage::TokenUsageSplit;
 use codex_core::features::Features;
 use codex_core::skills::model::SkillMetadata;
 use codex_file_search::FileMatch;
@@ -90,6 +91,7 @@ pub(crate) struct BottomPane {
     queued_user_messages: QueuedUserMessages,
     context_window_percent: Option<i64>,
     context_window_used_tokens: Option<i64>,
+    token_usage: Option<TokenUsageSplit>,
 }
 
 pub(crate) struct BottomPaneParams {
@@ -143,6 +145,7 @@ impl BottomPane {
             language,
             context_window_percent: None,
             context_window_used_tokens: None,
+            token_usage: None,
         }
     }
 
@@ -429,6 +432,16 @@ impl BottomPane {
         self.context_window_used_tokens = used_tokens;
         self.composer
             .set_context_window(percent, self.context_window_used_tokens);
+        self.request_redraw();
+    }
+
+    pub(crate) fn set_token_usage(&mut self, usage: Option<TokenUsageSplit>) {
+        if self.token_usage == usage {
+            return;
+        }
+
+        self.token_usage = usage.clone();
+        self.composer.set_token_usage(usage);
         self.request_redraw();
     }
 
