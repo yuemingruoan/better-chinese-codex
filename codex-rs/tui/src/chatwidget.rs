@@ -139,6 +139,7 @@ use std::path::Path;
 use chrono::Local;
 use codex_common::approval_presets::ApprovalPreset;
 use codex_common::approval_presets::builtin_approval_presets;
+use codex_common::token_usage::split_total_and_last;
 use codex_core::AuthManager;
 use codex_core::CodexAuth;
 use codex_core::ConversationManager;
@@ -169,6 +170,8 @@ const SDD_PLAN_PROMPT_ZH: &str = include_str!("../prompt_for_sdd_plan.md");
 const SDD_PLAN_PROMPT_EN: &str = include_str!("../prompt_for_sdd_plan_en.md");
 const SDD_EXEC_PROMPT_ZH: &str = include_str!("../prompt_for_sdd_execute.md");
 const SDD_EXEC_PROMPT_EN: &str = include_str!("../prompt_for_sdd_execute_en.md");
+const SDD_MERGE_PROMPT_ZH: &str = include_str!("../prompt_for_sdd_merge.md");
+const SDD_MERGE_PROMPT_EN: &str = include_str!("../prompt_for_sdd_merge_en.md");
 const SDD_BRANCH_PREFIX: &str = "sdd/";
 const SDD_BASE_BRANCH: &str = "develop-main";
 const CHECKPOINT_PROMPT_ZH: &str = include_str!("../prompt_for_checkpoint_command.md");
@@ -199,6 +202,13 @@ fn sdd_exec_prompt_template(language: Language) -> &'static str {
     match language {
         Language::ZhCn => SDD_EXEC_PROMPT_ZH,
         Language::En => SDD_EXEC_PROMPT_EN,
+    }
+}
+
+fn sdd_merge_prompt_template(language: Language) -> &'static str {
+    match language {
+        Language::ZhCn => SDD_MERGE_PROMPT_ZH,
+        Language::En => SDD_MERGE_PROMPT_EN,
     }
 }
 // Track information about an in-flight exec command.
@@ -406,7 +416,6 @@ struct SddDevelopState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum SddGitPendingAction {
     CreateBranch { description: String },
-    FinalizeMerge,
     AbandonBranch,
 }
 
@@ -430,6 +439,7 @@ pub(crate) struct ChatWidget {
     session_header: SessionHeader,
     initial_user_message: Option<UserMessage>,
     token_info: Option<TokenUsageInfo>,
+    last_api_token_usage: Option<TokenUsage>,
     rate_limit_snapshot: Option<RateLimitSnapshotDisplay>,
     plan_type: Option<PlanType>,
     rate_limit_warnings: RateLimitWarningState,
@@ -468,6 +478,7 @@ pub(crate) struct ChatWidget {
     is_review_mode: bool,
     // Snapshot of token usage to restore after review mode exits.
     pre_review_token_info: Option<Option<TokenUsageInfo>>,
+    pre_review_last_api_token_usage: Option<Option<TokenUsage>>,
     // Whether to add a final message separator after the last message
     needs_final_message_separator: bool,
 
@@ -750,18 +761,6 @@ impl ChatWidget {
                     );
                     self.open_sdd_dev_options();
                 }
-                SddGitPendingAction::FinalizeMerge => {
-                    self.sdd_state = None;
-                    self.add_info_message(
-                        tr(
-                            self.config.language,
-                            "已完成合并操作，请继续后续流程。",
-                            "Merge finished. Please continue with the next steps.",
-                        )
-                        .to_string(),
-                        None,
-                    );
-                }
                 SddGitPendingAction::AbandonBranch => {
                     self.sdd_state = None;
                     self.sdd_new_session_after_cleanup = true;
@@ -802,16 +801,43 @@ impl ChatWidget {
             Some(info) => self.apply_token_info(info),
             None => {
                 self.bottom_pane.set_context_window(None, None);
+                self.bottom_pane.set_token_usage(None);
                 self.token_info = None;
+                self.last_api_token_usage = None;
             }
         }
     }
 
     fn apply_token_info(&mut self, info: TokenUsageInfo) {
+        let total_usage = info.total_token_usage.clone();
+        let last_usage = info.last_token_usage.clone();
         let percent = self.context_used_percent(&info);
         let used_tokens = self.context_used_tokens(&info, percent.is_some());
         self.bottom_pane.set_context_window(percent, used_tokens);
+        self.capture_last_api_usage(&last_usage);
+        self.refresh_token_usage_display(&total_usage);
         self.token_info = Some(info);
+    }
+
+    fn capture_last_api_usage(&mut self, usage: &TokenUsage) {
+        if usage.input_tokens != 0
+            || usage.cached_input_tokens != 0
+            || usage.output_tokens != 0
+            || usage.reasoning_output_tokens != 0
+        {
+            self.last_api_token_usage = Some(usage.clone());
+        }
+    }
+
+    fn refresh_token_usage_display(&mut self, total_usage: &TokenUsage) {
+        let last_usage = self.last_api_token_usage.clone().unwrap_or_default();
+        if total_usage.is_zero() && last_usage.is_zero() {
+            self.bottom_pane.set_token_usage(None);
+            return;
+        }
+
+        let split = split_total_and_last(total_usage, &last_usage);
+        self.bottom_pane.set_token_usage(Some(split));
     }
 
     fn context_used_percent(&self, info: &TokenUsageInfo) -> Option<i64> {
@@ -830,10 +856,12 @@ impl ChatWidget {
 
     fn restore_pre_review_token_info(&mut self) {
         if let Some(saved) = self.pre_review_token_info.take() {
+            self.last_api_token_usage = self.pre_review_last_api_token_usage.take().unwrap_or(None);
             match saved {
                 Some(info) => self.apply_token_info(info),
                 None => {
                     self.bottom_pane.set_context_window(None, None);
+                    self.bottom_pane.set_token_usage(None);
                     self.token_info = None;
                 }
             }
@@ -1725,6 +1753,7 @@ impl ChatWidget {
                 initial_images,
             ),
             token_info: None,
+            last_api_token_usage: None,
             rate_limit_snapshot: None,
             plan_type: None,
             rate_limit_warnings: RateLimitWarningState::default(),
@@ -1749,6 +1778,7 @@ impl ChatWidget {
             pending_notification: None,
             is_review_mode: false,
             pre_review_token_info: None,
+            pre_review_last_api_token_usage: None,
             needs_final_message_separator: false,
             last_rendered_width: std::cell::Cell::new(None),
             feedback,
@@ -1820,6 +1850,7 @@ impl ChatWidget {
                 initial_images,
             ),
             token_info: None,
+            last_api_token_usage: None,
             rate_limit_snapshot: None,
             plan_type: None,
             rate_limit_warnings: RateLimitWarningState::default(),
@@ -1844,6 +1875,7 @@ impl ChatWidget {
             pending_notification: None,
             is_review_mode: false,
             pre_review_token_info: None,
+            pre_review_last_api_token_usage: None,
             needs_final_message_separator: false,
             last_rendered_width: std::cell::Cell::new(None),
             feedback,
@@ -2040,7 +2072,6 @@ impl ChatWidget {
                 self.submit_user_message(prompt.to_string().into());
             }
             SlashCommand::Compact => {
-                self.clear_token_usage();
                 self.app_event_tx.send(AppEvent::CodexOp(Op::Compact));
             }
             SlashCommand::Review => {
@@ -2639,26 +2670,25 @@ impl ChatWidget {
             );
             return;
         }
-        let commit_message = self.sdd_commit_message(&state.description);
-        let branch_name = state.branch_name.clone();
-        self.sdd_state = Some(state);
-        self.sdd_pending_git_action = Some(SddGitPendingAction::FinalizeMerge);
+        let prompt = self.build_sdd_merge_prompt(&state.description, &state.branch_name);
+        self.sdd_pending_git_action = None;
         self.sdd_git_action_failed = false;
-        self.submit_op(Op::SddGitAction {
-            action: SddGitAction::FinalizeMerge {
-                name: branch_name,
-                base: SDD_BASE_BRANCH.to_string(),
-                commit_message,
-            },
-        });
+        self.send_user_inputs(prompt, Vec::new());
         self.add_info_message(
             tr(
                 language,
-                "已启动合并流程（提交并合并到基线分支）。",
-                "Merge started (commit and merge into the base branch).",
+                "已发送合并更新指引，请按提示通过 PR 完成合并与清理。",
+                "Merge guidance sent. Please follow the instructions to merge via PR and clean up.",
             )
             .to_string(),
-            None,
+            Some(
+                tr(
+                    language,
+                    "如需继续修改，请再次运行 /sdd-develop 选择其它选项。",
+                    "If you need more changes, run /sdd-develop again to choose another option.",
+                )
+                .to_string(),
+            ),
         );
     }
 
@@ -2736,11 +2766,6 @@ impl ChatWidget {
         format!("{SDD_BRANCH_PREFIX}{slug}")
     }
 
-    fn sdd_commit_message(&self, description: &str) -> String {
-        let slug = Self::sdd_slug(description);
-        format!("sdd: {slug}")
-    }
-
     fn sdd_slug(description: &str) -> String {
         let mut slug = String::new();
         let mut prev_dash = false;
@@ -2790,6 +2815,28 @@ impl ChatWidget {
                 "{}\n\n{}",
                 sdd_exec_prompt_template(self.config.language),
                 description_block
+            )
+        }
+    }
+
+    fn build_sdd_merge_prompt(&self, description: &str, branch_name: &str) -> String {
+        let template = sdd_merge_prompt_template(self.config.language).trim();
+        let context_block = format!(
+            "{}\n{description}\n{}\n{branch_name}",
+            tr(
+                self.config.language,
+                "需求描述：",
+                "Requirement description:"
+            ),
+            tr(self.config.language, "分支名：", "Branch:")
+        );
+        if template.is_empty() {
+            context_block
+        } else {
+            format!(
+                "{}\n\n{}",
+                sdd_merge_prompt_template(self.config.language),
+                context_block
             )
         }
     }
@@ -3143,6 +3190,7 @@ impl ChatWidget {
         // Enter review mode and emit a concise banner
         if self.pre_review_token_info.is_none() {
             self.pre_review_token_info = Some(self.token_info.clone());
+            self.pre_review_last_api_token_usage = Some(self.last_api_token_usage.clone());
         }
         self.is_review_mode = true;
         let hint = review
@@ -4831,10 +4879,6 @@ impl ChatWidget {
     /// runtime overrides applied via TUI, e.g., model or approval policy).
     pub(crate) fn config_ref(&self) -> &Config {
         &self.config
-    }
-
-    pub(crate) fn clear_token_usage(&mut self) {
-        self.token_info = None;
     }
 
     fn as_renderable(&self) -> RenderableItem<'_> {
