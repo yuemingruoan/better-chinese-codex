@@ -380,6 +380,7 @@ async fn make_chatwidget_manual(
         session_header: SessionHeader::new(resolved_model),
         initial_user_message: None,
         token_info: None,
+        last_api_token_usage: None,
         rate_limit_snapshot: None,
         plan_type: None,
         rate_limit_warnings: RateLimitWarningState::default(),
@@ -405,6 +406,7 @@ async fn make_chatwidget_manual(
         pending_notification: None,
         is_review_mode: false,
         pre_review_token_info: None,
+        pre_review_last_api_token_usage: None,
         needs_final_message_separator: false,
         last_rendered_width: std::cell::Cell::new(None),
         feedback: codex_feedback::CodexFeedback::new(),
@@ -2289,17 +2291,18 @@ async fn reasoning_popup_escape_returns_to_model_popup() {
     chat.open_reasoning_popup(preset);
 
     let before_escape = render_bottom_popup(&chat, 80);
-    let expected_reasoning_header = match chat.config.language {
+    let expected_reasoning_header = collapse_whitespace(&match chat.config.language {
         Language::ZhCn => "选择 gpt-5.1-codex-max 的推理强度".to_string(),
         Language::En => "Select Reasoning Level for gpt-5.1-codex-max".to_string(),
-    };
+    });
     assert!(collapse_whitespace(&before_escape).contains(&expected_reasoning_header));
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
     let after_escape = render_bottom_popup(&chat, 80);
-    let expected_model_header = tr(chat.config.language, "选择模型", "Select Model");
-    assert!(collapse_whitespace(&after_escape).contains(expected_model_header));
+    let expected_model_header =
+        collapse_whitespace(tr(chat.config.language, "选择模型", "Select Model"));
+    assert!(collapse_whitespace(&after_escape).contains(&expected_model_header));
     assert!(!collapse_whitespace(&after_escape).contains(&expected_reasoning_header));
 }
 

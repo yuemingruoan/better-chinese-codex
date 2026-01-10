@@ -6,6 +6,8 @@ use crate::render::line_utils::prefix_lines;
 use crate::status::format_tokens_compact;
 use crate::transcript_copy_action::TranscriptCopyFeedback;
 use crate::ui_consts::FOOTER_INDENT_COLS;
+use codex_common::token_usage::TokenUsageSplit;
+use codex_common::token_usage::format_token_count_compact;
 use crossterm::event::KeyCode;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -15,7 +17,7 @@ use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct FooterProps {
     pub(crate) mode: FooterMode,
     pub(crate) esc_backtrack_hint: bool,
@@ -23,6 +25,7 @@ pub(crate) struct FooterProps {
     pub(crate) is_task_running: bool,
     pub(crate) context_window_percent: Option<i64>,
     pub(crate) context_window_used_tokens: Option<i64>,
+    pub(crate) token_usage: Option<TokenUsageSplit>,
     pub(crate) transcript_scrolled: bool,
     pub(crate) transcript_selection_active: bool,
     pub(crate) transcript_scroll_position: Option<(usize, usize)>,
@@ -68,11 +71,11 @@ pub(crate) fn reset_mode_after_activity(current: FooterMode) -> FooterMode {
     }
 }
 
-pub(crate) fn footer_height(props: FooterProps) -> u16 {
+pub(crate) fn footer_height(props: &FooterProps) -> u16 {
     footer_lines(props).len() as u16
 }
 
-pub(crate) fn render_footer(area: Rect, buf: &mut Buffer, props: FooterProps) {
+pub(crate) fn render_footer(area: Rect, buf: &mut Buffer, props: &FooterProps) {
     Paragraph::new(prefix_lines(
         footer_lines(props),
         " ".repeat(FOOTER_INDENT_COLS).into(),
@@ -81,7 +84,7 @@ pub(crate) fn render_footer(area: Rect, buf: &mut Buffer, props: FooterProps) {
     .render(area, buf);
 }
 
-fn footer_lines(props: FooterProps) -> Vec<Line<'static>> {
+fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
     fn apply_copy_feedback(lines: &mut [Line<'static>], feedback: Option<TranscriptCopyFeedback>) {
         let Some(line) = lines.first_mut() else {
             return;
@@ -109,6 +112,7 @@ fn footer_lines(props: FooterProps) -> Vec<Line<'static>> {
             let mut line = context_window_line(
                 props.context_window_percent,
                 props.context_window_used_tokens,
+                props.token_usage.as_ref(),
             );
             line.push_span(" · ".dim());
             line.extend(vec![
@@ -155,6 +159,7 @@ fn footer_lines(props: FooterProps) -> Vec<Line<'static>> {
         FooterMode::ContextOnly => vec![context_window_line(
             props.context_window_percent,
             props.context_window_used_tokens,
+            props.token_usage.as_ref(),
         )],
     };
     apply_copy_feedback(&mut lines, props.transcript_copy_feedback);
@@ -285,19 +290,51 @@ fn build_columns(entries: Vec<Line<'static>>) -> Vec<Line<'static>> {
         .collect()
 }
 
-fn context_window_line(percent: Option<i64>, used_tokens: Option<i64>) -> Line<'static> {
+fn context_window_line(
+    percent: Option<i64>,
+    used_tokens: Option<i64>,
+    token_usage: Option<&TokenUsageSplit>,
+) -> Line<'static> {
     // NOTE: Display "used" percentage (can exceed 100) rather than "remaining".
     if let Some(percent) = percent {
         let percent = percent.max(0);
-        return Line::from(vec![Span::from(format!("{percent}% context used")).dim()]);
+        let mut line = Line::from(vec![Span::from(format!("{percent}% context used")).dim()]);
+        append_token_usage(&mut line, token_usage);
+        return line;
     }
 
     if let Some(tokens) = used_tokens {
         let used_fmt = format_tokens_compact(tokens);
-        return Line::from(vec![Span::from(format!("{used_fmt} used")).dim()]);
+        let mut line = Line::from(vec![Span::from(format!("{used_fmt} used")).dim()]);
+        append_token_usage(&mut line, token_usage);
+        return line;
     }
 
-    Line::from(vec![Span::from("0% context used").dim()])
+    let mut line = Line::from(vec![Span::from("0% context used").dim()]);
+    append_token_usage(&mut line, token_usage);
+    line
+}
+
+fn append_token_usage(line: &mut Line<'static>, token_usage: Option<&TokenUsageSplit>) {
+    let Some(token_usage) = token_usage else {
+        return;
+    };
+
+    let input_prior = format_token_count_compact(token_usage.prior.input_tokens);
+    let input_last = format_token_count_compact(token_usage.last.input_tokens);
+    let cached_prior = format_token_count_compact(token_usage.prior.cached_input_tokens);
+    let cached_last = format_token_count_compact(token_usage.last.cached_input_tokens);
+    let output_prior = format_token_count_compact(token_usage.prior.output_tokens);
+    let output_last = format_token_count_compact(token_usage.last.output_tokens);
+    let reasoning_prior = format_token_count_compact(token_usage.prior.reasoning_output_tokens);
+    let reasoning_last = format_token_count_compact(token_usage.last.reasoning_output_tokens);
+
+    let usage_text = format!(
+        "↑ {input_prior} + {input_last} tokens ({cached_prior} + {cached_last} tokens cache) ↓ {output_prior} + {output_last} tokens ({reasoning_prior} + {reasoning_last} reasoning tokens)"
+    );
+
+    line.push_span("  ".dim());
+    line.push_span(Span::from(usage_text).dim());
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -458,17 +495,19 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+    use codex_common::token_usage::TokenUsageSplit;
+    use codex_protocol::protocol::TokenUsage;
     use insta::assert_snapshot;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
     fn snapshot_footer(name: &str, props: FooterProps) {
-        let height = footer_height(props).max(1);
+        let height = footer_height(&props).max(1);
         let mut terminal = Terminal::new(TestBackend::new(80, height)).unwrap();
         terminal
             .draw(|f| {
                 let area = Rect::new(0, 0, f.area().width, height);
-                render_footer(area, f.buffer_mut(), props);
+                render_footer(area, f.buffer_mut(), &props);
             })
             .unwrap();
         assert_snapshot!(name, terminal.backend());
@@ -485,6 +524,7 @@ mod tests {
                 is_task_running: false,
                 context_window_percent: None,
                 context_window_used_tokens: None,
+                token_usage: None,
                 transcript_scrolled: false,
                 transcript_selection_active: false,
                 transcript_scroll_position: None,
@@ -502,6 +542,7 @@ mod tests {
                 is_task_running: false,
                 context_window_percent: None,
                 context_window_used_tokens: None,
+                token_usage: None,
                 transcript_scrolled: true,
                 transcript_selection_active: true,
                 transcript_scroll_position: Some((3, 42)),
@@ -519,6 +560,7 @@ mod tests {
                 is_task_running: false,
                 context_window_percent: None,
                 context_window_used_tokens: None,
+                token_usage: None,
                 transcript_scrolled: false,
                 transcript_selection_active: false,
                 transcript_scroll_position: None,
@@ -536,6 +578,7 @@ mod tests {
                 is_task_running: false,
                 context_window_percent: None,
                 context_window_used_tokens: None,
+                token_usage: None,
                 transcript_scrolled: false,
                 transcript_selection_active: false,
                 transcript_scroll_position: None,
@@ -553,6 +596,7 @@ mod tests {
                 is_task_running: true,
                 context_window_percent: None,
                 context_window_used_tokens: None,
+                token_usage: None,
                 transcript_scrolled: false,
                 transcript_selection_active: false,
                 transcript_scroll_position: None,
@@ -570,6 +614,7 @@ mod tests {
                 is_task_running: false,
                 context_window_percent: None,
                 context_window_used_tokens: None,
+                token_usage: None,
                 transcript_scrolled: false,
                 transcript_selection_active: false,
                 transcript_scroll_position: None,
@@ -587,6 +632,7 @@ mod tests {
                 is_task_running: false,
                 context_window_percent: None,
                 context_window_used_tokens: None,
+                token_usage: None,
                 transcript_scrolled: false,
                 transcript_selection_active: false,
                 transcript_scroll_position: None,
@@ -604,6 +650,7 @@ mod tests {
                 is_task_running: true,
                 context_window_percent: Some(72),
                 context_window_used_tokens: None,
+                token_usage: None,
                 transcript_scrolled: false,
                 transcript_selection_active: false,
                 transcript_scroll_position: None,
@@ -621,6 +668,7 @@ mod tests {
                 is_task_running: false,
                 context_window_percent: None,
                 context_window_used_tokens: Some(123_456),
+                token_usage: None,
                 transcript_scrolled: false,
                 transcript_selection_active: false,
                 transcript_scroll_position: None,
@@ -638,11 +686,45 @@ mod tests {
                 is_task_running: false,
                 context_window_percent: None,
                 context_window_used_tokens: None,
+                token_usage: None,
                 transcript_scrolled: false,
                 transcript_selection_active: false,
                 transcript_scroll_position: None,
                 transcript_copy_selection_key: key_hint::ctrl_shift(KeyCode::Char('c')),
                 transcript_copy_feedback: Some(TranscriptCopyFeedback::Copied),
+            },
+        );
+
+        snapshot_footer(
+            "footer_token_usage",
+            FooterProps {
+                mode: FooterMode::ShortcutSummary,
+                esc_backtrack_hint: false,
+                use_shift_enter_hint: false,
+                is_task_running: false,
+                context_window_percent: Some(12),
+                context_window_used_tokens: None,
+                token_usage: Some(TokenUsageSplit {
+                    prior: TokenUsage {
+                        input_tokens: 1_200,
+                        cached_input_tokens: 800,
+                        output_tokens: 300,
+                        reasoning_output_tokens: 50,
+                        total_tokens: 0,
+                    },
+                    last: TokenUsage {
+                        input_tokens: 34,
+                        cached_input_tokens: 20,
+                        output_tokens: 10,
+                        reasoning_output_tokens: 2,
+                        total_tokens: 0,
+                    },
+                }),
+                transcript_scrolled: false,
+                transcript_selection_active: false,
+                transcript_scroll_position: None,
+                transcript_copy_selection_key: key_hint::ctrl_shift(KeyCode::Char('c')),
+                transcript_copy_feedback: None,
             },
         );
     }
