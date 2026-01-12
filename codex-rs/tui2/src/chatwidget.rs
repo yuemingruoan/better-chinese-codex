@@ -98,6 +98,7 @@ use crate::bottom_pane::SelectionViewParams;
 use crate::bottom_pane::custom_prompt_view::CustomPromptView;
 use crate::bottom_pane::parse_slash_name;
 use crate::bottom_pane::popup_consts::standard_popup_hint_line;
+use crate::clipboard_paste::clean_clipboard_cache;
 use crate::clipboard_paste::paste_image_as_data_url;
 use crate::diff_render::display_path_for;
 use crate::exec_cell::CommandOutput;
@@ -1986,6 +1987,60 @@ impl ChatWidget {
                     };
                     tx.send(AppEvent::DiffResult(text));
                 });
+            }
+            SlashCommand::Clean => {
+                let language = self.config.language;
+                match clean_clipboard_cache(&self.config.cwd) {
+                    Ok(result) => {
+                        let message = if !result.found_cache_dir {
+                            tr(
+                                language,
+                                "未找到 .codex 目录，无需清理剪贴板缓存。",
+                                "No .codex directory found; no clipboard cache to clean.",
+                            )
+                            .to_string()
+                        } else if result.deleted == 0 && result.failed == 0 {
+                            tr(
+                                language,
+                                "未找到剪贴板图片缓存。",
+                                "No clipboard image cache found.",
+                            )
+                            .to_string()
+                        } else if result.failed == 0 {
+                            match language {
+                                Language::ZhCn => format!(
+                                    "已清理剪贴板图片缓存：删除 {deleted} 个文件。",
+                                    deleted = result.deleted
+                                ),
+                                Language::En => format!(
+                                    "Clipboard image cache cleaned: deleted {deleted} file(s).",
+                                    deleted = result.deleted
+                                ),
+                            }
+                        } else {
+                            match language {
+                                Language::ZhCn => format!(
+                                    "已清理剪贴板图片缓存：删除 {deleted} 个文件，{failed} 个失败。",
+                                    deleted = result.deleted,
+                                    failed = result.failed
+                                ),
+                                Language::En => format!(
+                                    "Clipboard image cache cleaned: deleted {deleted} file(s), {failed} failed.",
+                                    deleted = result.deleted,
+                                    failed = result.failed
+                                ),
+                            }
+                        };
+                        self.add_info_message(message, None);
+                    }
+                    Err(err) => {
+                        let message = match language {
+                            Language::ZhCn => format!("清理剪贴板缓存失败：{err}"),
+                            Language::En => format!("Failed to clean clipboard cache: {err}"),
+                        };
+                        self.add_to_history(history_cell::new_error_event(message));
+                    }
+                }
             }
             SlashCommand::Mention => {
                 self.insert_str("@");

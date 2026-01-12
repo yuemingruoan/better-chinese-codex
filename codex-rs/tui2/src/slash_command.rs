@@ -24,6 +24,7 @@ pub enum SlashCommand {
     Compact,
     Undo,
     Diff,
+    Clean,
     Mention,
     Status,
     SddDevelop,
@@ -50,6 +51,7 @@ impl SlashCommand {
                 SlashCommand::Undo => "让 Codex 回退一个回合",
                 SlashCommand::Quit | SlashCommand::Exit => "退出 Codex",
                 SlashCommand::Diff => "显示 git diff（包含未跟踪文件）",
+                SlashCommand::Clean => "清理剪贴板图片缓存",
                 SlashCommand::Mention => "在消息中提及文件",
                 SlashCommand::Skills => "使用技能提升特定任务的表现",
                 SlashCommand::Status => "显示会话配置与令牌使用情况",
@@ -74,6 +76,7 @@ impl SlashCommand {
                 SlashCommand::Undo => "ask Codex to undo a turn",
                 SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
                 SlashCommand::Diff => "show git diff (including untracked files)",
+                SlashCommand::Clean => "clear clipboard image cache",
                 SlashCommand::Mention => "mention a file",
                 SlashCommand::Skills => "use skills to improve how Codex performs specific tasks",
                 SlashCommand::Status => "show current session configuration and token usage",
@@ -110,6 +113,7 @@ impl SlashCommand {
             | SlashCommand::Review
             | SlashCommand::Logout => false,
             SlashCommand::Diff
+            | SlashCommand::Clean
             | SlashCommand::Mention
             | SlashCommand::Skills
             | SlashCommand::Status
