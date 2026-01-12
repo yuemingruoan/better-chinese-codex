@@ -59,6 +59,12 @@ use crate::status_indicator_widget::StatusIndicatorWidget;
 pub(crate) use list_selection_view::SelectionAction;
 pub(crate) use list_selection_view::SelectionItem;
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ImageAttachment {
+    LocalPath(PathBuf),
+    DataUrl(String),
+}
+
 /// Pane displayed in the lower half of the chat UI.
 pub(crate) struct BottomPane {
     /// Composer is retained even when a BottomPaneView is displayed so the
@@ -571,7 +577,22 @@ impl BottomPane {
         }
     }
 
-    pub(crate) fn take_recent_submission_images(&mut self) -> Vec<PathBuf> {
+    pub(crate) fn attach_image_data_url(
+        &mut self,
+        label: String,
+        data_url: String,
+        width: u32,
+        height: u32,
+        format_label: &str,
+    ) {
+        if self.view_stack.is_empty() {
+            self.composer
+                .attach_image_data_url(label, data_url, width, height, format_label);
+            self.request_redraw();
+        }
+    }
+
+    pub(crate) fn take_recent_submission_images(&mut self) -> Vec<ImageAttachment> {
         self.composer.take_recent_submission_images()
     }
 
