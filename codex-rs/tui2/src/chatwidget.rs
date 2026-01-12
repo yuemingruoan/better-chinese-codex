@@ -90,6 +90,7 @@ use crate::bottom_pane::ApprovalRequest;
 use crate::bottom_pane::BottomPane;
 use crate::bottom_pane::BottomPaneParams;
 use crate::bottom_pane::CancellationEvent;
+use crate::bottom_pane::ImageAttachment;
 use crate::bottom_pane::InputResult;
 use crate::bottom_pane::SelectionAction;
 use crate::bottom_pane::SelectionItem;
@@ -97,7 +98,7 @@ use crate::bottom_pane::SelectionViewParams;
 use crate::bottom_pane::custom_prompt_view::CustomPromptView;
 use crate::bottom_pane::parse_slash_name;
 use crate::bottom_pane::popup_consts::standard_popup_hint_line;
-use crate::clipboard_paste::paste_image_to_temp_png;
+use crate::clipboard_paste::paste_image_as_data_url;
 use crate::diff_render::display_path_for;
 use crate::exec_cell::CommandOutput;
 use crate::exec_cell::ExecCell;
@@ -453,14 +454,14 @@ pub(crate) struct ChatWidget {
 
 struct UserMessage {
     text: String,
-    image_paths: Vec<PathBuf>,
+    image_attachments: Vec<ImageAttachment>,
 }
 
 impl From<String> for UserMessage {
     fn from(text: String) -> Self {
         Self {
             text,
-            image_paths: Vec::new(),
+            image_attachments: Vec::new(),
         }
     }
 }
@@ -469,16 +470,22 @@ impl From<&str> for UserMessage {
     fn from(text: &str) -> Self {
         Self {
             text: text.to_string(),
-            image_paths: Vec::new(),
+            image_attachments: Vec::new(),
         }
     }
 }
 
-fn create_initial_user_message(text: String, image_paths: Vec<PathBuf>) -> Option<UserMessage> {
-    if text.is_empty() && image_paths.is_empty() {
+fn create_initial_user_message(
+    text: String,
+    image_attachments: Vec<ImageAttachment>,
+) -> Option<UserMessage> {
+    if text.is_empty() && image_attachments.is_empty() {
         None
     } else {
-        Some(UserMessage { text, image_paths })
+        Some(UserMessage {
+            text,
+            image_attachments,
+        })
     }
 }
 
@@ -1585,6 +1592,11 @@ impl ChatWidget {
         let placeholder = prompts[rng.random_range(0..prompts.len())].to_string();
         let codex_op_tx = spawn_agent(config.clone(), app_event_tx.clone(), conversation_manager);
 
+        let initial_attachments = initial_images
+            .into_iter()
+            .map(ImageAttachment::LocalPath)
+            .collect();
+
         let mut widget = Self {
             app_event_tx: app_event_tx.clone(),
             frame_requester: frame_requester.clone(),
@@ -1608,7 +1620,7 @@ impl ChatWidget {
             session_header: SessionHeader::new(model),
             initial_user_message: create_initial_user_message(
                 initial_prompt.unwrap_or_default(),
-                initial_images,
+                initial_attachments,
             ),
             token_info: None,
             last_api_token_usage: None,
@@ -1680,6 +1692,11 @@ impl ChatWidget {
         let codex_op_tx =
             spawn_agent_from_existing(conversation, session_configured, app_event_tx.clone());
 
+        let initial_attachments = initial_images
+            .into_iter()
+            .map(ImageAttachment::LocalPath)
+            .collect();
+
         let mut widget = Self {
             app_event_tx: app_event_tx.clone(),
             frame_requester: frame_requester.clone(),
@@ -1703,7 +1720,7 @@ impl ChatWidget {
             session_header: SessionHeader::new(model),
             initial_user_message: create_initial_user_message(
                 initial_prompt.unwrap_or_default(),
-                initial_images,
+                initial_attachments,
             ),
             token_info: None,
             last_api_token_usage: None,
@@ -1767,13 +1784,14 @@ impl ChatWidget {
             } if modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
                 && c.eq_ignore_ascii_case(&'v') =>
             {
-                match paste_image_to_temp_png() {
-                    Ok((path, info)) => {
-                        self.attach_image(
-                            path,
-                            info.width,
-                            info.height,
-                            info.encoded_format.label(),
+                match paste_image_as_data_url() {
+                    Ok(clipboard) => {
+                        self.attach_image_data_url(
+                            clipboard.placeholder_label,
+                            clipboard.data_url,
+                            clipboard.info.width,
+                            clipboard.info.height,
+                            clipboard.info.encoded_format.label(),
                         );
                     }
                     Err(err) => {
@@ -1814,7 +1832,7 @@ impl ChatWidget {
                         // If a task is running, queue the user input to be sent after the turn completes.
                         let user_message = UserMessage {
                             text,
-                            image_paths: self.bottom_pane.take_recent_submission_images(),
+                            image_attachments: self.bottom_pane.take_recent_submission_images(),
                         };
                         self.queue_user_message(user_message);
                     }
@@ -1839,6 +1857,23 @@ impl ChatWidget {
         );
         self.bottom_pane
             .attach_image(path, width, height, format_label);
+        self.request_redraw();
+    }
+
+    pub(crate) fn attach_image_data_url(
+        &mut self,
+        label: String,
+        data_url: String,
+        width: u32,
+        height: u32,
+        format_label: &str,
+    ) {
+        tracing::info!(
+            "attach_image_data_url label={label} width={width} height={height} format={format_label} data_url_len={}",
+            data_url.len()
+        );
+        self.bottom_pane
+            .attach_image_data_url(label, data_url, width, height, format_label);
         self.request_redraw();
     }
 
@@ -2696,9 +2731,12 @@ impl ChatWidget {
     }
 
     fn submit_user_message(&mut self, user_message: UserMessage) {
-        let UserMessage { text, image_paths } = user_message;
+        let UserMessage {
+            text,
+            image_attachments,
+        } = user_message;
         if text.is_empty()
-            && image_paths.is_empty()
+            && image_attachments.is_empty()
             && self.sdd_pending_plan_rework_prompt.is_none()
         {
             return;
@@ -2734,8 +2772,17 @@ impl ChatWidget {
             items.push(UserInput::Text { text: send_text });
         }
 
-        for path in image_paths {
-            items.push(UserInput::LocalImage { path });
+        for attachment in image_attachments {
+            match attachment {
+                ImageAttachment::LocalPath(path) => {
+                    items.push(UserInput::LocalImage { path });
+                }
+                ImageAttachment::DataUrl(data_url) => {
+                    items.push(UserInput::Image {
+                        image_url: data_url,
+                    });
+                }
+            }
         }
 
         if let Some(skills) = self.bottom_pane.skills() {

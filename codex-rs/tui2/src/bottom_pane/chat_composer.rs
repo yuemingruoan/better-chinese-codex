@@ -19,6 +19,7 @@ use ratatui::widgets::Block;
 use ratatui::widgets::StatefulWidgetRef;
 use ratatui::widgets::WidgetRef;
 
+use super::ImageAttachment;
 use super::chat_composer_history::ChatComposerHistory;
 use super::command_popup::CommandItem;
 use super::command_popup::CommandPopup;
@@ -84,7 +85,7 @@ pub enum InputResult {
 #[derive(Clone, Debug, PartialEq)]
 struct AttachedImage {
     placeholder: String,
-    path: PathBuf,
+    attachment: ImageAttachment,
 }
 
 enum PromptSelectionMode {
@@ -347,17 +348,40 @@ impl ChatComposer {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "image".to_string());
-        let placeholder = format!("[{file_label} {width}x{height}]");
+        self.attach_image_with_label(file_label, ImageAttachment::LocalPath(path), width, height);
+    }
+
+    pub fn attach_image_data_url(
+        &mut self,
+        label: String,
+        data_url: String,
+        width: u32,
+        height: u32,
+        _format_label: &str,
+    ) {
+        self.attach_image_with_label(label, ImageAttachment::DataUrl(data_url), width, height);
+    }
+
+    fn attach_image_with_label(
+        &mut self,
+        label: String,
+        attachment: ImageAttachment,
+        width: u32,
+        height: u32,
+    ) {
+        let placeholder = format!("[{label} {width}x{height}]");
         // Insert as an element to match large paste placeholder behavior:
         // styled distinctly and treated atomically for cursor/mutations.
         self.textarea.insert_element(&placeholder);
-        self.attached_images
-            .push(AttachedImage { placeholder, path });
+        self.attached_images.push(AttachedImage {
+            placeholder,
+            attachment,
+        });
     }
 
-    pub fn take_recent_submission_images(&mut self) -> Vec<PathBuf> {
+    pub fn take_recent_submission_images(&mut self) -> Vec<ImageAttachment> {
         let images = std::mem::take(&mut self.attached_images);
-        images.into_iter().map(|img| img.path).collect()
+        images.into_iter().map(|img| img.attachment).collect()
     }
 
     pub(crate) fn flush_paste_burst_if_due(&mut self) -> bool {
@@ -2010,6 +2034,7 @@ mod tests {
     use crate::app_event::AppEvent;
     use crate::bottom_pane::AppEventSender;
     use crate::bottom_pane::ChatComposer;
+    use crate::bottom_pane::ImageAttachment;
     use crate::bottom_pane::InputResult;
     use crate::bottom_pane::chat_composer::AttachedImage;
     use crate::bottom_pane::chat_composer::LARGE_PASTE_CHAR_THRESHOLD;
@@ -3195,7 +3220,7 @@ mod tests {
             _ => panic!("expected Submitted"),
         }
         let imgs = composer.take_recent_submission_images();
-        assert_eq!(vec![path], imgs);
+        assert_eq!(vec![ImageAttachment::LocalPath(path)], imgs);
     }
 
     #[test]
@@ -3219,8 +3244,37 @@ mod tests {
         }
         let imgs = composer.take_recent_submission_images();
         assert_eq!(imgs.len(), 1);
-        assert_eq!(imgs[0], path);
+        assert_eq!(imgs[0], ImageAttachment::LocalPath(path));
         assert!(composer.attached_images.is_empty());
+    }
+
+    #[test]
+    fn attach_data_url_submits_image_attachment() {
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            true,
+            sender,
+            false,
+            "Ask Codex to do anything".to_string(),
+            false,
+        );
+        let data_url = "data:image/png;base64,AAAA".to_string();
+        composer.attach_image_data_url(
+            "codex-clipboard-test.png".to_string(),
+            data_url.clone(),
+            12,
+            8,
+            "PNG",
+        );
+        let (result, _) =
+            composer.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        match result {
+            InputResult::Submitted(text) => assert_eq!(text, "[codex-clipboard-test.png 12x8]"),
+            _ => panic!("expected Submitted"),
+        }
+        let imgs = composer.take_recent_submission_images();
+        assert_eq!(imgs, vec![ImageAttachment::DataUrl(data_url)]);
     }
 
     #[test]
@@ -3338,8 +3392,8 @@ mod tests {
         );
         assert_eq!(
             vec![AttachedImage {
-                path: path2,
-                placeholder: "[image_dup2.png 10x5]".to_string()
+                attachment: ImageAttachment::LocalPath(path2),
+                placeholder: "[image_dup2.png 10x5]".to_string(),
             }],
             composer.attached_images,
             "one image mapping remains"
@@ -3374,7 +3428,7 @@ mod tests {
         );
 
         let imgs = composer.take_recent_submission_images();
-        assert_eq!(imgs, vec![tmp_path]);
+        assert_eq!(imgs, vec![ImageAttachment::LocalPath(tmp_path)]);
     }
 
     #[test]

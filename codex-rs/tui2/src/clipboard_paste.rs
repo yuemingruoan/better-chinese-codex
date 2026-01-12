@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use codex_protocol::config_types::Language;
 use std::path::PathBuf;
 use tempfile::Builder;
@@ -60,6 +62,35 @@ pub struct PastedImageInfo {
     pub width: u32,
     pub height: u32,
     pub encoded_format: EncodedImageFormat, // Always PNG for now.
+}
+
+#[derive(Debug, Clone)]
+pub struct ClipboardImage {
+    pub data_url: String,
+    pub info: PastedImageInfo,
+    pub placeholder_label: String,
+}
+
+pub fn paste_image_as_data_url() -> Result<ClipboardImage, PasteImageError> {
+    let (png, info) = paste_image_as_png()?;
+    let encoded = BASE64_STANDARD.encode(&png);
+    let data_url = format!("data:image/png;base64,{}", encoded);
+    let placeholder_label = Builder::new()
+        .prefix("codex-clipboard-")
+        .suffix(".png")
+        .tempfile()
+        .ok()
+        .and_then(|tmp| {
+            tmp.path()
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| "clipboard.png".to_string());
+    Ok(ClipboardImage {
+        data_url,
+        info,
+        placeholder_label,
+    })
 }
 
 /// Capture image from system clipboard, encode to PNG, and return bytes + info.
