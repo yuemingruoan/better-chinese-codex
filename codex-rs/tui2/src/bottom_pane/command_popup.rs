@@ -117,7 +117,7 @@ impl CommandPopup {
 
     /// Compute fuzzy-filtered matches over built-in commands and user prompts,
     /// paired with optional highlight indices and score. Sorted by ascending
-    /// score, then by name for stability.
+    /// score, then by presentation order (builtins) or name (prompts) for stability.
     fn filtered(&self) -> Vec<(CommandItem, Option<Vec<usize>>, i32)> {
         let filter = self.command_filter.trim();
         let mut out: Vec<(CommandItem, Option<Vec<usize>>, i32)> = Vec::new();
@@ -147,21 +147,30 @@ impl CommandPopup {
                 out.push((CommandItem::UserPrompt(idx), Some(indices), score));
             }
         }
-        // When filtering, sort by ascending score and then by name for stability.
+        // When filtering, sort by ascending score; break ties by keeping builtin
+        // presentation order and sorting prompts by name for stability.
         out.sort_by(|a, b| {
-            a.2.cmp(&b.2).then_with(|| {
-                let an = match a.0 {
-                    CommandItem::Builtin(c) => c.command(),
-                    CommandItem::UserPrompt(i) => &self.prompts[i].name,
-                };
-                let bn = match b.0 {
-                    CommandItem::Builtin(c) => c.command(),
-                    CommandItem::UserPrompt(i) => &self.prompts[i].name,
-                };
-                an.cmp(bn)
+            a.2.cmp(&b.2).then_with(|| match (a.0, b.0) {
+                (CommandItem::Builtin(a_cmd), CommandItem::Builtin(b_cmd)) => {
+                    self.builtin_order(a_cmd).cmp(&self.builtin_order(b_cmd))
+                }
+                (CommandItem::Builtin(_), CommandItem::UserPrompt(_)) => std::cmp::Ordering::Less,
+                (CommandItem::UserPrompt(_), CommandItem::Builtin(_)) => {
+                    std::cmp::Ordering::Greater
+                }
+                (CommandItem::UserPrompt(a_idx), CommandItem::UserPrompt(b_idx)) => {
+                    self.prompts[a_idx].name.cmp(&self.prompts[b_idx].name)
+                }
             })
         });
         out
+    }
+
+    fn builtin_order(&self, command: SlashCommand) -> usize {
+        self.builtins
+            .iter()
+            .position(|(_, cmd)| *cmd == command)
+            .unwrap_or(usize::MAX)
     }
 
     fn filtered_items(&self) -> Vec<CommandItem> {
