@@ -23,6 +23,7 @@ pub struct Cli {
     #[clap(skip)]
     pub resume_last: bool,
 
+    /// 内部用途：由 `codex resume <SESSION_ID>` 设置的会话 id（UUID），不作为公开参数。
     /// Internal: resume a specific recorded session by id (UUID). Set by the
     /// top-level `codex resume <SESSION_ID>` wrapper; not exposed as a public flag.
     #[clap(skip)]
@@ -32,7 +33,26 @@ pub struct Cli {
     #[clap(skip)]
     pub resume_show_all: bool,
 
-    /// 指定代理要使用的模型。
+    // Internal controls set by the top-level `codex fork` subcommand.
+    // These are not exposed as user flags on the base `codex` command.
+    #[clap(skip)]
+    pub fork_picker: bool,
+
+    #[clap(skip)]
+    pub fork_last: bool,
+
+    /// 内部用途：由 `codex fork <SESSION_ID>` 设置的会话 id（UUID），不作为公开参数。
+    /// Internal: fork a specific recorded session by id (UUID). Set by the
+    /// top-level `codex fork <SESSION_ID>` wrapper; not exposed as a public flag.
+    #[clap(skip)]
+    pub fork_session_id: Option<String>,
+
+    /// 内部用途：显示所有会话（禁用 cwd 过滤并显示 cwd 列）。
+    /// Internal: show all sessions (disables cwd filtering and shows CWD column).
+    #[clap(skip)]
+    pub fork_show_all: bool,
+
+    /// 指定代理要使用的模型 / Model the agent should use.
     #[arg(long, short = 'm')]
     pub model: Option<String>,
 
@@ -41,7 +61,8 @@ pub struct Cli {
     #[arg(long = "oss", default_value_t = false)]
     pub oss: bool,
 
-    /// 指定本地提供者（lmstudio 或 ollama）。若未通过 --oss 指定，则沿用配置默认或进入选择界面。
+    /// 指定本地提供者（lmstudio / ollama / ollama-chat），未通过 --oss 指定时沿用配置默认或进入选择界面。
+    /// Specify which local provider to use (lmstudio, ollama, or ollama-chat).
     #[arg(long = "local-provider")]
     pub oss_provider: Option<String>,
 
@@ -76,12 +97,21 @@ pub struct Cli {
     pub cwd: Option<PathBuf>,
 
     /// 启用联网搜索（默认关闭）。启用后模型可直接使用 Responses 的 `web_search` 工具（无需逐次审批）。
+    /// Enable live web search. When enabled, the native Responses `web_search` tool is available to the model (no per-call approval).
     #[arg(long = "search", default_value_t = false)]
     pub web_search: bool,
 
     /// 需要与主工作区一同放开的额外可写目录。
     #[arg(long = "add-dir", value_name = "DIR", value_hint = ValueHint::DirPath)]
     pub add_dir: Vec<PathBuf>,
+
+    /// Disable alternate screen mode
+    ///
+    /// Runs the TUI in inline mode, preserving terminal scrollback history. This is useful
+    /// in terminal multiplexers like Zellij that follow the xterm spec strictly and disable
+    /// scrollback in alternate screen buffers.
+    #[arg(long = "no-alt-screen", default_value_t = false)]
+    pub no_alt_screen: bool,
 
     #[clap(skip)]
     pub config_overrides: CliConfigOverrides,

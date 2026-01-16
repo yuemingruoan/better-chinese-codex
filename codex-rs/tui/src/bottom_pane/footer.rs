@@ -1,12 +1,22 @@
+//! The bottom-pane footer renders transient hints and context indicators.
+//!
+//! The footer is pure rendering: it formats `FooterProps` into `Line`s without mutating any state.
+//! It intentionally does not decide *which* footer content should be shown; that is owned by the
+//! `ChatComposer` (which selects a `FooterMode`) and by higher-level state machines like
+//! `ChatWidget` (which decides when quit/interrupt is allowed).
+//!
+//! Some footer content is time-based rather than event-based, such as the "press again to quit"
+//! hint. The owning widgets schedule redraws so time-based hints can expire even if the UI is
+//! otherwise idle.
 #[cfg(target_os = "linux")]
 use crate::clipboard_paste::is_probably_wsl;
+use crate::i18n::tr;
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
 use crate::render::line_utils::prefix_lines;
 use crate::status::format_tokens_compact;
 use crate::ui_consts::FOOTER_INDENT_COLS;
-use codex_common::token_usage::TokenUsageSplit;
-use codex_common::token_usage::format_token_count_compact;
+use codex_protocol::config_types::Language;
 use crossterm::event::KeyCode;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -16,20 +26,36 @@ use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
 
-#[derive(Clone, Debug)]
+/// The rendering inputs for the footer area under the composer.
+///
+/// Callers are expected to construct `FooterProps` from higher-level state (`ChatComposer`,
+/// `BottomPane`, and `ChatWidget`) and pass it to `render_footer`. The footer treats these values as
+/// authoritative and does not attempt to infer missing state (for example, it does not query
+/// whether a task is running).
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct FooterProps {
     pub(crate) mode: FooterMode,
     pub(crate) esc_backtrack_hint: bool,
     pub(crate) use_shift_enter_hint: bool,
     pub(crate) is_task_running: bool,
+    pub(crate) steer_enabled: bool,
+    /// Which key the user must press again to quit.
+    ///
+    /// This is rendered when `mode` is `FooterMode::QuitShortcutReminder`.
+    pub(crate) quit_shortcut_key: KeyBinding,
     pub(crate) context_window_percent: Option<i64>,
     pub(crate) context_window_used_tokens: Option<i64>,
-    pub(crate) token_usage: Option<TokenUsageSplit>,
+    pub(crate) language: Language,
 }
 
+/// Selects which footer content is rendered.
+///
+/// The current mode is owned by `ChatComposer`, which may override it based on transient state
+/// (for example, showing `QuitShortcutReminder` only while its timer is active).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FooterMode {
-    CtrlCReminder,
+    /// Transient "press again to quit" reminder (Ctrl+C/Ctrl+D).
+    QuitShortcutReminder,
     ShortcutSummary,
     ShortcutOverlay,
     EscHint,
@@ -37,12 +63,14 @@ pub(crate) enum FooterMode {
 }
 
 pub(crate) fn toggle_shortcut_mode(current: FooterMode, ctrl_c_hint: bool) -> FooterMode {
-    if ctrl_c_hint && matches!(current, FooterMode::CtrlCReminder) {
+    if ctrl_c_hint && matches!(current, FooterMode::QuitShortcutReminder) {
         return current;
     }
 
     match current {
-        FooterMode::ShortcutOverlay | FooterMode::CtrlCReminder => FooterMode::ShortcutSummary,
+        FooterMode::ShortcutOverlay | FooterMode::QuitShortcutReminder => {
+            FooterMode::ShortcutSummary
+        }
         _ => FooterMode::ShortcutOverlay,
     }
 }
@@ -59,17 +87,17 @@ pub(crate) fn reset_mode_after_activity(current: FooterMode) -> FooterMode {
     match current {
         FooterMode::EscHint
         | FooterMode::ShortcutOverlay
-        | FooterMode::CtrlCReminder
+        | FooterMode::QuitShortcutReminder
         | FooterMode::ContextOnly => FooterMode::ShortcutSummary,
         other => other,
     }
 }
 
-pub(crate) fn footer_height(props: &FooterProps) -> u16 {
+pub(crate) fn footer_height(props: FooterProps) -> u16 {
     footer_lines(props).len() as u16
 }
 
-pub(crate) fn render_footer(area: Rect, buf: &mut Buffer, props: &FooterProps) {
+pub(crate) fn render_footer(area: Rect, buf: &mut Buffer, props: FooterProps) {
     Paragraph::new(prefix_lines(
         footer_lines(props),
         " ".repeat(FOOTER_INDENT_COLS).into(),
@@ -78,25 +106,28 @@ pub(crate) fn render_footer(area: Rect, buf: &mut Buffer, props: &FooterProps) {
     .render(area, buf);
 }
 
-fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
+fn footer_lines(props: FooterProps) -> Vec<Line<'static>> {
     // Show the context indicator on the left, appended after the primary hint
     // (e.g., "? for shortcuts"). Keep it visible even when typing (i.e., when
     // the shortcut hint is hidden). Hide it only for the multi-line
     // ShortcutOverlay.
     match props.mode {
-        FooterMode::CtrlCReminder => vec![ctrl_c_reminder_line(CtrlCReminderState {
-            is_task_running: props.is_task_running,
-        })],
+        FooterMode::QuitShortcutReminder => {
+            vec![quit_shortcut_reminder_line(
+                props.quit_shortcut_key,
+                props.language,
+            )]
+        }
         FooterMode::ShortcutSummary => {
             let mut line = context_window_line(
                 props.context_window_percent,
                 props.context_window_used_tokens,
-                props.token_usage.as_ref(),
+                props.language,
             );
             line.push_span(" · ".dim());
             line.extend(vec![
                 key_hint::plain(KeyCode::Char('?')).into(),
-                " for shortcuts".dim(),
+                tr(props.language, " 查看快捷键", " for shortcuts").dim(),
             ]);
             vec![line]
         }
@@ -110,21 +141,25 @@ fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
                 use_shift_enter_hint: props.use_shift_enter_hint,
                 esc_backtrack_hint: props.esc_backtrack_hint,
                 is_wsl,
+                language: props.language,
             };
             shortcut_overlay_lines(state)
         }
-        FooterMode::EscHint => vec![esc_hint_line(props.esc_backtrack_hint)],
-        FooterMode::ContextOnly => vec![context_window_line(
-            props.context_window_percent,
-            props.context_window_used_tokens,
-            props.token_usage.as_ref(),
-        )],
+        FooterMode::EscHint => vec![esc_hint_line(props.esc_backtrack_hint, props.language)],
+        FooterMode::ContextOnly => {
+            let mut line = context_window_line(
+                props.context_window_percent,
+                props.context_window_used_tokens,
+                props.language,
+            );
+            if props.is_task_running && props.steer_enabled {
+                line.push_span(" · ".dim());
+                line.push_span(key_hint::plain(KeyCode::Tab));
+                line.push_span(tr(props.language, " 排队发送", " to queue message").dim());
+            }
+            vec![line]
+        }
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct CtrlCReminderState {
-    is_task_running: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -132,31 +167,36 @@ struct ShortcutsState {
     use_shift_enter_hint: bool,
     esc_backtrack_hint: bool,
     is_wsl: bool,
+    language: Language,
 }
 
-fn ctrl_c_reminder_line(state: CtrlCReminderState) -> Line<'static> {
-    let action = if state.is_task_running {
-        "interrupt"
-    } else {
-        "quit"
-    };
+fn quit_shortcut_reminder_line(key: KeyBinding, language: Language) -> Line<'static> {
     Line::from(vec![
-        key_hint::ctrl(KeyCode::Char('c')).into(),
-        format!(" again to {action}").into(),
+        key.into(),
+        tr(language, " 再次退出", " again to quit").into(),
     ])
     .dim()
 }
 
-fn esc_hint_line(esc_backtrack_hint: bool) -> Line<'static> {
+fn esc_hint_line(esc_backtrack_hint: bool, language: Language) -> Line<'static> {
     let esc = key_hint::plain(KeyCode::Esc);
     if esc_backtrack_hint {
-        Line::from(vec![esc.into(), " again to edit previous message".into()]).dim()
+        Line::from(vec![
+            esc.into(),
+            tr(
+                language,
+                " 再次编辑上一条消息",
+                " again to edit previous message",
+            )
+            .into(),
+        ])
+        .dim()
     } else {
         Line::from(vec![
             esc.into(),
             " ".into(),
             esc.into(),
-            " to edit previous message".into(),
+            tr(language, " 编辑上一条消息", " to edit previous message").into(),
         ])
         .dim()
     }
@@ -164,7 +204,9 @@ fn esc_hint_line(esc_backtrack_hint: bool) -> Line<'static> {
 
 fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
     let mut commands = Line::from("");
+    let mut shell_commands = Line::from("");
     let mut newline = Line::from("");
+    let mut queue_message_tab = Line::from("");
     let mut file_paths = Line::from("");
     let mut paste_image = Line::from("");
     let mut external_editor = Line::from("");
@@ -176,7 +218,9 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
         if let Some(text) = descriptor.overlay_entry(state) {
             match descriptor.id {
                 ShortcutId::Commands => commands = text,
+                ShortcutId::ShellCommands => shell_commands = text,
                 ShortcutId::InsertNewline => newline = text,
+                ShortcutId::QueueMessageTab => queue_message_tab = text,
                 ShortcutId::FilePaths => file_paths = text,
                 ShortcutId::PasteImage => paste_image = text,
                 ShortcutId::ExternalEditor => external_editor = text,
@@ -189,7 +233,9 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
 
     let ordered = vec![
         commands,
+        shell_commands,
         newline,
+        queue_message_tab,
         file_paths,
         paste_image,
         external_editor,
@@ -252,54 +298,41 @@ fn build_columns(entries: Vec<Line<'static>>) -> Vec<Line<'static>> {
 fn context_window_line(
     percent: Option<i64>,
     used_tokens: Option<i64>,
-    token_usage: Option<&TokenUsageSplit>,
+    language: Language,
 ) -> Line<'static> {
-    // NOTE: Display "used" percentage (can exceed 100) rather than "remaining".
     if let Some(percent) = percent {
-        let percent = percent.max(0);
-        let mut line = Line::from(vec![Span::from(format!("{percent}% context used")).dim()]);
-        append_token_usage(&mut line, token_usage);
-        return line;
+        let percent = percent.clamp(0, 100);
+        return Line::from(vec![
+            Span::from(format!(
+                "{percent}% {}",
+                tr(language, "上下文剩余", "context left")
+            ))
+            .dim(),
+        ]);
     }
 
     if let Some(tokens) = used_tokens {
         let used_fmt = format_tokens_compact(tokens);
-        let mut line = Line::from(vec![Span::from(format!("{used_fmt} used")).dim()]);
-        append_token_usage(&mut line, token_usage);
-        return line;
+        return Line::from(vec![
+            Span::from(format!("{used_fmt} {}", tr(language, "已用", "used"))).dim(),
+        ]);
     }
 
-    let mut line = Line::from(vec![Span::from("0% context used").dim()]);
-    append_token_usage(&mut line, token_usage);
-    line
-}
-
-fn append_token_usage(line: &mut Line<'static>, token_usage: Option<&TokenUsageSplit>) {
-    let Some(token_usage) = token_usage else {
-        return;
-    };
-
-    let input_prior = format_token_count_compact(token_usage.prior.input_tokens);
-    let input_last = format_token_count_compact(token_usage.last.input_tokens);
-    let cached_prior = format_token_count_compact(token_usage.prior.cached_input_tokens);
-    let cached_last = format_token_count_compact(token_usage.last.cached_input_tokens);
-    let output_prior = format_token_count_compact(token_usage.prior.output_tokens);
-    let output_last = format_token_count_compact(token_usage.last.output_tokens);
-    let reasoning_prior = format_token_count_compact(token_usage.prior.reasoning_output_tokens);
-    let reasoning_last = format_token_count_compact(token_usage.last.reasoning_output_tokens);
-
-    let usage_text = format!(
-        "↑ {input_prior} + {input_last} tokens ({cached_prior} + {cached_last} tokens cache) ↓ {output_prior} + {output_last} tokens ({reasoning_prior} + {reasoning_last} reasoning tokens)"
-    );
-
-    line.push_span("  ".dim());
-    line.push_span(Span::from(usage_text).dim());
+    Line::from(vec![
+        Span::from(format!(
+            "100% {}",
+            tr(language, "上下文剩余", "context left")
+        ))
+        .dim(),
+    ])
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ShortcutId {
     Commands,
+    ShellCommands,
     InsertNewline,
+    QueueMessageTab,
     FilePaths,
     PasteImage,
     ExternalEditor,
@@ -343,7 +376,8 @@ struct ShortcutDescriptor {
     id: ShortcutId,
     bindings: &'static [ShortcutBinding],
     prefix: &'static str,
-    label: &'static str,
+    label_zh: &'static str,
+    label_en: &'static str,
 }
 
 impl ShortcutDescriptor {
@@ -357,16 +391,25 @@ impl ShortcutDescriptor {
         match self.id {
             ShortcutId::EditPrevious => {
                 if state.esc_backtrack_hint {
-                    line.push_span(" again to edit previous message");
+                    line.push_span(tr(
+                        state.language,
+                        " 再次编辑上一条消息",
+                        " again to edit previous message",
+                    ));
                 } else {
                     line.extend(vec![
                         " ".into(),
                         key_hint::plain(KeyCode::Esc).into(),
-                        " to edit previous message".into(),
+                        tr(
+                            state.language,
+                            " 编辑上一条消息",
+                            " to edit previous message",
+                        )
+                        .into(),
                     ]);
                 }
             }
-            _ => line.push_span(self.label),
+            _ => line.push_span(tr(state.language, self.label_zh, self.label_en)),
         };
         Some(line)
     }
@@ -380,7 +423,18 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label: " for commands",
+        label_zh: " 命令",
+        label_en: " for commands",
+    },
+    ShortcutDescriptor {
+        id: ShortcutId::ShellCommands,
+        bindings: &[ShortcutBinding {
+            key: key_hint::plain(KeyCode::Char('!')),
+            condition: DisplayCondition::Always,
+        }],
+        prefix: "",
+        label_zh: " 运行 Shell 命令",
+        label_en: " for shell commands",
     },
     ShortcutDescriptor {
         id: ShortcutId::InsertNewline,
@@ -395,7 +449,18 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             },
         ],
         prefix: "",
-        label: " for newline",
+        label_zh: " 换行",
+        label_en: " for newline",
+    },
+    ShortcutDescriptor {
+        id: ShortcutId::QueueMessageTab,
+        bindings: &[ShortcutBinding {
+            key: key_hint::plain(KeyCode::Tab),
+            condition: DisplayCondition::Always,
+        }],
+        prefix: "",
+        label_zh: " 排队发送",
+        label_en: " to queue message",
     },
     ShortcutDescriptor {
         id: ShortcutId::FilePaths,
@@ -404,7 +469,8 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label: " for file paths",
+        label_zh: " 文件路径",
+        label_en: " for file paths",
     },
     ShortcutDescriptor {
         id: ShortcutId::PasteImage,
@@ -421,7 +487,8 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             },
         ],
         prefix: "",
-        label: " to paste images",
+        label_zh: " 粘贴图片",
+        label_en: " to paste images",
     },
     ShortcutDescriptor {
         id: ShortcutId::ExternalEditor,
@@ -430,7 +497,8 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label: " to edit in external editor",
+        label_zh: " 用外部编辑器编辑",
+        label_en: " to edit in external editor",
     },
     ShortcutDescriptor {
         id: ShortcutId::EditPrevious,
@@ -439,7 +507,8 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label: "",
+        label_zh: "",
+        label_en: "",
     },
     ShortcutDescriptor {
         id: ShortcutId::Quit,
@@ -448,7 +517,8 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label: " to exit",
+        label_zh: " 退出",
+        label_en: " to exit",
     },
     ShortcutDescriptor {
         id: ShortcutId::ShowTranscript,
@@ -457,26 +527,26 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label: " to view transcript",
+        label_zh: " 查看记录",
+        label_en: " to view transcript",
     },
 ];
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codex_common::token_usage::TokenUsageSplit;
-    use codex_protocol::protocol::TokenUsage;
+    use codex_protocol::config_types::Language;
     use insta::assert_snapshot;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
     fn snapshot_footer(name: &str, props: FooterProps) {
-        let height = footer_height(&props).max(1);
+        let height = footer_height(props).max(1);
         let mut terminal = Terminal::new(TestBackend::new(80, height)).unwrap();
         terminal
             .draw(|f| {
                 let area = Rect::new(0, 0, f.area().width, height);
-                render_footer(area, f.buffer_mut(), &props);
+                render_footer(area, f.buffer_mut(), props);
             })
             .unwrap();
         assert_snapshot!(name, terminal.backend());
@@ -491,9 +561,11 @@ mod tests {
                 esc_backtrack_hint: false,
                 use_shift_enter_hint: false,
                 is_task_running: false,
+                steer_enabled: false,
+                quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
                 context_window_percent: None,
                 context_window_used_tokens: None,
-                token_usage: None,
+                language: Language::En,
             },
         );
 
@@ -504,35 +576,41 @@ mod tests {
                 esc_backtrack_hint: true,
                 use_shift_enter_hint: true,
                 is_task_running: false,
+                steer_enabled: false,
+                quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
                 context_window_percent: None,
                 context_window_used_tokens: None,
-                token_usage: None,
+                language: Language::En,
             },
         );
 
         snapshot_footer(
             "footer_ctrl_c_quit_idle",
             FooterProps {
-                mode: FooterMode::CtrlCReminder,
+                mode: FooterMode::QuitShortcutReminder,
                 esc_backtrack_hint: false,
                 use_shift_enter_hint: false,
                 is_task_running: false,
+                steer_enabled: false,
+                quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
                 context_window_percent: None,
                 context_window_used_tokens: None,
-                token_usage: None,
+                language: Language::En,
             },
         );
 
         snapshot_footer(
             "footer_ctrl_c_quit_running",
             FooterProps {
-                mode: FooterMode::CtrlCReminder,
+                mode: FooterMode::QuitShortcutReminder,
                 esc_backtrack_hint: false,
                 use_shift_enter_hint: false,
                 is_task_running: true,
+                steer_enabled: false,
+                quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
                 context_window_percent: None,
                 context_window_used_tokens: None,
-                token_usage: None,
+                language: Language::En,
             },
         );
 
@@ -543,9 +621,11 @@ mod tests {
                 esc_backtrack_hint: false,
                 use_shift_enter_hint: false,
                 is_task_running: false,
+                steer_enabled: false,
+                quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
                 context_window_percent: None,
                 context_window_used_tokens: None,
-                token_usage: None,
+                language: Language::En,
             },
         );
 
@@ -556,9 +636,11 @@ mod tests {
                 esc_backtrack_hint: true,
                 use_shift_enter_hint: false,
                 is_task_running: false,
+                steer_enabled: false,
+                quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
                 context_window_percent: None,
                 context_window_used_tokens: None,
-                token_usage: None,
+                language: Language::En,
             },
         );
 
@@ -569,9 +651,11 @@ mod tests {
                 esc_backtrack_hint: false,
                 use_shift_enter_hint: false,
                 is_task_running: true,
+                steer_enabled: false,
+                quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
                 context_window_percent: Some(72),
                 context_window_used_tokens: None,
-                token_usage: None,
+                language: Language::En,
             },
         );
 
@@ -582,37 +666,41 @@ mod tests {
                 esc_backtrack_hint: false,
                 use_shift_enter_hint: false,
                 is_task_running: false,
+                steer_enabled: false,
+                quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
                 context_window_percent: None,
                 context_window_used_tokens: Some(123_456),
-                token_usage: None,
+                language: Language::En,
             },
         );
 
         snapshot_footer(
-            "footer_token_usage",
+            "footer_context_only_queue_hint_disabled",
             FooterProps {
-                mode: FooterMode::ShortcutSummary,
+                mode: FooterMode::ContextOnly,
                 esc_backtrack_hint: false,
                 use_shift_enter_hint: false,
-                is_task_running: false,
-                context_window_percent: Some(12),
+                is_task_running: true,
+                steer_enabled: false,
+                quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
+                context_window_percent: None,
                 context_window_used_tokens: None,
-                token_usage: Some(TokenUsageSplit {
-                    prior: TokenUsage {
-                        input_tokens: 1_200,
-                        cached_input_tokens: 800,
-                        output_tokens: 300,
-                        reasoning_output_tokens: 50,
-                        total_tokens: 0,
-                    },
-                    last: TokenUsage {
-                        input_tokens: 34,
-                        cached_input_tokens: 20,
-                        output_tokens: 10,
-                        reasoning_output_tokens: 2,
-                        total_tokens: 0,
-                    },
-                }),
+                language: Language::En,
+            },
+        );
+
+        snapshot_footer(
+            "footer_context_only_queue_hint_enabled",
+            FooterProps {
+                mode: FooterMode::ContextOnly,
+                esc_backtrack_hint: false,
+                use_shift_enter_hint: false,
+                is_task_running: true,
+                steer_enabled: true,
+                quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
+                context_window_percent: None,
+                context_window_used_tokens: None,
+                language: Language::En,
             },
         );
     }

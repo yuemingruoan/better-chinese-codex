@@ -8,6 +8,7 @@ use codex_protocol::config_types::ForcedLoginMethod;
 use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::config_types::SandboxMode as CoreSandboxMode;
 use codex_protocol::config_types::Verbosity;
+use codex_protocol::config_types::WebSearchMode;
 use codex_protocol::items::AgentMessageContent as CoreAgentMessageContent;
 use codex_protocol::items::TurnItem as CoreTurnItem;
 use codex_protocol::models::ResponseItem;
@@ -327,6 +328,7 @@ pub struct ProfileV2 {
     pub model_reasoning_effort: Option<ReasoningEffort>,
     pub model_reasoning_summary: Option<ReasoningSummary>,
     pub model_verbosity: Option<Verbosity>,
+    pub web_search: Option<WebSearchMode>,
     pub chatgpt_base_url: Option<String>,
     #[serde(default, flatten)]
     pub additional: HashMap<String, JsonValue>,
@@ -348,12 +350,14 @@ pub struct Config {
     pub model: Option<String>,
     pub review_model: Option<String>,
     pub model_context_window: Option<i64>,
+    pub model_auto_compact_token_limit: Option<i64>,
     pub model_provider: Option<String>,
     pub approval_policy: Option<AskForApproval>,
     pub sandbox_mode: Option<SandboxMode>,
     pub sandbox_workspace_write: Option<SandboxWorkspaceWrite>,
     pub forced_chatgpt_workspace_id: Option<String>,
     pub forced_login_method: Option<ForcedLoginMethod>,
+    pub web_search: Option<WebSearchMode>,
     pub tools: Option<ToolsV2>,
     pub profile: Option<String>,
     #[serde(default)]
@@ -455,6 +459,22 @@ pub struct ConfigReadResponse {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
+pub struct ConfigRequirements {
+    pub allowed_approval_policies: Option<Vec<AskForApproval>>,
+    pub allowed_sandbox_modes: Option<Vec<SandboxMode>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ConfigRequirementsReadResponse {
+    /// Null if no requirements are configured (e.g. no requirements.toml/MDM entries).
+    pub requirements: Option<ConfigRequirements>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
 pub struct ConfigValueWriteParams {
     pub key_path: String,
     pub value: JsonValue,
@@ -486,14 +506,33 @@ pub struct ConfigEdit {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
-pub enum ApprovalDecision {
+pub enum CommandExecutionApprovalDecision {
+    /// User approved the command.
     Accept,
-    /// Approve and remember the approval for the session.
+    /// User approved the command and future identical commands should run without prompting.
     AcceptForSession,
+    /// User approved the command, and wants to apply the proposed execpolicy amendment so future
+    /// matching commands can run without prompting.
     AcceptWithExecpolicyAmendment {
         execpolicy_amendment: ExecPolicyAmendment,
     },
+    /// User denied the command. The agent will continue the turn.
     Decline,
+    /// User denied the command. The turn will also be immediately interrupted.
+    Cancel,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum FileChangeApprovalDecision {
+    /// User approved the file changes.
+    Accept,
+    /// User approved the file changes and future changes to the same files should run without prompting.
+    AcceptForSession,
+    /// User denied the file changes. The agent will continue the turn.
+    Decline,
+    /// User denied the file changes. The turn will also be immediately interrupted.
     Cancel,
 }
 
@@ -907,6 +946,16 @@ pub struct ListMcpServerStatusResponse {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
+pub struct McpServerRefreshParams {}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct McpServerRefreshResponse {}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
 pub struct McpServerOauthLoginParams {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1044,6 +1093,47 @@ pub struct ThreadResumeResponse {
     pub reasoning_effort: Option<ReasoningEffort>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+/// There are two ways to fork a thread:
+/// 1. By thread_id: load the thread from disk by thread_id and fork it into a new thread.
+/// 2. By path: load the thread from disk by path and fork it into a new thread.
+///
+/// If using path, the thread_id param will be ignored.
+///
+/// Prefer using thread_id whenever possible.
+pub struct ThreadForkParams {
+    pub thread_id: String,
+
+    /// [UNSTABLE] Specify the rollout path to fork from.
+    /// If specified, the thread_id param will be ignored.
+    pub path: Option<PathBuf>,
+
+    /// Configuration overrides for the forked thread, if any.
+    pub model: Option<String>,
+    pub model_provider: Option<String>,
+    pub cwd: Option<String>,
+    pub approval_policy: Option<AskForApproval>,
+    pub sandbox: Option<SandboxMode>,
+    pub config: Option<HashMap<String, serde_json::Value>>,
+    pub base_instructions: Option<String>,
+    pub developer_instructions: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadForkResponse {
+    pub thread: Thread,
+    pub model: String,
+    pub model_provider: String,
+    pub cwd: PathBuf,
+    pub approval_policy: AskForApproval,
+    pub sandbox: SandboxPolicy,
+    pub reasoning_effort: Option<ReasoningEffort>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
@@ -1098,6 +1188,27 @@ pub struct ThreadListParams {
 #[ts(export_to = "v2/")]
 pub struct ThreadListResponse {
     pub data: Vec<Thread>,
+    /// Opaque cursor to pass to the next call to continue after the last item.
+    /// if None, there are no more items to return.
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadLoadedListParams {
+    /// Opaque pagination cursor returned by a previous call.
+    pub cursor: Option<String>,
+    /// Optional page size; defaults to no limit.
+    pub limit: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadLoadedListResponse {
+    /// Thread ids for sessions currently loaded in memory.
+    pub data: Vec<String>,
     /// Opaque cursor to pass to the next call to continue after the last item.
     /// if None, there are no more items to return.
     pub next_cursor: Option<String>,
@@ -1218,7 +1329,7 @@ pub struct Thread {
     pub source: SessionSource,
     /// Optional Git metadata captured when the thread was created.
     pub git_info: Option<GitInfo>,
-    /// Only populated on `thread/resume` and `thread/rollback` responses.
+    /// Only populated on `thread/resume`, `thread/rollback`, `thread/fork` responses.
     /// For all other responses and notifications returning a Thread,
     /// the turns field will be an empty list.
     pub turns: Vec<Turn>,
@@ -1246,6 +1357,7 @@ pub struct ThreadTokenUsageUpdatedNotification {
 pub struct ThreadTokenUsage {
     pub total: TokenUsageBreakdown,
     pub last: TokenUsageBreakdown,
+    // TODO(aibrahim): make this not optional
     #[ts(type = "number | null")]
     pub model_context_window: Option<i64>,
 }
@@ -1293,7 +1405,7 @@ impl From<CoreTokenUsage> for TokenUsageBreakdown {
 #[ts(export_to = "v2/")]
 pub struct Turn {
     pub id: String,
-    /// Only populated on a `thread/resume` response.
+    /// Only populated on a `thread/resume` or `thread/fork` response.
     /// For all other responses and notifications returning a Turn,
     /// the items field will be an empty list.
     pub items: Vec<ThreadItem>,
@@ -1431,22 +1543,58 @@ pub struct TurnInterruptParams {
 pub struct TurnInterruptResponse {}
 
 // User input types
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ByteRange {
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TextElement {
+    /// Byte range in the parent `text` buffer that this element occupies.
+    pub byte_range: ByteRange,
+    /// Optional human-readable placeholder for the element, displayed in the UI.
+    pub placeholder: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[ts(tag = "type")]
 #[ts(export_to = "v2/")]
 pub enum UserInput {
-    Text { text: String },
-    Image { url: String },
-    LocalImage { path: PathBuf },
+    Text {
+        text: String,
+        /// UI-defined spans within `text` used to render or persist special elements.
+        #[serde(default)]
+        text_elements: Vec<TextElement>,
+    },
+    Image {
+        url: String,
+    },
+    LocalImage {
+        path: PathBuf,
+    },
+    Skill {
+        name: String,
+        path: PathBuf,
+    },
 }
 
 impl UserInput {
     pub fn into_core(self) -> CoreUserInput {
         match self {
-            UserInput::Text { text } => CoreUserInput::Text { text },
+            UserInput::Text { text, .. } => CoreUserInput::Text {
+                text,
+                // TODO: Thread text element ranges into v2 inputs. Empty keeps old behavior.
+                text_elements: Vec::new(),
+            },
             UserInput::Image { url } => CoreUserInput::Image { image_url: url },
             UserInput::LocalImage { path } => CoreUserInput::LocalImage { path },
+            UserInput::Skill { name, path } => CoreUserInput::Skill { name, path },
         }
     }
 }
@@ -1454,9 +1602,14 @@ impl UserInput {
 impl From<CoreUserInput> for UserInput {
     fn from(value: CoreUserInput) -> Self {
         match value {
-            CoreUserInput::Text { text } => UserInput::Text { text },
+            CoreUserInput::Text { text, .. } => UserInput::Text {
+                text,
+                // TODO: Thread text element ranges from core into v2 inputs.
+                text_elements: Vec::new(),
+            },
             CoreUserInput::Image { image_url } => UserInput::Image { url: image_url },
             CoreUserInput::LocalImage { path } => UserInput::LocalImage { path },
+            CoreUserInput::Skill { name, path } => UserInput::Skill { name, path },
             _ => unreachable!("unsupported user input variant"),
         }
     }
@@ -1883,7 +2036,7 @@ pub struct CommandExecutionRequestApprovalParams {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct CommandExecutionRequestApprovalResponse {
-    pub decision: ApprovalDecision,
+    pub decision: CommandExecutionApprovalDecision,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -1903,7 +2056,7 @@ pub struct FileChangeRequestApprovalParams {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[ts(export_to = "v2/")]
 pub struct FileChangeRequestApprovalResponse {
-    pub decision: ApprovalDecision,
+    pub decision: FileChangeApprovalDecision,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -1995,6 +2148,16 @@ pub struct DeprecationNoticeNotification {
     pub details: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ConfigWarningNotification {
+    /// Concise summary of the warning.
+    pub summary: String,
+    /// Optional extra guidance or error details.
+    pub details: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2035,12 +2198,17 @@ mod tests {
             content: vec![
                 CoreUserInput::Text {
                     text: "hello".to_string(),
+                    text_elements: Vec::new(),
                 },
                 CoreUserInput::Image {
                     image_url: "https://example.com/image.png".to_string(),
                 },
                 CoreUserInput::LocalImage {
                     path: PathBuf::from("local/image.png"),
+                },
+                CoreUserInput::Skill {
+                    name: "skill-creator".to_string(),
+                    path: PathBuf::from("/repo/.codex/skills/skill-creator/SKILL.md"),
                 },
             ],
         });
@@ -2052,12 +2220,17 @@ mod tests {
                 content: vec![
                     UserInput::Text {
                         text: "hello".to_string(),
+                        text_elements: Vec::new(),
                     },
                     UserInput::Image {
                         url: "https://example.com/image.png".to_string(),
                     },
                     UserInput::LocalImage {
                         path: PathBuf::from("local/image.png"),
+                    },
+                    UserInput::Skill {
+                        name: "skill-creator".to_string(),
+                        path: PathBuf::from("/repo/.codex/skills/skill-creator/SKILL.md"),
                     },
                 ],
             }

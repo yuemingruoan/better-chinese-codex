@@ -73,4 +73,3 @@ HunkLine := (" " | "-" | "+") text NEWLINE
 ```
 shell {"command":["apply_patch","*** Begin Patch\n*** Add File: hello.txt\n+Hello, world!\n*** End Patch\n"]}
 ```
-

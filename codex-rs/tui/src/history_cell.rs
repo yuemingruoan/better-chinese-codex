@@ -1,3 +1,15 @@
+//! Transcript/history cells for the Codex TUI.
+//!
+//! A `HistoryCell` is the unit of display in the conversation UI, representing both committed
+//! transcript entries and, transiently, an in-flight active cell that can mutate in place while
+//! streaming.
+//!
+//! The transcript overlay (`Ctrl+T`) appends a cached live tail derived from the active cell, and
+//! that cached tail is refreshed based on an active-cell cache key. Cells that change based on
+//! elapsed time expose `transcript_animation_tick()`, and code that mutates the active cell in place
+//! bumps the active-cell revision tracked by `ChatWidget`, so the cache key changes whenever the
+//! rendered transcript output can change.
+
 use crate::diff_render::create_diff_summary;
 use crate::diff_render::display_path_for;
 use crate::exec_cell::CommandOutput;
@@ -14,7 +26,6 @@ use crate::render::line_utils::line_to_static;
 use crate::render::line_utils::prefix_lines;
 use crate::render::line_utils::push_owned_lines;
 use crate::render::renderable::Renderable;
-use crate::shimmer::shimmer_spans;
 use crate::style::user_message_style;
 use crate::text_formatting::format_and_truncate_tool_result;
 use crate::text_formatting::truncate_text;
@@ -101,6 +112,20 @@ pub(crate) trait HistoryCell: std::fmt::Debug + Send + Sync + Any {
 
     fn is_stream_continuation(&self) -> bool {
         false
+    }
+
+    /// Returns a coarse "animation tick" when transcript output is time-dependent.
+    ///
+    /// The transcript overlay caches the rendered output of the in-flight active cell, so cells
+    /// that include time-based UI (spinner, shimmer, etc.) should return a tick that changes over
+    /// time to signal that the cached tail should be recomputed. Returning `None` means the
+    /// transcript lines are stable, while returning `Some(tick)` during an in-flight animation
+    /// allows the overlay to keep up with the main viewport.
+    ///
+    /// If a cell uses time-based visuals but always returns `None`, `Ctrl+T` can appear "frozen" on
+    /// the first rendered frame even though the main viewport is animating.
+    fn transcript_animation_tick(&self) -> Option<u64> {
+        None
     }
 }
 
@@ -456,102 +481,29 @@ pub(crate) fn new_unified_exec_interaction(
 }
 
 #[derive(Debug)]
-// Live-only wait cell that shimmers while we poll; flushes into a static entry later.
-pub(crate) struct UnifiedExecWaitCell {
-    command_display: Option<String>,
-    animations_enabled: bool,
+struct UnifiedExecProcessesCell {
+    processes: Vec<String>,
 }
 
-impl UnifiedExecWaitCell {
-    pub(crate) fn new(command_display: Option<String>, animations_enabled: bool) -> Self {
-        Self {
-            command_display: command_display.filter(|display| !display.is_empty()),
-            animations_enabled,
-        }
-    }
-
-    pub(crate) fn matches(&self, command_display: Option<&str>) -> bool {
-        let command_display = command_display.filter(|display| !display.is_empty());
-        match (self.command_display.as_deref(), command_display) {
-            (Some(current), Some(incoming)) => current == incoming,
-            _ => true,
-        }
-    }
-
-    pub(crate) fn update_command_display(&mut self, command_display: Option<String>) {
-        if self.command_display.is_none() {
-            self.command_display = command_display.filter(|display| !display.is_empty());
-        }
-    }
-
-    pub(crate) fn command_display(&self) -> Option<String> {
-        self.command_display.clone()
+impl UnifiedExecProcessesCell {
+    fn new(processes: Vec<String>) -> Self {
+        Self { processes }
     }
 }
 
-impl HistoryCell for UnifiedExecWaitCell {
-    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
-        if width == 0 {
-            return Vec::new();
-        }
-        let wrap_width = width as usize;
-
-        let mut header_spans = vec!["• ".dim()];
-        if self.animations_enabled {
-            header_spans.extend(shimmer_spans("Waiting for background terminal"));
-        } else {
-            header_spans.push("Waiting for background terminal".bold());
-        }
-        if let Some(command) = &self.command_display
-            && !command.is_empty()
-        {
-            header_spans.push(" · ".dim());
-            header_spans.push(command.clone().dim());
-        }
-        let header = Line::from(header_spans);
-
-        let mut out: Vec<Line<'static>> = Vec::new();
-        let header_wrapped = word_wrap_line(&header, RtOptions::new(wrap_width));
-        push_owned_lines(&header_wrapped, &mut out);
-        out
-    }
-
-    fn desired_height(&self, width: u16) -> u16 {
-        self.display_lines(width).len() as u16
-    }
-}
-
-pub(crate) fn new_unified_exec_wait_live(
-    command_display: Option<String>,
-    animations_enabled: bool,
-) -> UnifiedExecWaitCell {
-    UnifiedExecWaitCell::new(command_display, animations_enabled)
-}
-
-#[derive(Debug)]
-struct UnifiedExecSessionsCell {
-    sessions: Vec<String>,
-}
-
-impl UnifiedExecSessionsCell {
-    fn new(sessions: Vec<String>) -> Self {
-        Self { sessions }
-    }
-}
-
-impl HistoryCell for UnifiedExecSessionsCell {
+impl HistoryCell for UnifiedExecProcessesCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         if width == 0 {
             return Vec::new();
         }
 
         let wrap_width = width as usize;
-        let max_sessions = 16usize;
+        let max_processes = 16usize;
         let mut out: Vec<Line<'static>> = Vec::new();
         out.push(vec!["Background terminals".bold()].into());
         out.push("".into());
 
-        if self.sessions.is_empty() {
+        if self.processes.is_empty() {
             out.push("  • No background terminals running.".italic().into());
             return out;
         }
@@ -561,8 +513,8 @@ impl HistoryCell for UnifiedExecSessionsCell {
         let truncation_suffix = " [...]";
         let truncation_suffix_width = UnicodeWidthStr::width(truncation_suffix);
         let mut shown = 0usize;
-        for command in &self.sessions {
-            if shown >= max_sessions {
+        for command in &self.processes {
+            if shown >= max_processes {
                 break;
             }
             let (snippet, snippet_truncated) = {
@@ -602,7 +554,7 @@ impl HistoryCell for UnifiedExecSessionsCell {
             shown += 1;
         }
 
-        let remaining = self.sessions.len().saturating_sub(shown);
+        let remaining = self.processes.len().saturating_sub(shown);
         if remaining > 0 {
             let more_text = format!("... and {remaining} more running");
             if wrap_width <= prefix_width {
@@ -622,9 +574,9 @@ impl HistoryCell for UnifiedExecSessionsCell {
     }
 }
 
-pub(crate) fn new_unified_exec_sessions_output(sessions: Vec<String>) -> CompositeHistoryCell {
+pub(crate) fn new_unified_exec_processes_output(processes: Vec<String>) -> CompositeHistoryCell {
     let command = PlainHistoryCell::new(vec!["/ps".magenta().into()]);
-    let summary = UnifiedExecSessionsCell::new(sessions);
+    let summary = UnifiedExecProcessesCell::new(processes);
     CompositeHistoryCell::new(vec![Box::new(command), Box::new(summary)])
 }
 
@@ -1035,17 +987,36 @@ pub(crate) fn new_user_prompt(message: String) -> UserHistoryCell {
 }
 
 #[derive(Debug)]
-struct SessionHeaderHistoryCell {
+pub(crate) struct SessionHeaderHistoryCell {
     version: &'static str,
     model: String,
+    model_style: Style,
     reasoning_effort: Option<ReasoningEffortConfig>,
     directory: PathBuf,
     language: Language,
 }
 
 impl SessionHeaderHistoryCell {
-    fn new(
+    pub(crate) fn new(
         model: String,
+        reasoning_effort: Option<ReasoningEffortConfig>,
+        directory: PathBuf,
+        version: &'static str,
+        language: Language,
+    ) -> Self {
+        Self::new_with_style(
+            model,
+            Style::default(),
+            reasoning_effort,
+            directory,
+            version,
+            language,
+        )
+    }
+
+    pub(crate) fn new_with_style(
+        model: String,
+        model_style: Style,
         reasoning_effort: Option<ReasoningEffortConfig>,
         directory: PathBuf,
         version: &'static str,
@@ -1054,6 +1025,7 @@ impl SessionHeaderHistoryCell {
         Self {
             version,
             model,
+            model_style,
             reasoning_effort,
             directory,
             language,
@@ -1125,17 +1097,20 @@ impl HistoryCell for SessionHeaderHistoryCell {
 
         const CHANGE_MODEL_HINT_COMMAND: &str = "/model";
         let reasoning_label = self.reasoning_label();
+        let change_hint = tr(self.language, " 切换模型", " to change");
         let (model_spans, dir_spans) = match self.language {
             Language::ZhCn => {
-                let mut model_spans: Vec<Span<'static>> = vec![Span::from("模型：").dim()];
-                model_spans.push(Span::from(self.model.clone()));
+                let mut model_spans: Vec<Span<'static>> = vec![
+                    Span::from("模型：").dim(),
+                    Span::styled(self.model.clone(), self.model_style),
+                ];
                 if let Some(reasoning) = reasoning_label {
                     model_spans.push(Span::from(" "));
                     model_spans.push(Span::from(reasoning));
                 }
                 model_spans.push("   ".dim());
                 model_spans.push(CHANGE_MODEL_HINT_COMMAND.cyan());
-                model_spans.push(" 切换模型".dim());
+                model_spans.push(change_hint.dim());
 
                 let dir_prefix = "目录：".to_string();
                 let dir_prefix_width =
@@ -1154,7 +1129,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
                 );
                 let mut model_spans: Vec<Span<'static>> = vec![
                     Span::from(format!("{model_label} ")).dim(),
-                    Span::from(self.model.clone()),
+                    Span::styled(self.model.clone(), self.model_style),
                 ];
                 if let Some(reasoning) = reasoning_label {
                     model_spans.push(Span::from(" "));
@@ -1162,7 +1137,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
                 }
                 model_spans.push("   ".dim());
                 model_spans.push(CHANGE_MODEL_HINT_COMMAND.cyan());
-                model_spans.push(" to change".dim());
+                model_spans.push(change_hint.dim());
 
                 let dir_label = format!("{label:<label_width$}", label = "directory:");
                 let dir_prefix = format!("{dir_label} ");
@@ -1393,6 +1368,13 @@ impl HistoryCell for McpToolCallCell {
         }
 
         lines
+    }
+
+    fn transcript_animation_tick(&self) -> Option<u64> {
+        if !self.animations_enabled || self.result.is_some() {
+            return None;
+        }
+        Some((self.start_time.elapsed().as_millis() / 50) as u64)
     }
 }
 
@@ -2082,22 +2064,15 @@ mod tests {
     }
 
     #[test]
-    fn unified_exec_wait_cell_renders_wait() {
-        let cell = new_unified_exec_wait_live(None, false);
-        let lines = render_transcript(&cell);
-        assert_eq!(lines, vec!["• Waiting for background terminal"],);
-    }
-
-    #[test]
     fn ps_output_empty_snapshot() {
-        let cell = new_unified_exec_sessions_output(Vec::new());
+        let cell = new_unified_exec_processes_output(Vec::new());
         let rendered = render_lines(&cell.display_lines(60)).join("\n");
         insta::assert_snapshot!(rendered);
     }
 
     #[test]
     fn ps_output_multiline_snapshot() {
-        let cell = new_unified_exec_sessions_output(vec![
+        let cell = new_unified_exec_processes_output(vec![
             "echo hello\nand then some extra text".to_string(),
             "rg \"foo\" src".to_string(),
         ]);
@@ -2107,7 +2082,7 @@ mod tests {
 
     #[test]
     fn ps_output_long_command_snapshot() {
-        let cell = new_unified_exec_sessions_output(vec![String::from(
+        let cell = new_unified_exec_processes_output(vec![String::from(
             "rg \"foo\" src --glob '**/*.rs' --max-count 1000 --no-ignore --hidden --follow --glob '!target/**'",
         )]);
         let rendered = render_lines(&cell.display_lines(36)).join("\n");
@@ -2116,8 +2091,9 @@ mod tests {
 
     #[test]
     fn ps_output_many_sessions_snapshot() {
-        let cell =
-            new_unified_exec_sessions_output((0..20).map(|idx| format!("command {idx}")).collect());
+        let cell = new_unified_exec_processes_output(
+            (0..20).map(|idx| format!("command {idx}")).collect(),
+        );
         let rendered = render_lines(&cell.display_lines(32)).join("\n");
         insta::assert_snapshot!(rendered);
     }
@@ -2141,7 +2117,8 @@ mod tests {
             enabled_tools: None,
             disabled_tools: None,
         };
-        config.mcp_servers.insert("docs".to_string(), stdio_config);
+        let mut servers = config.mcp_servers.get().clone();
+        servers.insert("docs".to_string(), stdio_config);
 
         let mut headers = HashMap::new();
         headers.insert("Authorization".to_string(), "Bearer secret".to_string());
@@ -2160,7 +2137,11 @@ mod tests {
             enabled_tools: None,
             disabled_tools: None,
         };
-        config.mcp_servers.insert("http".to_string(), http_config);
+        servers.insert("http".to_string(), http_config);
+        config
+            .mcp_servers
+            .set(servers)
+            .expect("test mcp servers should accept any configuration");
 
         let mut tools: HashMap<String, Tool> = HashMap::new();
         tools.insert(

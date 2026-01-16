@@ -24,7 +24,7 @@ use crate::protocol::ExecCommandEndEvent;
 use crate::protocol::ExecCommandSource;
 use crate::protocol::SandboxPolicy;
 use crate::protocol::SddGitAction;
-use crate::protocol::TaskStartedEvent;
+use crate::protocol::TurnStartedEvent;
 use crate::protocol::WarningEvent;
 use crate::sandboxing::ExecEnv;
 use crate::state::TaskKind;
@@ -61,7 +61,7 @@ impl SessionTask for SddGitTask {
         _input: Vec<UserInput>,
         cancellation_token: CancellationToken,
     ) -> Option<String> {
-        let event = EventMsg::TaskStarted(TaskStartedEvent {
+        let event = EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: turn_context.client.get_model_context_window(),
         });
         let session = session.clone_session();
@@ -322,7 +322,7 @@ async fn run_git_logged(
                 command: command.clone(),
                 cwd: turn_context.cwd.clone(),
                 parsed_cmd: parsed_cmd.clone(),
-                source: ExecCommandSource::SddGit,
+                source: ExecCommandSource::Agent,
                 interaction_input: None,
             }),
         )
@@ -356,7 +356,7 @@ async fn run_git_logged(
                         command,
                         cwd: turn_context.cwd.clone(),
                         parsed_cmd,
-                        source: ExecCommandSource::SddGit,
+                        source: ExecCommandSource::Agent,
                         interaction_input: None,
                         stdout: String::new(),
                         stderr: aborted_message.clone(),
@@ -380,7 +380,7 @@ async fn run_git_logged(
                         command,
                         cwd: turn_context.cwd.clone(),
                         parsed_cmd,
-                        source: ExecCommandSource::SddGit,
+                        source: ExecCommandSource::Agent,
                         interaction_input: None,
                         stdout: output.stdout.text.clone(),
                         stderr: output.stderr.text.clone(),
@@ -426,7 +426,7 @@ async fn run_git_logged(
                         command,
                         cwd: turn_context.cwd.clone(),
                         parsed_cmd,
-                        source: ExecCommandSource::SddGit,
+                        source: ExecCommandSource::Agent,
                         interaction_input: None,
                         stdout: exec_output.stdout.text.clone(),
                         stderr: exec_output.stderr.text.clone(),

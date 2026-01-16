@@ -2,12 +2,12 @@
 source: tui2/src/resume_picker.rs
 expression: snapshot
 ---
-Resume previous session
+Resume a previous session
 Type to search
-  Updated  Branch  CWD  Conversation
+  Updated  Branch  Working dir  Session content
 No sessions yet
 
 
 
 
-enter Resume session    esc Start new session    ctrl + c Quit
+enter to resume     esc to start new     ctrl + c to quit

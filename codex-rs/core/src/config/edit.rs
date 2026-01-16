@@ -1089,6 +1089,7 @@ hide_rate_limit_model_nudge = true
 "#;
         assert_eq!(contents, expected);
     }
+
     #[test]
     fn blocking_set_hide_gpt5_1_migration_prompt_preserves_table() {
         let tmp = tempdir().expect("tmpdir");

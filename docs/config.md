@@ -31,3 +31,13 @@ language = "en"
 ```
 
 当 `language` 缺失或无法识别时，默认使用英文。
+
+## JSON Schema
+
+`config.toml` 对应的 JSON Schema 生成在 `codex-rs/core/config.schema.json`。
+
+## 提示（Notices）
+
+Codex 会在 `[notice]` 表中保存部分 UI 提示的“不要再提示”标记。
+
+通过 Ctrl+C/Ctrl+D 退出时，会使用约 1 秒的双击提示（“再次按下 ctrl + c 退出”）。
