@@ -26,7 +26,7 @@
 | --- | --- | --- | --- | --- | --- |
 | T1 | 现状定位与方案确认 | [x] | AI | 阅读 `codex-rs/tui/src/chatwidget.rs`、`codex-rs/tui/src/bottom_pane/list_selection_view.rs` 与 `codex-rs/tui2/src/chatwidget.rs`、`codex-rs/tui2/src/bottom_pane/list_selection_view.rs`，确认 header 与 title/subtitle 叠加导致重复显示的路径；梳理 `/model` 与“全部模型”两处入口的差异。 | 记录重复显示成因与拟定修复方式（标题/副标题只渲染一次）。 |
 | T2 | 修复模型选择弹窗重复显示 | [x] | AI | 在 `tui` 与 `tui2` 的 `open_model_popup_with_presets`、`open_all_models_popup` 中避免同时传 `header` 与 `title/subtitle`；统一通过 `model_menu_header`（或等价方案）渲染标题/副标题与 warning；确保 `tr(...)` 用于中英文；用 `apply_patch` 修改。 | 运行后仅显示当前语言标题/说明；warning 仍出现且位置合理。 |
-| T3 | 更新快照与单测 | [ ] | AI | 运行 `cargo test -p codex-tui` 与 `cargo test -p codex-tui2` 生成快照；用 `cargo insta pending-snapshots -p codex-tui`/`-p codex-tui2` 审核；必要时分别 `cargo insta accept -p codex-tui`/`-p codex-tui2`；检查 `.snap.new` 仅反映标题重复修复。 | 两个 crate 测试通过；快照无待处理或已接受。 |
+| T3 | 更新快照与单测 | [x] | AI | 运行 `cargo test -p codex-tui` 与 `cargo test -p codex-tui2` 生成快照；用 `cargo insta pending-snapshots -p codex-tui`/`-p codex-tui2` 审核；必要时分别 `cargo insta accept -p codex-tui`/`-p codex-tui2`；检查 `.snap.new` 仅反映标题重复修复。 | 两个 crate 测试通过；快照无待处理或已接受。 |
 | T4 | 格式化与静态检查 | [ ] | AI | 在 `codex-rs` 下运行 `just fmt`；完成后运行 `just fix -p codex-tui` 与 `just fix -p codex-tui2`；若有新增告警，按需修复。 | 命令返回成功；无新增未处理告警。 |
 
 ## 5) 里程碑与顺序

@@ -3852,6 +3852,8 @@ impl ChatWidget {
     }
 
     fn model_menu_header(&self, title: &str, subtitle: &str) -> Box<dyn Renderable> {
+        let title = title.to_string();
+        let subtitle = subtitle.to_string();
         let mut header = ColumnRenderable::new();
         header.push(Line::from(title.bold()));
         header.push(Line::from(subtitle.dim()));
