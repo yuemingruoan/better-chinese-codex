@@ -659,7 +659,7 @@ impl App {
             if let AppRunControl::Exit(exit_reason) = control {
                 return Ok(AppExitInfo {
                     token_usage: app.token_usage(),
-                    conversation_id: app.chat_widget.thread_id(),
+                    conversation_id: app.chat_widget.conversation_id(),
                     update_action: app.pending_update_action,
                     exit_reason,
                     session_lines: Vec::new(),
