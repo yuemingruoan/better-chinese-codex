@@ -82,3 +82,19 @@
 
 - 当前待办：
   - 无
+
+## 2026-01-17 21:15:36 CST
+- 新增 `/sdd-develop` 继续开发无响应问题的任务规划 `.codex/task.md`。
+- 记录定位结论：core 未处理 `Op::SddGitAction`，导致 Git 动作未触发。
+
+- 当前待办：
+  - 等待用户确认计划或补充需求。
+
+## 2026-01-17 21:58:13 CST
+- 在 core 补齐 `Op::SddGitAction` 调度逻辑，恢复 SDD 分支创建流程。
+- 新增 SDD Git 创建分支集成测试并纳入 `tests/suite`。
+- 运行 `cargo test -p codex-core sdd_git_action_create_branch_dispatches` 与 `cargo test -p codex-core`，均通过。
+- 运行 `just fmt` 与 `just fix -p codex-core`。
+
+- 当前待办：
+  - 确认是否执行 `cargo test --all-features`。

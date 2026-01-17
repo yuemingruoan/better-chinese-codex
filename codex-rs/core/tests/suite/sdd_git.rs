@@ -83,7 +83,10 @@ async fn sdd_git_action_create_branch_dispatches() -> Result<()> {
         })
         .await?;
 
-    wait_for_event(&harness.test().codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    wait_for_event(&harness.test().codex, |ev| {
+        matches!(ev, EventMsg::TurnComplete(_))
+    })
+    .await;
 
     let current = git_output(repo.path(), &["rev-parse", "--abbrev-ref", "HEAD"])?;
     assert_eq!(current.trim(), branch_name);
