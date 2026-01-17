@@ -5031,6 +5031,7 @@ impl ChatWidget {
         use ratatui_macros::line;
 
         let _ = reason;
+        let language = self.config.language;
 
         let current_approval = self.config.approval_policy.value();
         let current_sandbox = self.config.sandbox_policy.get();
@@ -5052,21 +5053,31 @@ impl ChatWidget {
                 })
                 .unwrap_or_default()
         };
-        let stay_label = if stay_full_access {
-            "Stay in Agent Full Access".to_string()
-        } else {
-            "Stay in Read-Only".to_string()
+        let stay_label = match (language, stay_full_access) {
+            (Language::ZhCn, true) => "继续使用代理（完全访问）".to_string(),
+            (Language::ZhCn, false) => "继续使用只读".to_string(),
+            (Language::En, true) => "Stay in Agent Full Access".to_string(),
+            (Language::En, false) => "Stay in Read-Only".to_string(),
         };
 
-        let mut lines = Vec::new();
-        lines.push(line!["Use Non-Elevated Sandbox?".bold()]);
-        lines.push(line![""]);
-        lines.push(line![
-            "Elevation failed. You can also use a non-elevated sandbox, which protects your files and prevents network access under most circumstances. However, it carries greater risk if prompt injected."
-        ]);
-        lines.push(line![
-            "Learn more: https://developers.openai.com/codex/windows"
-        ]);
+        let lines = match language {
+            Language::ZhCn => vec![
+                line!["使用非提权沙盒？".bold()],
+                line![""],
+                line![
+                    "提权失败。你也可以使用非提权沙盒，它在大多数情况下保护你的文件并阻止网络访问。但如果提示词被注入，风险会更高。"
+                ],
+                line!["了解更多：https://developers.openai.com/codex/windows"],
+            ],
+            Language::En => vec![
+                line!["Use Non-Elevated Sandbox?".bold()],
+                line![""],
+                line![
+                    "Elevation failed. You can also use a non-elevated sandbox, which protects your files and prevents network access under most circumstances. However, it carries greater risk if prompt injected."
+                ],
+                line!["Learn more: https://developers.openai.com/codex/windows"],
+            ],
+        };
 
         let mut header = ColumnRenderable::new();
         header.push(*Box::new(Paragraph::new(lines).wrap(Wrap { trim: false })));
@@ -5075,7 +5086,12 @@ impl ChatWidget {
         let legacy_preset = preset;
         let items = vec![
             SelectionItem {
-                name: "Try elevated agent sandbox setup again".to_string(),
+                name: tr(
+                    language,
+                    "再次尝试设置提权代理沙盒",
+                    "Try elevated agent sandbox setup again",
+                )
+                .to_string(),
                 description: None,
                 actions: vec![Box::new(move |tx| {
                     tx.send(AppEvent::BeginWindowsSandboxElevatedSetup {
@@ -5086,7 +5102,12 @@ impl ChatWidget {
                 ..Default::default()
             },
             SelectionItem {
-                name: "Use non-elevated agent sandbox".to_string(),
+                name: tr(
+                    language,
+                    "使用非提权代理沙盒",
+                    "Use non-elevated agent sandbox",
+                )
+                .to_string(),
                 description: None,
                 actions: vec![Box::new(move |tx| {
                     tx.send(AppEvent::EnableWindowsSandboxForAgentMode {
