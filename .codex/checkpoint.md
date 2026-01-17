@@ -98,3 +98,11 @@
 
 - 当前待办：
   - 确认是否执行 `cargo test --all-features`。
+
+## 2026-01-17 22:03:23 CST
+- 合并 `sdd/fix-sdd-git-action-dispatch` 到 `develop-main`（merge commit）。
+- 清理本次 SDD 计划文件 `.codex/task.md`。
+- 保留已完成的测试与格式化记录。
+
+- 当前待办：
+  - 无
