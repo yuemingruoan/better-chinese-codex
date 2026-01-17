@@ -106,3 +106,10 @@
 
 - 当前待办：
   - 无
+
+## 2026-01-17 22:08:09 CST
+- 合并 `develop-main` 到 `main`，PR 标题为 “patch”，内容为 “fix sdd-develop workflow”。
+- `main` 已包含 SDD 修复与对应测试变更。
+
+- 当前待办：
+  - 无
