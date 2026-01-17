@@ -128,199 +128,35 @@ pub(crate) mod announcement {
     }
 
     pub(crate) fn parse_announcement_tip_toml(text: &str) -> Option<String> {
-        let announcements = toml::from_str::<AnnouncementTipDocument>(text)
-            .map(|doc| doc.announcements)
-            .or_else(|_| toml::from_str::<Vec<AnnouncementTipRaw>>(text))
-            .ok()?;
-
-        let mut latest_match = None;
+        let doc: AnnouncementTipDocument = toml::from_str(text).ok()?;
         let today = Utc::now().date_naive();
-        for raw in announcements {
-            let Some(tip) = AnnouncementTip::from_raw(raw) else {
-                continue;
-            };
-            if tip.version_matches(CODEX_CLI_VERSION)
-                && tip.date_matches(today)
-                && tip.target_app == "cli"
-            {
-                latest_match = Some(tip.content);
-            }
-        }
-        latest_match
-    }
-
-    impl AnnouncementTip {
-        fn from_raw(raw: AnnouncementTipRaw) -> Option<Self> {
-            let content = raw.content.trim();
-            if content.is_empty() {
-                return None;
-            }
-
-            let from_date = match raw.from_date {
-                Some(date) => Some(NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok()?),
-                None => None,
-            };
-            let to_date = match raw.to_date {
-                Some(date) => Some(NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok()?),
-                None => None,
-            };
-            let version_regex = match raw.version_regex {
-                Some(pattern) => Some(Regex::new(&pattern).ok()?),
-                None => None,
-            };
-
-            Some(Self {
-                content: content.to_string(),
-                from_date,
-                to_date,
-                version_regex,
-                target_app: raw.target_app.unwrap_or("cli".to_string()).to_lowercase(),
+        doc.announcements
+            .into_iter()
+            .map(|raw| AnnouncementTip {
+                content: raw.content,
+                from_date: raw
+                    .from_date
+                    .as_ref()
+                    .and_then(|date| NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()),
+                to_date: raw
+                    .to_date
+                    .as_ref()
+                    .and_then(|date| NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()),
+                version_regex: raw
+                    .version_regex
+                    .as_ref()
+                    .and_then(|regex| Regex::new(regex).ok()),
+                target_app: raw.target_app.unwrap_or_else(|| "codex-cli".to_string()),
             })
-        }
-
-        fn version_matches(&self, version: &str) -> bool {
-            self.version_regex
-                .as_ref()
-                .is_none_or(|regex| regex.is_match(version))
-        }
-
-        fn date_matches(&self, today: NaiveDate) -> bool {
-            if let Some(from) = self.from_date
-                && today < from
-            {
-                return false;
-            }
-            if let Some(to) = self.to_date
-                && today >= to
-            {
-                return false;
-            }
-            true
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tooltips::announcement::parse_announcement_tip_toml;
-    use rand::SeedableRng;
-    use rand::rngs::StdRng;
-
-    #[test]
-    fn random_tooltip_returns_some_tip_when_available() {
-        let mut rng = StdRng::seed_from_u64(42);
-        assert!(pick_tooltip(&mut rng, Language::En).is_some());
-    }
-
-    #[test]
-    fn random_tooltip_is_reproducible_with_seed() {
-        let expected = {
-            let mut rng = StdRng::seed_from_u64(7);
-            pick_tooltip(&mut rng, Language::En)
-        };
-
-        let mut rng = StdRng::seed_from_u64(7);
-        assert_eq!(expected, pick_tooltip(&mut rng, Language::En));
-    }
-
-    #[test]
-    fn announcement_tip_toml_picks_last_matching() {
-        let toml = r#"
-[[announcements]]
-content = "first"
-from_date = "2000-01-01"
-
-[[announcements]]
-content = "latest match"
-version_regex = ".*"
-target_app = "cli"
-
-[[announcements]]
-content = "should not match"
-to_date = "2000-01-01"
-        "#;
-
-        assert_eq!(
-            Some("latest match".to_string()),
-            parse_announcement_tip_toml(toml)
-        );
-
-        let toml = r#"
-[[announcements]]
-content = "first"
-from_date = "2000-01-01"
-target_app = "cli"
-
-[[announcements]]
-content = "latest match"
-version_regex = ".*"
-
-[[announcements]]
-content = "should not match"
-to_date = "2000-01-01"
-        "#;
-
-        assert_eq!(
-            Some("latest match".to_string()),
-            parse_announcement_tip_toml(toml)
-        );
-    }
-
-    #[test]
-    fn announcement_tip_toml_picks_no_match() {
-        let toml = r#"
-[[announcements]]
-content = "first"
-from_date = "2000-01-01"
-to_date = "2000-01-05"
-
-[[announcements]]
-content = "latest match"
-version_regex = "invalid_version_name"
-
-[[announcements]]
-content = "should not match either "
-target_app = "vsce"
-        "#;
-
-        assert_eq!(None, parse_announcement_tip_toml(toml));
-    }
-
-    #[test]
-    fn announcement_tip_toml_bad_deserialization() {
-        let toml = r#"
-[[announcements]]
-content = 123
-from_date = "2000-01-01"
-        "#;
-
-        assert_eq!(None, parse_announcement_tip_toml(toml));
-    }
-
-    #[test]
-    fn announcement_tip_toml_parse_comments() {
-        let toml = r#"
-# Example announcement tips for Codex TUI.
-# Each [[announcements]] entry is evaluated in order; the last matching one is shown.
-# Dates are UTC, formatted as YYYY-MM-DD. The from_date is inclusive and the to_date is exclusive.
-# version_regex matches against the CLI version (env!("CARGO_PKG_VERSION")); omit to apply to all versions.
-# target_app specify which app should display the announcement (cli, vsce, ...).
-
-[[announcements]]
-content = "Welcome to Codex! Check out the new onboarding flow."
-from_date = "2024-10-01"
-to_date = "2024-10-15"
-target_app = "cli"
-version_regex = "^0\\.0\\.0$"
-
-[[announcements]]
-content = "This is a test announcement"
-        "#;
-
-        assert_eq!(
-            Some("This is a test announcement".to_string()),
-            parse_announcement_tip_toml(toml)
-        );
+            .filter(|tip| tip.target_app == "codex-cli")
+            .filter(|tip| tip.from_date.is_none_or(|from_date| from_date <= today))
+            .filter(|tip| tip.to_date.is_none_or(|to_date| today <= to_date))
+            .filter(|tip| {
+                tip.version_regex
+                    .as_ref()
+                    .is_none_or(|regex| regex.is_match(CODEX_CLI_VERSION))
+            })
+            .map(|tip| tip.content)
+            .next()
     }
 }

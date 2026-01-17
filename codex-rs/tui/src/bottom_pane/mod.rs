@@ -1,15 +1,30 @@
-//! Bottom pane: shows the ChatComposer or a BottomPaneView, if one is active.
+//! The bottom pane is the interactive footer of the chat UI.
+//!
+//! The pane owns the [`ChatComposer`] (editable prompt input) and a stack of transient
+//! [`BottomPaneView`]s (popups/modals) that temporarily replace the composer for focused
+//! interactions like selection lists.
+//!
+//! Input routing is layered: `BottomPane` decides which local surface receives a key (view vs
+//! composer), while higher-level intent such as "interrupt" or "quit" is decided by the parent
+//! widget (`ChatWidget`). This split matters for Ctrl+C/Ctrl+D: the bottom pane gives the active
+//! view the first chance to consume Ctrl+C (typically to dismiss itself), and `ChatWidget` may
+//! treat an unhandled Ctrl+C as an interrupt or as the first press of a double-press quit
+//! shortcut.
+//!
+//! Some UI is time-based rather than input-based, such as the transient "press again to quit"
+//! hint. The pane schedules redraws so those hints can expire even when the UI is otherwise idle.
 use std::path::PathBuf;
 
 use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::queued_user_messages::QueuedUserMessages;
 use crate::bottom_pane::unified_exec_footer::UnifiedExecFooter;
+use crate::key_hint;
+use crate::key_hint::KeyBinding;
 use crate::render::renderable::FlexRenderable;
 use crate::render::renderable::Renderable;
 use crate::render::renderable::RenderableItem;
 use crate::tui::FrameRequester;
 use bottom_pane_view::BottomPaneView;
-use codex_common::token_usage::TokenUsageSplit;
 use codex_core::features::Features;
 use codex_core::skills::model::SkillMetadata;
 use codex_file_search::FileMatch;
@@ -36,6 +51,7 @@ mod skill_popup;
 pub(crate) use list_selection_view::SelectionViewParams;
 pub(crate) use prompt_args::parse_slash_name;
 mod feedback_view;
+pub(crate) use feedback_view::feedback_disabled_params;
 pub(crate) use feedback_view::feedback_selection_params;
 pub(crate) use feedback_view::feedback_upload_consent_params;
 mod paste_burst;
@@ -47,6 +63,27 @@ mod textarea;
 mod unified_exec_footer;
 pub(crate) use feedback_view::FeedbackNoteView;
 
+/// How long the "press again to quit" hint stays visible.
+///
+/// This is shared between:
+/// - `ChatWidget`: arming the double-press quit shortcut.
+/// - `BottomPane`/`ChatComposer`: rendering and expiring the footer hint.
+///
+/// Keeping a single value ensures Ctrl+C and Ctrl+D behave identically.
+pub(crate) const QUIT_SHORTCUT_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// Whether Ctrl+C/Ctrl+D require a second press to quit.
+///
+/// This UX experiment was enabled by default, but requiring a double press to quit feels janky in
+/// practice (especially for users accustomed to shells and other TUIs). Disable it for now while we
+/// rethink a better quit/interrupt design.
+pub(crate) const DOUBLE_PRESS_QUIT_SHORTCUT_ENABLED: bool = false;
+
+/// The result of offering a cancellation key to a bottom-pane surface.
+///
+/// This is primarily used for Ctrl+C routing: active views can consume the key to dismiss
+/// themselves, and the caller can decide what higher-level action (if any) to take when the key is
+/// not handled locally.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CancellationEvent {
     Handled,
@@ -65,6 +102,10 @@ pub(crate) use list_selection_view::SelectionAction;
 pub(crate) use list_selection_view::SelectionItem;
 
 /// Pane displayed in the lower half of the chat UI.
+///
+/// This is the owning container for the prompt input (`ChatComposer`) and the view stack
+/// (`BottomPaneView`). It performs local input routing and renders time-based hints, while leaving
+/// process-level decisions (quit, interrupt, shutdown) to `ChatWidget`.
 pub(crate) struct BottomPane {
     /// Composer is retained even when a BottomPaneView is displayed so the
     /// input state is retained when the view is closed.
@@ -78,7 +119,6 @@ pub(crate) struct BottomPane {
 
     has_input_focus: bool,
     is_task_running: bool,
-    ctrl_c_quit_hint: bool,
     esc_backtrack_hint: bool,
     animations_enabled: bool,
     language: Language,
@@ -91,7 +131,6 @@ pub(crate) struct BottomPane {
     queued_user_messages: QueuedUserMessages,
     context_window_percent: Option<i64>,
     context_window_used_tokens: Option<i64>,
-    token_usage: Option<TokenUsageSplit>,
 }
 
 pub(crate) struct BottomPaneParams {
@@ -136,7 +175,6 @@ impl BottomPane {
             frame_requester,
             has_input_focus,
             is_task_running: false,
-            ctrl_c_quit_hint: false,
             status: None,
             unified_exec_footer: UnifiedExecFooter::new(),
             queued_user_messages: QueuedUserMessages::new(),
@@ -145,13 +183,16 @@ impl BottomPane {
             language,
             context_window_percent: None,
             context_window_used_tokens: None,
-            token_usage: None,
         }
     }
 
     pub fn set_skills(&mut self, skills: Option<Vec<SkillMetadata>>) {
         self.composer.set_skill_mentions(skills);
         self.request_redraw();
+    }
+
+    pub fn set_steer_enabled(&mut self, enabled: bool) {
+        self.composer.set_steer_enabled(enabled);
     }
 
     pub fn status_widget(&self) -> Option<&StatusIndicatorWidget> {
@@ -223,8 +264,14 @@ impl BottomPane {
         }
     }
 
-    /// Handle Ctrl-C in the bottom pane. If a modal view is active it gets a
-    /// chance to consume the event (e.g. to dismiss itself).
+    /// Handles a Ctrl+C press within the bottom pane.
+    ///
+    /// An active modal view is given the first chance to consume the key (typically to dismiss
+    /// itself). If no view is active, Ctrl+C clears draft composer input.
+    ///
+    /// This method may show the quit shortcut hint as a user-visible acknowledgement that Ctrl+C
+    /// was received, but it does not decide whether the process should exit; `ChatWidget` owns the
+    /// quit/interrupt state machine and uses the result to decide what happens next.
     pub(crate) fn on_ctrl_c(&mut self) -> CancellationEvent {
         if let Some(view) = self.view_stack.last_mut() {
             let event = view.on_ctrl_c();
@@ -233,7 +280,7 @@ impl BottomPane {
                     self.view_stack.pop();
                     self.on_active_view_complete();
                 }
-                self.show_ctrl_c_quit_hint();
+                self.show_quit_shortcut_hint(key_hint::ctrl(KeyCode::Char('c')));
             }
             event
         } else if self.composer_is_empty() {
@@ -241,7 +288,7 @@ impl BottomPane {
         } else {
             self.view_stack.pop();
             self.clear_composer_for_ctrl_c();
-            self.show_ctrl_c_quit_hint();
+            self.show_quit_shortcut_hint(key_hint::ctrl(KeyCode::Char('c')));
             CancellationEvent::Handled
         }
     }
@@ -271,6 +318,16 @@ impl BottomPane {
     /// Replace the composer text with `text`.
     pub(crate) fn set_composer_text(&mut self, text: String) {
         self.composer.set_text_content(text);
+        self.request_redraw();
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn set_composer_input_enabled(
+        &mut self,
+        enabled: bool,
+        placeholder: Option<String>,
+    ) {
+        self.composer.set_input_enabled(enabled, placeholder);
         self.request_redraw();
     }
 
@@ -310,14 +367,7 @@ impl BottomPane {
         self.request_redraw();
     }
 
-    /// Update the animated header shown to the left of the brackets in the
-    /// status indicator (默认显示“运行中”). No-ops if the status
-    /// indicator is not active.
-    pub(crate) fn update_status_header(&mut self, header: String) {
-        self.update_status(header, None);
-    }
-
-    /// Update the status indicator header (defaults to "运行中") and details below it.
+    /// Update the status indicator header (defaults to "Working") and details below it.
     ///
     /// Passing `None` clears any existing details. No-ops if the status indicator is not active.
     pub(crate) fn update_status(&mut self, header: String, details: Option<String>) {
@@ -328,25 +378,45 @@ impl BottomPane {
         }
     }
 
-    pub(crate) fn show_ctrl_c_quit_hint(&mut self) {
-        self.ctrl_c_quit_hint = true;
+    /// Show the transient "press again to quit" hint for `key`.
+    ///
+    /// `ChatWidget` owns the quit shortcut state machine (it decides when quit is
+    /// allowed), while the bottom pane owns rendering. We also schedule a redraw
+    /// after [`QUIT_SHORTCUT_TIMEOUT`] so the hint disappears even if the user
+    /// stops typing and no other events trigger a draw.
+    pub(crate) fn show_quit_shortcut_hint(&mut self, key: KeyBinding) {
+        if !DOUBLE_PRESS_QUIT_SHORTCUT_ENABLED {
+            return;
+        }
+
         self.composer
-            .set_ctrl_c_quit_hint(true, self.has_input_focus);
+            .show_quit_shortcut_hint(key, self.has_input_focus);
+        let frame_requester = self.frame_requester.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                tokio::time::sleep(QUIT_SHORTCUT_TIMEOUT).await;
+                frame_requester.schedule_frame();
+            });
+        } else {
+            // In tests (and other non-Tokio contexts), fall back to a thread so
+            // the hint can still expire without requiring an explicit draw.
+            std::thread::spawn(move || {
+                std::thread::sleep(QUIT_SHORTCUT_TIMEOUT);
+                frame_requester.schedule_frame();
+            });
+        }
         self.request_redraw();
     }
 
-    pub(crate) fn clear_ctrl_c_quit_hint(&mut self) {
-        if self.ctrl_c_quit_hint {
-            self.ctrl_c_quit_hint = false;
-            self.composer
-                .set_ctrl_c_quit_hint(false, self.has_input_focus);
-            self.request_redraw();
-        }
+    /// Clear the "press again to quit" hint immediately.
+    pub(crate) fn clear_quit_shortcut_hint(&mut self) {
+        self.composer.clear_quit_shortcut_hint(self.has_input_focus);
+        self.request_redraw();
     }
 
     #[cfg(test)]
-    pub(crate) fn ctrl_c_quit_hint_visible(&self) -> bool {
-        self.ctrl_c_quit_hint
+    pub(crate) fn quit_shortcut_hint_visible(&self) -> bool {
+        self.composer.quit_shortcut_hint_visible()
     }
 
     #[cfg(test)]
@@ -435,16 +505,6 @@ impl BottomPane {
         self.request_redraw();
     }
 
-    pub(crate) fn set_token_usage(&mut self, usage: Option<TokenUsageSplit>) {
-        if self.token_usage == usage {
-            return;
-        }
-
-        self.token_usage = usage.clone();
-        self.composer.set_token_usage(usage);
-        self.request_redraw();
-    }
-
     /// Show a generic list selection view with the provided items.
     pub(crate) fn show_selection_view(&mut self, params: list_selection_view::SelectionViewParams) {
         let view = list_selection_view::ListSelectionView::new(params, self.app_event_tx.clone());
@@ -457,8 +517,8 @@ impl BottomPane {
         self.request_redraw();
     }
 
-    pub(crate) fn set_unified_exec_sessions(&mut self, sessions: Vec<String>) {
-        if self.unified_exec_footer.set_sessions(sessions) {
+    pub(crate) fn set_unified_exec_processes(&mut self, processes: Vec<String>) {
+        if self.unified_exec_footer.set_processes(processes) {
             self.request_redraw();
         }
     }
@@ -489,6 +549,14 @@ impl BottomPane {
         self.view_stack.is_empty() && !self.composer.popup_active()
     }
 
+    /// Returns true when the bottom pane has no active modal view and no active composer popup.
+    ///
+    /// This is the UI-level definition of "no modal/popup is active" for key routing decisions.
+    /// It intentionally does not include task state, since some actions are safe while a task is
+    /// running and some are not.
+    pub(crate) fn no_modal_or_popup_active(&self) -> bool {
+        self.can_launch_external_editor()
+    }
     pub(crate) fn show_view(&mut self, view: Box<dyn BottomPaneView>) {
         self.push_view(view);
     }
@@ -577,16 +645,9 @@ impl BottomPane {
         self.request_redraw();
     }
 
-    pub(crate) fn attach_image(
-        &mut self,
-        path: PathBuf,
-        width: u32,
-        height: u32,
-        format_label: &str,
-    ) {
+    pub(crate) fn attach_image(&mut self, path: PathBuf) {
         if self.view_stack.is_empty() {
-            self.composer
-                .attach_image(path, width, height, format_label);
+            self.composer.attach_image(path);
             self.request_redraw();
         }
     }
@@ -670,7 +731,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_c_on_modal_consumes_and_shows_quit_hint() {
+    fn ctrl_c_on_modal_consumes_without_showing_quit_hint() {
         let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx_raw);
         let features = Features::with_defaults();
@@ -687,7 +748,7 @@ mod tests {
         });
         pane.push_approval_request(exec_request(), &features);
         assert_eq!(CancellationEvent::Handled, pane.on_ctrl_c());
-        assert!(pane.ctrl_c_quit_hint_visible());
+        assert!(!pane.quit_shortcut_hint_visible());
         assert_eq!(CancellationEvent::NotHandled, pane.on_ctrl_c());
     }
 
@@ -777,7 +838,7 @@ mod tests {
         }
         let row0_normalized: String = row0.chars().filter(|c| !c.is_whitespace()).collect();
         assert!(
-            row0_normalized.contains("Running"),
+            row0_normalized.contains("Working"),
             "expected status header after denial on row 0: {row0:?}"
         );
 
@@ -826,7 +887,7 @@ mod tests {
         let bufs = snapshot_buffer(&buf);
         let bufs_normalized: String = bufs.chars().filter(|c| !c.is_whitespace()).collect();
         assert!(
-            bufs_normalized.contains("•Running"),
+            bufs_normalized.contains("•Working"),
             "expected status header"
         );
     }

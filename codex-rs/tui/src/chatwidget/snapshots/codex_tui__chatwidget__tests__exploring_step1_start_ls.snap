@@ -1,6 +1,5 @@
 ---
 source: tui/src/chatwidget/tests.rs
-assertion_line: 1768
 expression: active_blob(&chat)
 ---
 • 正在执行

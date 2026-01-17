@@ -32,7 +32,6 @@ lazy_static! {
         tips
     };
 }
-
 fn beta_tooltips() -> Vec<&'static str> {
     FEATURES
         .iter()

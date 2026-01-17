@@ -7,3 +7,7 @@
 3. 对当前工作目录，若同时存在 `AGENTS.md` 与 `.codex/AGENTS.md`，只取修改时间较新的一个（时间相同默认取 `AGENTS.md`）。
 
 更多信息请参考官方文档：[AGENTS.md 指南](https://developers.openai.com/codex/guides/agents-md)。
+
+## 分层 agents 消息
+
+当在 `config.toml` 的 `[features]` 中启用 `child_agents_md` 功能开关时，Codex 会在用户指令消息中追加关于 AGENTS.md 作用域与优先级的补充说明，即使不存在 AGENTS.md 也会发出该消息。

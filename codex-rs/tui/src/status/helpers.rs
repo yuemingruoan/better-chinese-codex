@@ -111,7 +111,7 @@ pub(crate) fn compose_account_display(
     plan: Option<PlanType>,
     language: Language,
 ) -> Option<StatusAccountDisplay> {
-    let auth = auth_manager.auth()?;
+    let auth = auth_manager.auth_cached()?;
 
     match auth.mode {
         AuthMode::ChatGPT => {

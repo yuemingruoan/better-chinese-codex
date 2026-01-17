@@ -90,8 +90,8 @@ impl StatusIndicatorWidget {
     ) -> Self {
         Self {
             header: match language {
-                Language::ZhCn => String::from("运行中"),
-                Language::En => String::from("Running"),
+                Language::ZhCn => String::from("工作中"),
+                Language::En => String::from("Working"),
             },
             details: None,
             show_interrupt_hint: true,

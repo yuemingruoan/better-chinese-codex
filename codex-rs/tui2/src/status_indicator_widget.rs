@@ -32,7 +32,7 @@ const DETAILS_MAX_LINES: usize = 3;
 const DETAILS_PREFIX: &str = "  └ ";
 
 pub(crate) struct StatusIndicatorWidget {
-    /// Animated header text (defaults to "Working").
+    /// Animated header text (defaults to "工作中").
     header: String,
     details: Option<String>,
     show_interrupt_hint: bool,
@@ -90,7 +90,7 @@ impl StatusIndicatorWidget {
     ) -> Self {
         Self {
             header: match language {
-                Language::ZhCn => String::from("运行中"),
+                Language::ZhCn => String::from("工作中"),
                 Language::En => String::from("Working"),
             },
             details: None,

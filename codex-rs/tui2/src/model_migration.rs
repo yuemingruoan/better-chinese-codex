@@ -1,5 +1,6 @@
 use crate::i18n::tr;
 use crate::key_hint;
+use crate::markdown_render::render_markdown_text_with_width;
 use crate::render::Insets;
 use crate::render::renderable::ColumnRenderable;
 use crate::render::renderable::Renderable;
@@ -37,6 +38,7 @@ pub(crate) struct ModelMigrationCopy {
     pub content: Vec<Line<'static>>,
     pub can_opt_out: bool,
     pub language: Language,
+    pub markdown: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,44 +66,85 @@ impl MigrationMenuOption {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn migration_copy_for_models(
     current_model: &str,
     target_model: &str,
+    model_link: Option<String>,
+    migration_copy: Option<String>,
+    migration_markdown: Option<String>,
     target_display_name: String,
     target_description: Option<String>,
     can_opt_out: bool,
     language: Language,
 ) -> ModelMigrationCopy {
+    if let Some(migration_markdown) = migration_markdown {
+        return ModelMigrationCopy {
+            heading: Vec::new(),
+            content: Vec::new(),
+            can_opt_out,
+            language,
+            markdown: Some(fill_migration_markdown(
+                &migration_markdown,
+                current_model,
+                target_model,
+            )),
+        };
+    }
+
     let heading_text = Span::from(match language {
-        Language::ZhCn => format!("试用 {target_display_name}"),
-        Language::En => format!("Try {target_display_name}"),
+        Language::ZhCn => format!("Codex 已升级，欢迎使用 {target_display_name}。"),
+        Language::En => {
+            format!("Codex just got an upgrade. Introducing {target_display_name}.")
+        }
     })
     .bold();
-    let description_line = target_description
-        .filter(|desc| !desc.is_empty())
-        .map(Line::from)
-        .unwrap_or_else(|| {
-            Line::from(match language {
-                Language::ZhCn => {
-                    format!("推荐使用 {target_display_name}，以获得更好的性能与稳定性。")
-                }
-                Language::En => format!(
-                    "{target_display_name} is recommended for better performance and reliability."
-                ),
-            })
-        });
+    let description_line: Line<'static>;
+    if let Some(migration_copy) = &migration_copy {
+        description_line = Line::from(migration_copy.clone());
+    } else {
+        description_line = target_description
+            .filter(|desc| !desc.is_empty())
+            .map(Line::from)
+            .unwrap_or_else(|| {
+                Line::from(match language {
+                    Language::ZhCn => {
+                        format!("推荐使用 {target_display_name}，以获得更好的性能与稳定性。")
+                    }
+                    Language::En => format!(
+                        "{target_display_name} is recommended for better performance and reliability."
+                    ),
+                })
+            });
+    }
 
-    let mut content = vec![
-        Line::from(match language {
+    let mut content = vec![];
+    if migration_copy.is_none() {
+        content.push(Line::from(match language {
             Language::ZhCn => format!("我们建议从 {current_model} 切换到 {target_model}。"),
             Language::En => {
                 format!("We recommend switching from {current_model} to {target_model}.")
             }
-        }),
-        Line::from(""),
-        description_line,
-        Line::from(""),
-    ];
+        }));
+        content.push(Line::from(""));
+    }
+
+    if let Some(model_link) = model_link {
+        content.push(Line::from(vec![
+            match language {
+                Language::ZhCn => format!("{description_line} 了解更多 {target_display_name}："),
+                Language::En => {
+                    format!("{description_line} Learn more about {target_display_name} at ")
+                }
+            }
+            .into(),
+            model_link.cyan().underlined(),
+        ]));
+        content.push(Line::from(""));
+    } else {
+        content.push(description_line);
+        content.push(Line::from(""));
+    }
 
     if can_opt_out {
         content.push(Line::from(match language {
@@ -119,6 +162,7 @@ pub(crate) fn migration_copy_for_models(
         content,
         can_opt_out,
         language,
+        markdown: None,
     }
 }
 
@@ -244,9 +288,13 @@ impl WidgetRef for &ModelMigrationScreen {
 
         let mut column = ColumnRenderable::new();
         column.push("");
-        column.push(self.heading_line());
-        column.push(Line::from(""));
-        self.render_content(&mut column);
+        if let Some(markdown) = self.copy.markdown.as_ref() {
+            self.render_markdown_content(markdown, area.width, &mut column);
+        } else {
+            column.push(self.heading_line());
+            column.push(Line::from(""));
+            self.render_content(&mut column);
+        }
         if self.copy.can_opt_out {
             self.render_menu(&mut column);
         }
@@ -294,6 +342,21 @@ impl ModelMigrationScreen {
                     .wrap(Wrap { trim: false })
                     .inset(Insets::tlbr(0, 2, 0, 0)),
             );
+        }
+    }
+
+    fn render_markdown_content(
+        &self,
+        markdown: &str,
+        area_width: u16,
+        column: &mut ColumnRenderable,
+    ) {
+        let horizontal_inset = 2;
+        let content_width = area_width.saturating_sub(horizontal_inset);
+        let wrap_width = (content_width > 0).then_some(content_width as usize);
+        let rendered = render_markdown_text_with_width(markdown, wrap_width);
+        for line in rendered.lines {
+            column.push(line.inset(Insets::tlbr(0, horizontal_inset, 0, 0)));
         }
     }
 
@@ -359,6 +422,12 @@ fn is_ctrl_exit_combo(key_event: KeyEvent) -> bool {
         && matches!(key_event.code, KeyCode::Char('c') | KeyCode::Char('d'))
 }
 
+fn fill_migration_markdown(template: &str, current_model: &str, target_model: &str) -> String {
+    template
+        .replace("{model_from}", current_model)
+        .replace("{model_to}", target_model)
+}
+
 #[cfg(test)]
 mod tests {
     use super::ModelMigrationScreen;
@@ -385,6 +454,12 @@ mod tests {
             migration_copy_for_models(
                 "gpt-5.1-codex-mini",
                 "gpt-5.1-codex-max",
+                None,
+                Some(
+                    "Upgrade to gpt-5.2-codex for the latest and greatest agentic coding model."
+                        .to_string(),
+                ),
+                None,
                 "gpt-5.1-codex-max".to_string(),
                 Some("Codex-optimized flagship for deep and fast reasoning.".to_string()),
                 true,
@@ -412,6 +487,9 @@ mod tests {
             migration_copy_for_models(
                 "gpt-5",
                 "gpt-5.1",
+                Some("https://www.codex.com/models/gpt-5.1".to_string()),
+                None,
+                None,
                 "gpt-5.1".to_string(),
                 Some("Broad world knowledge with strong general reasoning.".to_string()),
                 false,
@@ -437,6 +515,9 @@ mod tests {
             migration_copy_for_models(
                 "gpt-5-codex",
                 "gpt-5.1-codex-max",
+                Some("https://www.codex.com/models/gpt-5.1-codex-max".to_string()),
+                None,
+                None,
                 "gpt-5.1-codex-max".to_string(),
                 Some("Codex-optimized flagship for deep and fast reasoning.".to_string()),
                 false,
@@ -462,6 +543,9 @@ mod tests {
             migration_copy_for_models(
                 "gpt-5-codex-mini",
                 "gpt-5.1-codex-mini",
+                Some("https://www.codex.com/models/gpt-5.1-codex-mini".to_string()),
+                None,
+                None,
                 "gpt-5.1-codex-mini".to_string(),
                 Some("Optimized for codex. Cheaper, faster, but less capable.".to_string()),
                 false,
@@ -483,6 +567,9 @@ mod tests {
             migration_copy_for_models(
                 "gpt-old",
                 "gpt-new",
+                Some("https://www.codex.com/models/gpt-new".to_string()),
+                None,
+                None,
                 "gpt-new".to_string(),
                 Some("Latest recommended model for better performance.".to_string()),
                 true,
@@ -510,6 +597,9 @@ mod tests {
             migration_copy_for_models(
                 "gpt-old",
                 "gpt-new",
+                Some("https://www.codex.com/models/gpt-new".to_string()),
+                None,
+                None,
                 "gpt-new".to_string(),
                 Some("Latest recommended model for better performance.".to_string()),
                 true,

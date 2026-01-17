@@ -16,14 +16,18 @@ pub enum SlashCommand {
     Model,
     Lang,
     Approvals,
+    #[strum(serialize = "setup-elevated-sandbox")]
+    ElevateSandbox,
     Skills,
     Review,
     New,
     Resume,
+    Fork,
     Init,
     Compact,
-    Undo,
+    // Undo,
     Diff,
+    Clean,
     Mention,
     Status,
     SddDevelop,
@@ -47,9 +51,10 @@ impl SlashCommand {
                 SlashCommand::Compact => "总结当前对话以避免上下文超限",
                 SlashCommand::Review => "审查当前改动并查找问题",
                 SlashCommand::Resume => "恢复已保存的会话",
-                SlashCommand::Undo => "让 Codex 回退一个回合",
+                SlashCommand::Fork => "分叉已保存的会话",
                 SlashCommand::Quit | SlashCommand::Exit => "退出 Codex",
                 SlashCommand::Diff => "显示 git diff（包含未跟踪文件）",
+                SlashCommand::Clean => "清理剪贴板图片缓存",
                 SlashCommand::Mention => "在消息中提及文件",
                 SlashCommand::Skills => "使用技能提升特定任务的表现",
                 SlashCommand::Status => "显示会话配置与令牌使用情况",
@@ -57,6 +62,7 @@ impl SlashCommand {
                 SlashCommand::Model => "选择模型及推理强度",
                 SlashCommand::Lang => "切换界面语言",
                 SlashCommand::Approvals => "配置 Codex 无需审批即可执行的操作",
+                SlashCommand::ElevateSandbox => "配置提升权限的沙箱",
                 SlashCommand::Mcp => "列出已配置的 MCP 工具",
                 SlashCommand::Logout => "注销 Codex 登录",
                 SlashCommand::Rollout => "打印部署文件路径",
@@ -71,9 +77,10 @@ impl SlashCommand {
                 }
                 SlashCommand::Review => "review my current changes and find issues",
                 SlashCommand::Resume => "resume a saved chat",
-                SlashCommand::Undo => "ask Codex to undo a turn",
+                SlashCommand::Fork => "fork a saved chat",
                 SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
                 SlashCommand::Diff => "show git diff (including untracked files)",
+                SlashCommand::Clean => "clear clipboard image cache",
                 SlashCommand::Mention => "mention a file",
                 SlashCommand::Skills => "use skills to improve how Codex performs specific tasks",
                 SlashCommand::Status => "show current session configuration and token usage",
@@ -81,6 +88,7 @@ impl SlashCommand {
                 SlashCommand::Model => "choose what model and reasoning effort to use",
                 SlashCommand::Lang => "change the interface language",
                 SlashCommand::Approvals => "choose what Codex can do without approval",
+                SlashCommand::ElevateSandbox => "set up elevated agent sandbox",
                 SlashCommand::Mcp => "list configured MCP tools",
                 SlashCommand::Logout => "log out of Codex",
                 SlashCommand::Rollout => "print the rollout file path",
@@ -100,16 +108,18 @@ impl SlashCommand {
         match self {
             SlashCommand::New
             | SlashCommand::Resume
+            | SlashCommand::Fork
             | SlashCommand::Init
             | SlashCommand::Compact
-            | SlashCommand::Undo
             | SlashCommand::SddDevelop
             | SlashCommand::Model
             | SlashCommand::Lang
             | SlashCommand::Approvals
+            | SlashCommand::ElevateSandbox
             | SlashCommand::Review
             | SlashCommand::Logout => false,
             SlashCommand::Diff
+            | SlashCommand::Clean
             | SlashCommand::Mention
             | SlashCommand::Skills
             | SlashCommand::Status

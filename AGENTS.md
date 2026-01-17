@@ -1,12 +1,16 @@
-## Upstream merge strategy (Codex 0.77 → 0.79 sync)
+## Upstream merge strategy (Codex 0.79 → 0.84 sync)
 
 - Default to working on the `develop-main` branch unless the user explicitly requests another branch.
+- Current target release: `rust-v0.84.0` (range: `rust-v0.79.0..rust-v0.84.0`).
+- 本仓库合并策略以本节为准；如需调整目标版本或策略，请先更新此处。
 
 - Assets and docs follow upstream changes; do not keep deleted upstream assets.
 - Localized prompt files (提示词) do not follow upstream; keep existing Chinese prompts.
 - GitHub workflows remain deleted; do not sync upstream automation workflows.
 - Docs (except README) should match upstream official content and be localized to Chinese.
 - README stays as the fork's current version; do not merge upstream README changes.
+- 新增/变更的人机交互文本必须做 i18n（至少中英文），遵循现有翻译工具与语言枚举。
+- 与 fork 特色功能无关的代码变更，优先采用上游实现。
 - Code conflicts require manual review case by case; default to preserving fork features and integrating upstream capabilities when possible.
 - Keep fork version numbers; do not align to upstream versions.
 
@@ -25,6 +29,7 @@ In the codex-rs folder where the rust code lives:
 - Use method references over closures when possible per https://rust-lang.github.io/rust-clippy/master/index.html#redundant_closure_for_method_calls
 - When writing tests, prefer comparing the equality of entire objects over fields one by one.
 - When making a change that adds or changes an API, ensure that the documentation in the `docs/` folder is up to date if applicable.
+- If you change `ConfigToml` or nested config types, run `just write-config-schema` to update `codex-rs/core/config.schema.json`.
 
 Run `just fmt` (in `codex-rs` directory) automatically after making Rust code changes; do not ask for approval to run it. Before finalizing a change to `codex-rs`, run `just fix -p <project>` (in `codex-rs` directory) to fix any linter issues in the code. Prefer scoping with `-p` to avoid slow workspace‑wide Clippy builds; only run `just fix` without `-p` if you changed shared crates. Additionally, run the tests:
 
@@ -89,11 +94,14 @@ If you don’t have the tool:
 - Prefer deep equals comparisons whenever possible. Perform `assert_eq!()` on entire objects, rather than individual fields.
 - Avoid mutating process environment in tests; prefer passing environment-derived flags or dependencies from above.
 
-### Spawning workspace binaries in tests (Cargo vs Buck2)
+### Spawning workspace binaries in tests (Cargo vs Buck2/Bazel)
 
 - Prefer `codex_utils_cargo_bin::cargo_bin("...")` over `assert_cmd::Command::cargo_bin(...)` or `escargot` when tests need to spawn first-party binaries.
   - Under Buck2, `CARGO_BIN_EXE_*` may be project-relative (e.g. `buck-out/...`), which breaks if a test changes its working directory. `codex_utils_cargo_bin::cargo_bin` resolves to an absolute path first.
-- When locating fixture files under Buck2, avoid `env!("CARGO_MANIFEST_DIR")` (Buck codegen sets it to `"."`). Prefer deriving paths from `codex_utils_cargo_bin::buck_project_root()` when needed.
+  - Under Bazel, binaries and resources may live under runfiles; `codex_utils_cargo_bin::cargo_bin` resolves stable absolute paths after `chdir`.
+- When locating fixture files or test resources, avoid `env!("CARGO_MANIFEST_DIR")`.
+  - For Buck2, prefer deriving paths from `codex_utils_cargo_bin::buck_project_root()` when you need a project root.
+  - For Bazel/Cargo compatibility, prefer `codex_utils_cargo_bin::find_resource!` so paths resolve correctly under runfiles.
 
 ### Integration tests (core)
 

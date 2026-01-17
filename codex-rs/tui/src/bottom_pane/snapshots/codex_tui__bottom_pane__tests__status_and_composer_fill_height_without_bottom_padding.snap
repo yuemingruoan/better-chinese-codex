@@ -2,9 +2,9 @@
 source: tui/src/bottom_pane/mod.rs
 expression: "render_snapshot(&pane, area)"
 ---
-• Running (0s • Press esc to i
+• Working (0s • Press esc to i
                               
                               
 › Ask Codex to do anything    
                               
-  0% context used · ? for shor
+  100% context left · ? for sh

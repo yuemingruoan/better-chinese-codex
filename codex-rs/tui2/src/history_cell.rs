@@ -1,3 +1,15 @@
+//! Transcript/history cells for the Codex TUI.
+//!
+//! A `HistoryCell` is the unit of display in the conversation UI, representing both committed
+//! transcript entries and, transiently, an in-flight active cell that can mutate in place while
+//! streaming.
+//!
+//! The transcript overlay (`Ctrl+T`) appends a cached live tail derived from the active cell, and
+//! that cached tail is refreshed based on an active-cell cache key. Cells that change based on
+//! elapsed time expose `transcript_animation_tick()`, and code that mutates the active cell in place
+//! bumps the active-cell revision tracked by `ChatWidget`, so the cache key changes whenever the
+//! rendered transcript output can change.
+
 use crate::diff_render::create_diff_summary;
 use crate::diff_render::display_path_for;
 use crate::exec_cell::CommandOutput;
@@ -60,33 +72,26 @@ use unicode_width::UnicodeWidthStr;
 /// Visual transcript lines plus soft-wrap joiners.
 ///
 /// A history cell can produce multiple "visual lines" once prefixes/indents and wrapping are
-/// applied. Clipboard reconstruction needs more information than just those lines: users expect
-/// soft-wrapped prose to copy as a single logical line, while explicit newlines and spacer rows
-/// should remain hard breaks.
+/// applied. Clipboard reconstruction needs more information than just those lines because users
+/// expect soft-wrapped prose to copy as a single logical line, while explicit newlines and spacer
+/// rows should remain hard breaks.
 ///
 /// `joiner_before` records, for each output line, whether it is a continuation created by the
 /// wrapping algorithm and what string should be inserted at the wrap boundary when joining lines.
 /// This avoids heuristics like always inserting a space, and instead preserves the exact whitespace
 /// that was skipped at the boundary.
 ///
-/// ## Note for `codex-tui` vs `codex-tui2`
+/// In `codex-tui`, `HistoryCell` only exposes `transcript_lines(...)` and the UI generally does not
+/// need to reconstruct clipboard text across off-screen history or soft-wrap boundaries. In
+/// `codex-tui2`, transcript selection and copy are app-driven (not terminal-driven) and may span
+/// content that is not currently visible, so we need extra metadata to distinguish hard breaks from
+/// soft wraps and to preserve the exact whitespace at wrap boundaries.
 ///
-/// In `codex-tui`, `HistoryCell` only exposes `transcript_lines(...)` and the UI generally doesn't
-/// need to reconstruct clipboard text across off-screen history or soft-wrap boundaries.
-///
-/// In `codex-tui2`, transcript selection and copy are app-driven (not terminal-driven) and may span
-/// content that isn't currently visible. That means we need additional metadata to distinguish hard
-/// breaks from soft wraps and to preserve the exact whitespace at wrap boundaries.
-///
-/// Invariants:
-/// - `joiner_before.len() == lines.len()`
-/// - `joiner_before[0]` is always `None`
-/// - `None` represents a hard break
-/// - `Some(joiner)` represents a soft wrap continuation
-///
-/// Consumers:
-/// - `transcript_render` threads joiners through transcript flattening/wrapping.
-/// - `transcript_copy` uses them to join wrapped prose while preserving hard breaks.
+/// The invariant is that `joiner_before.len() == lines.len()` and `joiner_before[0]` is always
+/// `None`. A `None` entry represents a hard break (copy inserts a newline), while `Some(joiner)`
+/// represents a soft wrap continuation (copy inserts `joiner` and continues on the same logical
+/// line). This data is produced by transcript rendering and consumed by transcript copy to keep
+/// clipboard output faithful to what the user saw.
 #[derive(Debug, Clone)]
 pub(crate) struct TranscriptLinesWithJoiners {
     /// Visual transcript lines for a history cell, including any indent/prefix spans.
@@ -163,6 +168,20 @@ pub(crate) trait HistoryCell: std::fmt::Debug + Send + Sync + Any {
 
     fn is_stream_continuation(&self) -> bool {
         false
+    }
+
+    /// Returns a coarse "animation tick" when transcript output is time-dependent.
+    ///
+    /// The transcript overlay caches the rendered output of the in-flight active cell, so cells
+    /// that include time-based UI (spinner, shimmer, etc.) should return a tick that changes over
+    /// time to signal that the cached tail should be recomputed. Returning `None` means the
+    /// transcript lines are stable, while returning `Some(tick)` during an in-flight animation
+    /// allows the overlay to keep up with the main viewport.
+    ///
+    /// If a cell uses time-based visuals but always returns `None`, `Ctrl+T` can appear "frozen" on
+    /// the first rendered frame even though the main viewport is animating.
+    fn transcript_animation_tick(&self) -> Option<u64> {
+        None
     }
 }
 
@@ -934,6 +953,7 @@ pub(crate) fn new_session_info(
     // Header box rendered as history (so it appears at the very top)
     let header = SessionHeaderHistoryCell::new(
         model.clone(),
+        Style::default(),
         reasoning_effort,
         config.cwd.clone(),
         CODEX_CLI_VERSION,
@@ -1038,17 +1058,37 @@ pub(crate) fn new_user_prompt(message: String) -> UserHistoryCell {
 }
 
 #[derive(Debug)]
-struct SessionHeaderHistoryCell {
+pub(crate) struct SessionHeaderHistoryCell {
     version: &'static str,
     model: String,
+    model_style: Style,
     reasoning_effort: Option<ReasoningEffortConfig>,
     directory: PathBuf,
     language: Language,
 }
 
 impl SessionHeaderHistoryCell {
-    fn new(
+    pub(crate) fn new(
         model: String,
+        model_style: Style,
+        reasoning_effort: Option<ReasoningEffortConfig>,
+        directory: PathBuf,
+        version: &'static str,
+        language: Language,
+    ) -> Self {
+        Self::new_with_style(
+            model,
+            model_style,
+            reasoning_effort,
+            directory,
+            version,
+            language,
+        )
+    }
+
+    pub(crate) fn new_with_style(
+        model: String,
+        model_style: Style,
         reasoning_effort: Option<ReasoningEffortConfig>,
         directory: PathBuf,
         version: &'static str,
@@ -1057,6 +1097,7 @@ impl SessionHeaderHistoryCell {
         Self {
             version,
             model,
+            model_style,
             reasoning_effort,
             directory,
             language,
@@ -1128,17 +1169,20 @@ impl HistoryCell for SessionHeaderHistoryCell {
 
         const CHANGE_MODEL_HINT_COMMAND: &str = "/model";
         let reasoning_label = self.reasoning_label();
+        let change_hint = tr(self.language, " 切换模型", " to change");
         let (model_spans, dir_spans) = match self.language {
             Language::ZhCn => {
-                let mut model_spans: Vec<Span<'static>> = vec![Span::from("模型：").dim()];
-                model_spans.push(Span::from(self.model.clone()));
+                let mut model_spans: Vec<Span<'static>> = vec![
+                    Span::from("模型：").dim(),
+                    Span::styled(self.model.clone(), self.model_style),
+                ];
                 if let Some(reasoning) = reasoning_label {
                     model_spans.push(Span::from(" "));
                     model_spans.push(Span::from(reasoning));
                 }
                 model_spans.push("   ".dim());
                 model_spans.push(CHANGE_MODEL_HINT_COMMAND.cyan());
-                model_spans.push(" 切换模型".dim());
+                model_spans.push(change_hint.dim());
 
                 let dir_prefix = "目录：".to_string();
                 let dir_prefix_width =
@@ -1157,7 +1201,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
                 );
                 let mut model_spans: Vec<Span<'static>> = vec![
                     Span::from(format!("{model_label} ")).dim(),
-                    Span::from(self.model.clone()),
+                    Span::styled(self.model.clone(), self.model_style),
                 ];
                 if let Some(reasoning) = reasoning_label {
                     model_spans.push(Span::from(" "));
@@ -1165,7 +1209,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
                 }
                 model_spans.push("   ".dim());
                 model_spans.push(CHANGE_MODEL_HINT_COMMAND.cyan());
-                model_spans.push(" to change".dim());
+                model_spans.push(change_hint.dim());
 
                 let dir_label = format!("{label:<label_width$}", label = "directory:");
                 let dir_prefix = format!("{dir_label} ");
@@ -1396,6 +1440,13 @@ impl HistoryCell for McpToolCallCell {
         }
 
         lines
+    }
+
+    fn transcript_animation_tick(&self) -> Option<u64> {
+        if !self.animations_enabled || self.result.is_some() {
+            return None;
+        }
+        Some((self.start_time.elapsed().as_millis() / 50) as u64)
     }
 }
 
@@ -2207,7 +2258,8 @@ mod tests {
             enabled_tools: None,
             disabled_tools: None,
         };
-        config.mcp_servers.insert("docs".to_string(), stdio_config);
+        let mut servers = config.mcp_servers.get().clone();
+        servers.insert("docs".to_string(), stdio_config);
 
         let mut headers = HashMap::new();
         headers.insert("Authorization".to_string(), "Bearer secret".to_string());
@@ -2226,7 +2278,11 @@ mod tests {
             enabled_tools: None,
             disabled_tools: None,
         };
-        config.mcp_servers.insert("http".to_string(), http_config);
+        servers.insert("http".to_string(), http_config);
+        config
+            .mcp_servers
+            .set(servers)
+            .expect("test mcp servers should accept any configuration");
 
         let mut tools: HashMap<String, Tool> = HashMap::new();
         tools.insert(
@@ -2540,6 +2596,7 @@ mod tests {
     fn session_header_includes_reasoning_level_when_present() {
         let cell = SessionHeaderHistoryCell::new(
             "gpt-4o".to_string(),
+            Style::default(),
             Some(ReasoningEffortConfig::High),
             std::env::temp_dir(),
             "test",

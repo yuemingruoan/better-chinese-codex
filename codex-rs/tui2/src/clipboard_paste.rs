@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use codex_protocol::config_types::Language;
 use std::path::PathBuf;
 use tempfile::Builder;
@@ -60,6 +62,95 @@ pub struct PastedImageInfo {
     pub width: u32,
     pub height: u32,
     pub encoded_format: EncodedImageFormat, // Always PNG for now.
+}
+
+#[derive(Debug, Clone)]
+pub struct ClipboardImage {
+    pub data_url: String,
+    pub info: PastedImageInfo,
+    pub placeholder_label: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CleanClipboardCacheResult {
+    pub deleted: usize,
+    pub failed: usize,
+    pub found_cache_dir: bool,
+}
+
+pub fn clean_clipboard_cache(cwd: &Path) -> Result<CleanClipboardCacheResult, PasteImageError> {
+    let codex_dir = cwd.join(".codex");
+    if !codex_dir.exists() {
+        return Ok(CleanClipboardCacheResult {
+            deleted: 0,
+            failed: 0,
+            found_cache_dir: false,
+        });
+    }
+
+    let entries =
+        std::fs::read_dir(&codex_dir).map_err(|e| PasteImageError::IoError(e.to_string()))?;
+    let mut deleted = 0;
+    let mut failed = 0;
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                failed += 1;
+                tracing::warn!("failed to read .codex entry: {err}");
+                continue;
+            }
+        };
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !(file_name.starts_with("codex-clipboard-") && file_name.ends_with(".png")) {
+            continue;
+        }
+        if let Err(err) = std::fs::remove_file(&path) {
+            failed += 1;
+            tracing::warn!(
+                "failed to remove clipboard cache file {path}: {err}",
+                path = path.display()
+            );
+        } else {
+            deleted += 1;
+        }
+    }
+
+    Ok(CleanClipboardCacheResult {
+        deleted,
+        failed,
+        found_cache_dir: true,
+    })
+}
+
+pub fn paste_image_as_data_url() -> Result<ClipboardImage, PasteImageError> {
+    let (png, info) = paste_image_as_png()?;
+    let encoded = BASE64_STANDARD.encode(&png);
+    let data_url = format!("data:image/png;base64,{encoded}");
+    let cwd = std::env::current_dir().map_err(|e| PasteImageError::IoError(e.to_string()))?;
+    let codex_dir = cwd.join(".codex");
+    std::fs::create_dir_all(&codex_dir).map_err(|e| PasteImageError::IoError(e.to_string()))?;
+    let tmp = Builder::new()
+        .prefix("codex-clipboard-")
+        .suffix(".png")
+        .tempfile_in(&codex_dir)
+        .map_err(|e| PasteImageError::IoError(e.to_string()))?;
+    std::fs::write(tmp.path(), &png).map_err(|e| PasteImageError::IoError(e.to_string()))?;
+    let (_file, path) = tmp
+        .keep()
+        .map_err(|e| PasteImageError::IoError(e.error.to_string()))?;
+    let placeholder_label = path.display().to_string();
+    Ok(ClipboardImage {
+        data_url,
+        info,
+        placeholder_label,
+    })
 }
 
 /// Capture image from system clipboard, encode to PNG, and return bytes + info.
@@ -372,6 +463,7 @@ pub fn pasted_image_format(path: &Path) -> EncodedImageFormat {
 #[cfg(test)]
 mod pasted_paths_tests {
     use super::*;
+    use pretty_assertions::assert_eq;
 
     #[cfg(not(windows))]
     #[test]
@@ -516,5 +608,45 @@ mod pasted_paths_tests {
             result,
             PathBuf::from("/mnt/c/Users/Alice/Pictures/example image.png")
         );
+    }
+}
+
+#[cfg(test)]
+mod clipboard_cache_tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn clean_clipboard_cache_removes_only_clipboard_pngs() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let codex_dir = temp.path().join(".codex");
+        std::fs::create_dir_all(&codex_dir).expect("create .codex");
+        let clipboard_a = codex_dir.join("codex-clipboard-a.png");
+        let clipboard_b = codex_dir.join("codex-clipboard-b.png");
+        let clipboard_txt = codex_dir.join("codex-clipboard-note.txt");
+        let other_png = codex_dir.join("other.png");
+        std::fs::write(&clipboard_a, b"png").expect("write clipboard a");
+        std::fs::write(&clipboard_b, b"png").expect("write clipboard b");
+        std::fs::write(&clipboard_txt, b"text").expect("write clipboard txt");
+        std::fs::write(&other_png, b"png").expect("write other png");
+
+        let result = clean_clipboard_cache(temp.path()).expect("clean cache");
+
+        assert_eq!(result.deleted, 2);
+        assert_eq!(result.failed, 0);
+        assert_eq!(result.found_cache_dir, true);
+        assert!(!clipboard_a.exists());
+        assert!(!clipboard_b.exists());
+        assert!(clipboard_txt.exists());
+        assert!(other_png.exists());
+    }
+
+    #[test]
+    fn clean_clipboard_cache_with_missing_dir_is_noop() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let result = clean_clipboard_cache(temp.path()).expect("clean cache");
+        assert_eq!(result.deleted, 0);
+        assert_eq!(result.failed, 0);
+        assert_eq!(result.found_cache_dir, false);
     }
 }

@@ -386,6 +386,21 @@ pub(crate) fn feedback_selection_params(
     }
 }
 
+/// Build the selection popup params shown when feedback is disabled.
+pub(crate) fn feedback_disabled_params(language: Language) -> super::SelectionViewParams {
+    super::SelectionViewParams {
+        title: Some("Sending feedback is disabled".to_string()),
+        subtitle: Some("This action is disabled by configuration.".to_string()),
+        footer_hint: Some(standard_popup_hint_line(language)),
+        items: vec![super::SelectionItem {
+            name: "Close".to_string(),
+            dismiss_on_select: true,
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+}
+
 fn make_feedback_item(
     app_event_tx: AppEventSender,
     name: &str,

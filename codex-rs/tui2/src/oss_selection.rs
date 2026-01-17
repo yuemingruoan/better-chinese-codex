@@ -1,6 +1,7 @@
 use codex_core::DEFAULT_LMSTUDIO_PORT;
 use codex_core::DEFAULT_OLLAMA_PORT;
 use codex_core::LMSTUDIO_OSS_PROVIDER_ID;
+use codex_core::OLLAMA_CHAT_PROVIDER_ID;
 use codex_core::OLLAMA_OSS_PROVIDER_ID;
 use codex_core::config::set_default_oss_provider;
 use crossterm::event::Event;
@@ -88,7 +89,11 @@ impl OssSelectionWidget<'_> {
                 status: lmstudio_status,
             },
             ProviderOption {
-                name: "Ollama".to_string(),
+                name: "Ollama (Responses)".to_string(),
+                status: ollama_status.clone(),
+            },
+            ProviderOption {
+                name: "Ollama (Chat)".to_string(),
                 status: ollama_status,
             },
         ];
@@ -157,11 +162,21 @@ impl OssSelectionWidget<'_> {
                 label: Line::from(vec!["O".underlined(), "llama".into()]),
                 description: tr(
                     language,
-                    "本地 Ollama 服务（默认端口 11434）",
-                    "Local Ollama service (default port 11434)",
+                    "本地 Ollama 服务（Responses API，默认端口 11434）",
+                    "Local Ollama service (Responses API, default port 11434)",
                 ),
                 key: KeyCode::Char('o'),
                 provider_id: OLLAMA_OSS_PROVIDER_ID,
+            },
+            SelectOption {
+                label: Line::from(vec!["Ollama (".into(), "c".underlined(), "hat)".into()]),
+                description: tr(
+                    language,
+                    "本地 Ollama 服务（Chat API，默认端口 11434）",
+                    "Local Ollama service (Chat API, default port 11434)",
+                ),
+                key: KeyCode::Char('c'),
+                provider_id: OLLAMA_CHAT_PROVIDER_ID,
             },
         ];
 
