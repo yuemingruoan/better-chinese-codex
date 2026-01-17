@@ -4066,15 +4066,6 @@ impl ChatWidget {
             ),
         );
         self.bottom_pane.show_selection_view(SelectionViewParams {
-            title: Some(tr(language, "选择模型", "Select Model").to_string()),
-            subtitle: Some(
-                tr(
-                    language,
-                    "选择自动模式或浏览全部模型。",
-                    "Pick a quick auto mode or browse all models.",
-                )
-                .to_string(),
-            ),
             footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             header,
@@ -4135,19 +4126,14 @@ impl ChatWidget {
         }
 
         let header = self.model_menu_header(
-            "Select Model and Effort",
-            "Access legacy models by running codex -m <model_name> or in your config.toml",
+            tr(language, "选择模型与推理强度", "Select Model and Effort"),
+            tr(
+                language,
+                "可通过运行 codex -m <model_name> 或在 config.toml 中访问旧版模型",
+                "Access legacy models by running codex -m <model_name> or in your config.toml",
+            ),
         );
         self.bottom_pane.show_selection_view(SelectionViewParams {
-            title: Some(tr(language, "选择模型与推理强度", "Select Model and Effort").to_string()),
-            subtitle: Some(
-                tr(
-                    language,
-                    "可通过运行 codex -m <model_name> 或在 config.toml 中访问旧版模型",
-                    "Access legacy models by running codex -m <model_name> or in your config.toml",
-                )
-                .to_string(),
-            ),
             footer_hint: Some(
                 match language {
                     Language::ZhCn => "按回车选择推理强度，或按 Esc 返回。",
