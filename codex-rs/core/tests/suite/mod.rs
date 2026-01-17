@@ -61,6 +61,7 @@ mod seatbelt;
 mod shell_command;
 mod shell_serialization;
 mod shell_snapshot;
+mod sdd_git;
 mod skills;
 mod stream_error_allows_next_turn;
 mod stream_no_completed;
