@@ -1,6 +1,5 @@
 ---
 source: tui2/src/bottom_pane/footer.rs
-assertion_line: 474
 expression: terminal.backend()
 ---
 "  0% context used · ? for shortcuts · Copied                                    "

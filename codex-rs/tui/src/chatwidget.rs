@@ -3284,7 +3284,7 @@ impl ChatWidget {
         if !send_text.is_empty() {
             // TODO: Thread text element ranges from the composer input. Empty keeps old behavior.
             items.push(UserInput::Text {
-                text: send_text.clone(),
+                text: send_text,
                 text_elements: Vec::new(),
             });
         }
