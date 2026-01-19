@@ -2009,7 +2009,7 @@ impl App {
                     Ok(()) => {
                         let label = language_name(language, language);
                         let message =
-                            tr_args(language, "app.language.changed", &[("label", &label)]);
+                            tr_args(language, "app.language.changed", &[("label", label)]);
                         self.chat_widget.add_info_message(message, None);
                     }
                     Err(err) => {

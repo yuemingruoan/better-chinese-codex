@@ -1,5 +1,6 @@
 use codex_protocol::config_types::Language;
 use once_cell::sync::Lazy;
+#[cfg(test)]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use toml::Value;
@@ -62,7 +63,8 @@ struct Catalog {
 
 impl Catalog {
     fn from_str(raw: &str) -> Self {
-        let value: Value = toml::from_str(raw).expect("i18n TOML must parse");
+        let value: Value =
+            toml::from_str(raw).unwrap_or_else(|err| panic!("i18n TOML must parse: {err}"));
         let mut catalog = Catalog {
             strings: HashMap::new(),
             lists: HashMap::new(),

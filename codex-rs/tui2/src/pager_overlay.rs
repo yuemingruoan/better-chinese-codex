@@ -1172,6 +1172,7 @@ mod tests {
                     }) as Arc<dyn HistoryCell>
                 })
                 .collect(),
+            Language::En,
         );
         let area = Rect::new(0, 0, 40, 15);
 

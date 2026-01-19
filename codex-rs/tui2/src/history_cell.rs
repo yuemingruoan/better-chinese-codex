@@ -960,7 +960,7 @@ pub(crate) fn new_session_info(
                     &[("model", requested_model)],
                 )
                 .into(),
-                tr_args(language, "history.model_change.used", &[("model", model)]).into(),
+                tr_args(language, "history.model_change.used", &[("model", &model)]).into(),
             ];
             parts.push(Box::new(PlainHistoryCell { lines }));
         }
@@ -1121,7 +1121,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
                 model_spans.push(CHANGE_MODEL_HINT_COMMAND.cyan());
                 model_spans.push(change_hint.dim());
 
-                let dir_label = format!("{label:<label_width$}", label = directory_label);
+                let dir_label = format!("{directory_label:<label_width$}");
                 let dir_prefix = format!("{dir_label} ");
                 let dir_prefix_width = UnicodeWidthStr::width(dir_prefix.as_str());
                 let dir_max_width = inner_width.saturating_sub(dir_prefix_width);

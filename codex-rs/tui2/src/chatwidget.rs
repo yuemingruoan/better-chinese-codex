@@ -279,7 +279,7 @@ impl RateLimitWarningState {
                     "chatwidget.rate_limit.warning",
                     &[
                         ("limit_label", &limit_label),
-                        ("remaining_percent", &remaining_percent),
+                        ("percent", &remaining_percent),
                     ],
                 );
                 warnings.push(message);
@@ -306,7 +306,7 @@ impl RateLimitWarningState {
                     "chatwidget.rate_limit.warning",
                     &[
                         ("limit_label", &limit_label),
-                        ("remaining_percent", &remaining_percent),
+                        ("percent", &remaining_percent),
                     ],
                 );
                 warnings.push(message);
@@ -329,7 +329,7 @@ fn localize_limit_label(label: String, language: Language) -> String {
                 tr_args(
                     language,
                     "chatwidget.rate_limit.label.hours",
-                    &[("number", number)],
+                    &[("count", number)],
                 )
             } else {
                 label
@@ -3047,9 +3047,9 @@ impl ChatWidget {
             self.pre_review_last_api_token_usage = Some(self.last_api_token_usage.clone());
         }
         self.is_review_mode = true;
-        let hint = review
-            .user_facing_hint
-            .unwrap_or_else(|| codex_core::review_prompts::user_facing_hint(&review.target));
+        let hint = review.user_facing_hint.unwrap_or_else(|| {
+            codex_core::review_prompts::user_facing_hint(&review.target, self.config.language)
+        });
         let banner = tr_args(
             self.config.language,
             "chatwidget.review.started",
@@ -3751,7 +3751,7 @@ impl ChatWidget {
             tr_args(
                 self.config.language,
                 "chatwidget.reasoning.select_title",
-                &[("model_slug", &model_slug)],
+                &[("model", &model_slug)],
             )
             .bold(),
         ));
@@ -4159,7 +4159,7 @@ impl ChatWidget {
                 let message = tr_args(
                     language,
                     "chatwidget.world_writable.and_more",
-                    &[("extra_count", &extra_count.to_string())],
+                    &[("count", &extra_count.to_string())],
                 );
                 lines.push(Line::from(message));
             }

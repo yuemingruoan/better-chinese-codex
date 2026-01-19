@@ -205,6 +205,9 @@ Requirements:
 Start now.
 '''
 
+[footer]
+token_usage = "↑ ${input_prior} + ${input_last} tokens (${cached_prior} + ${cached_last} tokens cache) ↓ ${output_prior} + ${output_last} tokens (${reasoning_prior} + ${reasoning_last} reasoning tokens)"
+
 [footer.hint]
 edit_previous = " to edit previous message"
 edit_previous_again = " again to edit previous message"
@@ -215,8 +218,6 @@ shortcuts = " for shortcuts"
 [footer.context]
 used = "context used"
 used_suffix = "used"
-
-footer.token_usage = "↑ ${input_prior} + ${input_last} tokens (${cached_prior} + ${cached_last} tokens cache) ↓ ${output_prior} + ${output_last} tokens (${reasoning_prior} + ${reasoning_last} reasoning tokens)"
 
 [footer.shortcuts]
 commands = " for commands"
@@ -291,6 +292,13 @@ label = "Limits"
 reset_at = "(${resets_at} reset)"
 stale_warning = "Limit data may be stale; start a new chat to refresh."
 warning_label = "Warning"
+credits_balance = "${amount} credits"
+credits_label = "Credits"
+credits_unlimited = "Unlimited"
+default_primary_window = "5 hours"
+default_secondary_window = "weekly"
+remaining_percent = "${percent}% left"
+window_label = "${label} limit"
 
 [status.fields]
 account = "Account"
@@ -307,14 +315,6 @@ token_usage = "Token usage"
 rate_limits_and_credits = "information on rate limits and credits"
 up_to_date_prefix = " for up-to-date"
 visit_prefix = "Visit "
-
-status.rate_limits.credits_balance = "${amount} credits"
-status.rate_limits.credits_label = "Credits"
-status.rate_limits.credits_unlimited = "Unlimited"
-status.rate_limits.default_primary_window = "5 hours"
-status.rate_limits.default_secondary_window = "weekly"
-status.rate_limits.remaining_percent = "${percent}% left"
-status.rate_limits.window_label = "${label} limit"
 
 [model_migration.option]
 try_new_model = "Try new model"

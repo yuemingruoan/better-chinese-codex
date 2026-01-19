@@ -202,6 +202,9 @@ checkpoint = '''请根据当前会话与工作区的最新进展，在仓库的 
 请立即开始执行上述步骤。
 '''
 
+[footer]
+token_usage = "↑ ${input_prior} + ${input_last} tokens（${cached_prior} + ${cached_last} tokens 缓存）↓ ${output_prior} + ${output_last} tokens（${reasoning_prior} + ${reasoning_last} 推理 tokens）"
+
 [footer.hint]
 shortcuts = " 查看快捷键"
 queue_message = " 排队发送"
@@ -212,8 +215,6 @@ edit_previous = " 编辑上一条消息"
 [footer.context]
 used = "上下文已用"
 used_suffix = "已用"
-
-footer.token_usage = "↑ ${input_prior} + ${input_last} tokens（${cached_prior} + ${cached_last} tokens 缓存）↓ ${output_prior} + ${output_last} tokens（${reasoning_prior} + ${reasoning_last} 推理 tokens）"
 
 [footer.shortcuts]
 commands = " 命令"
@@ -288,6 +289,13 @@ data_not_available = "暂无数据"
 warning_label = "警告"
 stale_warning = "限额数据可能已过期，请开始新的对话刷新。"
 reset_at = "（${resets_at} 重置）"
+default_primary_window = "5 小时"
+default_secondary_window = "每周"
+window_label = "${label} 限额"
+remaining_percent = "剩余 ${percent}%"
+credits_label = "额度"
+credits_unlimited = "无限额度"
+credits_balance = "${amount} 额度"
 
 [status.fields]
 model = "模型"
@@ -304,14 +312,6 @@ context_window = "上下文窗口"
 visit_prefix = "访问 "
 up_to_date_prefix = " 获取最新的"
 rate_limits_and_credits = "速率限制与额度信息"
-
-status.rate_limits.default_primary_window = "5 小时"
-status.rate_limits.default_secondary_window = "每周"
-status.rate_limits.window_label = "${label} 限额"
-status.rate_limits.remaining_percent = "剩余 ${percent}%"
-status.rate_limits.credits_label = "额度"
-status.rate_limits.credits_unlimited = "无限额度"
-status.rate_limits.credits_balance = "${amount} 额度"
 
 [model_migration.option]
 try_new_model = "试用新模型"

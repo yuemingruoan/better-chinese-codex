@@ -1196,12 +1196,7 @@ impl ChatWidget {
         self.sync_unified_exec_footer();
 
         if reason != TurnAbortReason::ReviewEnded {
-            let message = tr(
-                self.config.language,
-                tr(self.config.language, "chatwidget.stream.interrupted").to_string(),
-                "Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/feedback` to report the issue.",
-            )
-            .to_string();
+            let message = tr(self.config.language, "chatwidget.stream.interrupted").to_string();
             self.add_to_history(history_cell::new_error_event(message));
         }
 
@@ -2351,7 +2346,7 @@ impl ChatWidget {
                         Err(e) => tr_args(
                             language,
                             "chatwidget.diff.failed",
-                            &[("err", &e.to_string())],
+                            &[("error", &e.to_string())],
                         ),
                     };
                     tx.send(AppEvent::DiffResult(text));
@@ -3147,12 +3142,7 @@ impl ChatWidget {
                     self.on_interrupted_turn(ev.reason);
                 }
                 TurnAbortReason::Replaced => {
-                    let message = tr(
-                        self.config.language,
-                        tr(self.config.language, "chatwidget.task.replaced").to_string(),
-                        "Turn aborted: replaced by a new task",
-                    )
-                    .to_string();
+                    let message = tr(self.config.language, "chatwidget.task.replaced").to_string();
                     self.on_error(message)
                 }
                 TurnAbortReason::ReviewEnded => {
@@ -3247,9 +3237,9 @@ impl ChatWidget {
             self.bottom_pane.set_task_running(true);
         }
         self.is_review_mode = true;
-        let hint = review
-            .user_facing_hint
-            .unwrap_or_else(|| codex_core::review_prompts::user_facing_hint(&review.target));
+        let hint = review.user_facing_hint.unwrap_or_else(|| {
+            codex_core::review_prompts::user_facing_hint(&review.target, self.config.language)
+        });
         let banner = tr_args(
             self.config.language,
             "chatwidget.review.started",
