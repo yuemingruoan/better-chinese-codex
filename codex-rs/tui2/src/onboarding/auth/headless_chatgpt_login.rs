@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use tokio::sync::Notify;
 
+use crate::i18n::tr;
 use crate::shimmer::shimmer_spans;
 use crate::tui::FrameRequester;
 
@@ -134,10 +135,11 @@ pub(super) fn render_device_code_login(
     buf: &mut Buffer,
     state: &ContinueWithDeviceCodeState,
 ) {
+    let language = widget.language;
     let banner = if state.device_code.is_some() {
-        "Finish signing in via your browser"
+        tr(language, "onboarding.auth.device_code.banner.finish")
     } else {
-        "Preparing device code login"
+        tr(language, "onboarding.auth.device_code.banner.preparing")
     };
 
     let mut spans = vec!["  ".into()];
@@ -154,16 +156,14 @@ pub(super) fn render_device_code_login(
     let mut lines = vec![spans.into(), "".into()];
 
     if let Some(device_code) = &state.device_code {
-        lines.push("  1. Open this link in your browser and sign in".into());
+        lines.push(tr(language, "onboarding.auth.device_code.step1").into());
         lines.push("".into());
         lines.push(Line::from(vec![
             "  ".into(),
             device_code.verification_url.as_str().cyan().underlined(),
         ]));
         lines.push("".into());
-        lines.push(
-            "  2. Enter this one-time code after you are signed in (expires in 15 minutes)".into(),
-        );
+        lines.push(tr(language, "onboarding.auth.device_code.step2").into());
         lines.push("".into());
         lines.push(Line::from(vec![
             "  ".into(),
@@ -171,17 +171,25 @@ pub(super) fn render_device_code_login(
         ]));
         lines.push("".into());
         lines.push(
-            "  Device codes are a common phishing target. Never share this code."
+            tr(language, "onboarding.auth.device_code.phishing_warning")
                 .dim()
                 .into(),
         );
         lines.push("".into());
     } else {
-        lines.push("  Requesting a one-time code...".dim().into());
+        lines.push(
+            tr(language, "onboarding.auth.device_code.requesting")
+                .dim()
+                .into(),
+        );
         lines.push("".into());
     }
 
-    lines.push("  Press Esc to cancel".dim().into());
+    lines.push(
+        tr(language, "onboarding.auth.press_esc_cancel")
+            .dim()
+            .into(),
+    );
     Paragraph::new(lines)
         .wrap(Wrap { trim: false })
         .render(area, buf);

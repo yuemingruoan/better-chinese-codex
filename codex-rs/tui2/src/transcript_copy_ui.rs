@@ -273,7 +273,7 @@ impl TranscriptCopyUi {
         let key_label: Span<'static> = self.key_binding().into();
         let key_label = key_label.content.as_ref().to_string();
 
-        let copy_label = tr(self.language, "复制", "copy");
+        let copy_label = tr(self.language, "transcript_copy.copy");
         let pill_text = format!(" ⧉ {copy_label} {key_label} ");
         let pill_width = UnicodeWidthStr::width(pill_text.as_str());
         if pill_width == 0 || area.width == 0 {

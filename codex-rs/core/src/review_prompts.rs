@@ -1,7 +1,11 @@
 use codex_git::merge_base_with_head;
+use codex_protocol::config_types::Language;
 use codex_protocol::protocol::ReviewRequest;
 use codex_protocol::protocol::ReviewTarget;
 use std::path::Path;
+
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResolvedReviewRequest {
@@ -10,24 +14,16 @@ pub struct ResolvedReviewRequest {
     pub user_facing_hint: String,
 }
 
-const UNCOMMITTED_PROMPT: &str = "Review the current code changes (staged, unstaged, and untracked files) and provide prioritized findings.";
-
-const BASE_BRANCH_PROMPT_BACKUP: &str = "Review the code changes against the base branch '{branch}'. Start by finding the merge diff between the current branch and {branch}'s upstream e.g. (`git merge-base HEAD \"$(git rev-parse --abbrev-ref \"{branch}@{upstream}\")\"`), then run `git diff` against that SHA to see what changes we would merge into the {branch} branch. Provide prioritized, actionable findings.";
-const BASE_BRANCH_PROMPT: &str = "Review the code changes against the base branch '{baseBranch}'. The merge base commit for this comparison is {mergeBaseSha}. Run `git diff {mergeBaseSha}` to inspect the changes relative to {baseBranch}. Provide prioritized, actionable findings.";
-
-const COMMIT_PROMPT_WITH_TITLE: &str = "Review the code changes introduced by commit {sha} (\"{title}\"). Provide prioritized, actionable findings.";
-const COMMIT_PROMPT: &str =
-    "Review the code changes introduced by commit {sha}. Provide prioritized, actionable findings.";
-
 pub fn resolve_review_request(
     request: ReviewRequest,
     cwd: &Path,
+    language: Language,
 ) -> anyhow::Result<ResolvedReviewRequest> {
     let target = request.target;
-    let prompt = review_prompt(&target, cwd)?;
+    let prompt = review_prompt(&target, cwd, language)?;
     let user_facing_hint = request
         .user_facing_hint
-        .unwrap_or_else(|| user_facing_hint(&target));
+        .unwrap_or_else(|| user_facing_hint(&target, language));
 
     Ok(ResolvedReviewRequest {
         target,
@@ -36,47 +32,73 @@ pub fn resolve_review_request(
     })
 }
 
-pub fn review_prompt(target: &ReviewTarget, cwd: &Path) -> anyhow::Result<String> {
+pub fn review_prompt(
+    target: &ReviewTarget,
+    cwd: &Path,
+    language: Language,
+) -> anyhow::Result<String> {
     match target {
-        ReviewTarget::UncommittedChanges => Ok(UNCOMMITTED_PROMPT.to_string()),
+        ReviewTarget::UncommittedChanges => {
+            Ok(tr(language, "review.prompt.uncommitted").to_string())
+        }
         ReviewTarget::BaseBranch { branch } => {
             if let Some(commit) = merge_base_with_head(cwd, branch)? {
-                Ok(BASE_BRANCH_PROMPT
-                    .replace("{baseBranch}", branch)
-                    .replace("{mergeBaseSha}", &commit))
+                Ok(tr_args(
+                    language,
+                    "review.prompt.base_branch",
+                    &[("baseBranch", branch.as_str()), ("mergeBaseSha", &commit)],
+                ))
             } else {
-                Ok(BASE_BRANCH_PROMPT_BACKUP.replace("{branch}", branch))
+                Ok(tr_args(
+                    language,
+                    "review.prompt.base_branch_backup",
+                    &[("branch", branch.as_str())],
+                ))
             }
         }
         ReviewTarget::Commit { sha, title } => {
             if let Some(title) = title {
-                Ok(COMMIT_PROMPT_WITH_TITLE
-                    .replace("{sha}", sha)
-                    .replace("{title}", title))
+                Ok(tr_args(
+                    language,
+                    "review.prompt.commit_with_title",
+                    &[("sha", sha.as_str()), ("title", title.as_str())],
+                ))
             } else {
-                Ok(COMMIT_PROMPT.replace("{sha}", sha))
+                Ok(tr_args(
+                    language,
+                    "review.prompt.commit",
+                    &[("sha", sha.as_str())],
+                ))
             }
         }
         ReviewTarget::Custom { instructions } => {
             let prompt = instructions.trim();
             if prompt.is_empty() {
-                anyhow::bail!("Review prompt cannot be empty");
+                anyhow::bail!(tr(language, "review.error.empty_prompt"));
             }
             Ok(prompt.to_string())
         }
     }
 }
 
-pub fn user_facing_hint(target: &ReviewTarget) -> String {
+pub fn user_facing_hint(target: &ReviewTarget, language: Language) -> String {
     match target {
-        ReviewTarget::UncommittedChanges => "current changes".to_string(),
-        ReviewTarget::BaseBranch { branch } => format!("changes against '{branch}'"),
+        ReviewTarget::UncommittedChanges => tr(language, "review.hint.uncommitted").to_string(),
+        ReviewTarget::BaseBranch { branch } => tr_args(
+            language,
+            "review.hint.base_branch",
+            &[("branch", branch.as_str())],
+        ),
         ReviewTarget::Commit { sha, title } => {
             let short_sha: String = sha.chars().take(7).collect();
             if let Some(title) = title {
-                format!("commit {short_sha}: {title}")
+                tr_args(
+                    language,
+                    "review.hint.commit_with_title",
+                    &[("sha", &short_sha), ("title", title.as_str())],
+                )
             } else {
-                format!("commit {short_sha}")
+                tr_args(language, "review.hint.commit", &[("sha", &short_sha)])
             }
         }
         ReviewTarget::Custom { instructions } => instructions.trim().to_string(),

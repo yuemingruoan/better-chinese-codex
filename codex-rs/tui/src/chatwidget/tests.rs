@@ -9,6 +9,7 @@ use crate::app_event::AppEvent;
 use crate::app_event::ExitMode;
 use crate::app_event_sender::AppEventSender;
 use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::test_backend::VT100Backend;
 use crate::tui::FrameRequester;
 use assert_matches::assert_matches;
@@ -220,7 +221,12 @@ async fn entered_review_mode_defaults_to_current_changes_banner() {
 
     let cells = drain_insert_history(&mut rx);
     let banner = lines_to_single_string(cells.last().expect("review banner"));
-    assert_eq!(banner, ">> 代码审查开始：current changes <<\n");
+    let expected = tr_args(
+        chat.config.language,
+        "chatwidget.review.started",
+        &[("hint", tr(chat.config.language, "review.hint.uncommitted"))],
+    );
+    assert_eq!(banner, format!("{expected}\n"));
     assert!(chat.is_review_mode);
 }
 
@@ -230,8 +236,8 @@ async fn review_restores_context_window_indicator() {
     let (mut chat, mut rx, _ops) = make_chatwidget_manual(None).await;
 
     let context_window = 13_000;
-    let pre_review_tokens = 12_700; // ~30% left after subtracting baseline.
-    let review_tokens = 12_030; // ~97% left after subtracting baseline.
+    let pre_review_tokens = 12_700; // ~70% used after subtracting baseline.
+    let review_tokens = 12_030; // ~3% used after subtracting baseline.
 
     chat.handle_codex_event(Event {
         id: "token-before".into(),
@@ -240,7 +246,7 @@ async fn review_restores_context_window_indicator() {
             rate_limits: None,
         }),
     });
-    assert_eq!(chat.bottom_pane.context_window_percent(), Some(30));
+    assert_eq!(chat.bottom_pane.context_window_percent(), Some(70));
 
     chat.handle_codex_event(Event {
         id: "review-start".into(),
@@ -259,7 +265,7 @@ async fn review_restores_context_window_indicator() {
             rate_limits: None,
         }),
     });
-    assert_eq!(chat.bottom_pane.context_window_percent(), Some(97));
+    assert_eq!(chat.bottom_pane.context_window_percent(), Some(3));
 
     chat.handle_codex_event(Event {
         id: "review-end".into(),
@@ -269,7 +275,7 @@ async fn review_restores_context_window_indicator() {
     });
     let _ = drain_insert_history(&mut rx);
 
-    assert_eq!(chat.bottom_pane.context_window_percent(), Some(30));
+    assert_eq!(chat.bottom_pane.context_window_percent(), Some(70));
     assert!(!chat.is_review_mode);
 }
 
@@ -288,7 +294,7 @@ async fn token_count_none_resets_context_indicator() {
             rate_limits: None,
         }),
     });
-    assert_eq!(chat.bottom_pane.context_window_percent(), Some(30));
+    assert_eq!(chat.bottom_pane.context_window_percent(), Some(70));
 
     chat.handle_codex_event(Event {
         id: "token-cleared".into(),
@@ -331,6 +337,24 @@ async fn context_indicator_shows_used_tokens_when_window_unknown() {
         chat.bottom_pane.context_window_used_tokens(),
         Some(total_tokens)
     );
+}
+
+#[tokio::test]
+async fn context_indicator_allows_overflow_percent() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(None).await;
+
+    let context_window = 13_000;
+    let total_tokens = 13_500; // 150% of the effective window after baseline.
+
+    chat.handle_codex_event(Event {
+        id: "token-overflow".into(),
+        msg: EventMsg::TokenCount(TokenCountEvent {
+            info: Some(make_token_info(total_tokens, context_window)),
+            rate_limits: None,
+        }),
+    });
+
+    assert_eq!(chat.bottom_pane.context_window_percent(), Some(150));
 }
 
 #[cfg_attr(
@@ -1541,10 +1565,10 @@ async fn slash_init_skips_when_project_doc_exists() {
         "info message should mention the existing file: {rendered:?}"
     );
     assert!(
-        rendered.contains(tr(
+        rendered.contains(&tr_args(
             chat.config.language,
-            "为避免覆盖已跳过 /init",
-            "Skipping /init"
+            "chatwidget.slash.init_exists",
+            &[("filename", DEFAULT_PROJECT_DOC_FILENAME)],
         )),
         "info message should explain why /init was skipped: {rendered:?}"
     );
@@ -1621,11 +1645,7 @@ async fn slash_rollout_handles_missing_path() {
     );
     let rendered = lines_to_single_string(&cells[0]);
     assert!(
-        rendered.contains(tr(
-            chat.config.language,
-            "当前尚无 rollout 路径。",
-            "Rollout path is not available yet."
-        )),
+        rendered.contains(tr(chat.config.language, "chatwidget.rollout.not_available")),
         "expected missing rollout path message: {rendered}"
     );
 }
@@ -1662,11 +1682,7 @@ async fn undo_success_events_render_info_messages() {
 
     let completed = lines_to_single_string(&cells[0]);
     assert!(
-        completed.contains(tr(
-            chat.config.language,
-            "撤销已完成。",
-            "Undo completed successfully."
-        )),
+        completed.contains(tr(chat.config.language, "chatwidget.undo.success")),
         "expected default success message, got {completed:?}"
     );
 }
@@ -1922,11 +1938,7 @@ async fn review_custom_prompt_escape_navigates_back_then_dismisses() {
     // Verify child view is on top.
     let header = render_bottom_first_row(&chat, 60);
     assert!(
-        collapse_whitespace(&header).contains(tr(
-            chat.config.language,
-            "自定义审查指令",
-            "Custom review instructions"
-        )),
+        collapse_whitespace(&header).contains(tr(chat.config.language, "chatwidget.review.custom")),
         "expected custom prompt view header: {header:?}"
     );
 
@@ -1934,11 +1946,7 @@ async fn review_custom_prompt_escape_navigates_back_then_dismisses() {
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     let header = render_bottom_first_row(&chat, 60);
     assert!(
-        collapse_whitespace(&header).contains(tr(
-            chat.config.language,
-            "选择审查预设",
-            "Choose a review preset"
-        )),
+        collapse_whitespace(&header).contains(tr(chat.config.language, "chatwidget.review.title")),
         "expected to return to parent review popup: {header:?}"
     );
 
@@ -1968,8 +1976,7 @@ async fn review_branch_picker_escape_navigates_back_then_dismisses() {
     assert!(
         collapse_whitespace(&header).contains(tr(
             chat.config.language,
-            "选择基础分支",
-            "Choose base branch"
+            "chatwidget.review.base_branch_title"
         )),
         "expected branch picker header: {header:?}"
     );
@@ -1978,11 +1985,7 @@ async fn review_branch_picker_escape_navigates_back_then_dismisses() {
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     let header = render_bottom_first_row(&chat, 60);
     assert!(
-        collapse_whitespace(&header).contains(tr(
-            chat.config.language,
-            "选择审查预设",
-            "Choose a review preset"
-        )),
+        collapse_whitespace(&header).contains(tr(chat.config.language, "chatwidget.review.title")),
         "expected to return to parent review popup: {header:?}"
     );
 
@@ -2447,17 +2450,20 @@ async fn reasoning_popup_escape_returns_to_model_popup() {
     chat.open_reasoning_popup(preset);
 
     let before_escape = render_bottom_popup(&chat, 80);
-    let expected_reasoning_header = collapse_whitespace(&match chat.config.language {
-        Language::ZhCn => "选择 gpt-5.1-codex-max 的推理强度".to_string(),
-        Language::En => "Select Reasoning Level for gpt-5.1-codex-max".to_string(),
-    });
+    let expected_reasoning_header = collapse_whitespace(&tr_args(
+        chat.config.language,
+        "chatwidget.reasoning.select_title",
+        &[("model", "gpt-5.1-codex-max")],
+    ));
     assert!(collapse_whitespace(&before_escape).contains(&expected_reasoning_header));
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
     let after_escape = render_bottom_popup(&chat, 80);
-    let expected_model_header =
-        collapse_whitespace(tr(chat.config.language, "选择模型", "Select Model"));
+    let expected_model_header = collapse_whitespace(tr(
+        chat.config.language,
+        "chatwidget.model_popup.quick_title",
+    ));
     assert!(collapse_whitespace(&after_escape).contains(&expected_model_header));
     assert!(!collapse_whitespace(&after_escape).contains(&expected_reasoning_header));
 }
@@ -2602,11 +2608,7 @@ async fn approvals_popup_navigation_skips_disabled() {
         .expect("render approvals popup after disabled selection");
     let screen = terminal.backend().vt100().screen().contents();
     assert!(
-        screen.contains(tr(
-            chat.config.language,
-            "选择授权模式",
-            "Select Approval Mode"
-        )),
+        screen.contains(tr(chat.config.language, "chatwidget.approvals.title")),
         "popup should remain open after selecting a disabled entry"
     );
     assert!(
@@ -3576,7 +3578,7 @@ async fn plan_update_renders_history_cell() {
     assert!(!cells.is_empty(), "expected plan update cell to be sent");
     let blob = lines_to_single_string(cells.last().unwrap());
     assert!(
-        blob.contains(tr(chat.config.language, "计划已更新", "Updated Plan")),
+        blob.contains(tr(chat.config.language, "history.plan.updated")),
         "missing plan header: {blob:?}"
     );
     assert!(blob.contains("Explore codebase"));
@@ -3664,7 +3666,7 @@ async fn stream_recovery_restores_previous_status_header() {
     assert_eq!(status.details(), None);
     assert_eq!(
         status.header(),
-        tr(chat.config.language, "运行中", "Running")
+        tr(chat.config.language, "chatwidget.status.running")
     );
     assert!(chat.retry_status_header.is_none());
 }

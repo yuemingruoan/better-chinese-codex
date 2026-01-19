@@ -78,6 +78,7 @@ use codex_core::protocol::TurnDiffEvent;
 use codex_core::review_format::format_review_findings_block;
 use codex_core::review_prompts;
 use codex_protocol::ThreadId;
+use codex_protocol::config_types::Language;
 use codex_protocol::plan_tool::UpdatePlanArgs;
 use codex_protocol::protocol::ReviewOutputEvent;
 use std::collections::HashMap;
@@ -100,6 +101,7 @@ pub(crate) async fn apply_bespoke_event_handling(
     turn_summary_store: TurnSummaryStore,
     api_version: ApiVersion,
     fallback_model_provider: String,
+    language: Language,
 ) {
     let Event {
         id: event_turn_id,
@@ -426,9 +428,9 @@ pub(crate) async fn apply_bespoke_event_handling(
                 .await;
         }
         EventMsg::EnteredReviewMode(review_request) => {
-            let review = review_request
-                .user_facing_hint
-                .unwrap_or_else(|| review_prompts::user_facing_hint(&review_request.target));
+            let review = review_request.user_facing_hint.unwrap_or_else(|| {
+                review_prompts::user_facing_hint(&review_request.target, language)
+            });
             let item = ThreadItem::EnteredReviewMode {
                 id: event_turn_id.clone(),
                 review,

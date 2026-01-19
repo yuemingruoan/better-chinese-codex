@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
+use codex_protocol::config_types::Language;
 use crossterm::SynchronizedUpdate;
 use crossterm::event::DisableBracketedPaste;
 use crossterm::event::DisableFocusChange;
@@ -38,6 +39,7 @@ use tokio_stream::Stream;
 pub use self::frame_requester::FrameRequester;
 use crate::custom_terminal;
 use crate::custom_terminal::Terminal as CustomTerminal;
+use crate::i18n::tr;
 use crate::notifications::DesktopNotificationBackend;
 use crate::notifications::NotificationBackendKind;
 use crate::notifications::detect_backend;
@@ -96,12 +98,18 @@ pub fn restore() -> Result<()> {
 }
 
 /// Initialize the terminal (inline viewport; no always-on scrollback printing).
-pub fn init() -> Result<Terminal> {
+pub fn init(language: Language) -> Result<Terminal> {
     if !stdin().is_terminal() {
-        return Err(std::io::Error::other("stdin is not a terminal"));
+        return Err(std::io::Error::other(tr(
+            language,
+            "terminal.error.stdin_not_terminal",
+        )));
     }
     if !stdout().is_terminal() {
-        return Err(std::io::Error::other("stdout is not a terminal"));
+        return Err(std::io::Error::other(tr(
+            language,
+            "terminal.error.stdout_not_terminal",
+        )));
     }
     set_modes()?;
 

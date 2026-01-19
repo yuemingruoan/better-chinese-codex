@@ -16,6 +16,7 @@ use crate::history_cell::HistoryCell;
 use crate::history_cell::UserHistoryCell;
 use crate::i18n::language_name;
 use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::model_migration::ModelMigrationOutcome;
 use crate::model_migration::migration_copy_for_models;
 use crate::model_migration::run_model_migration_prompt;
@@ -174,14 +175,11 @@ fn emit_skill_load_warnings(
     }
 
     let error_count = errors.len();
-    let message = match language {
-        Language::ZhCn => {
-            format!("由于 SKILL.md 无效，已跳过加载 {error_count} 个技能。")
-        }
-        Language::En => {
-            format!("Skipped loading {error_count} skill(s) due to invalid SKILL.md files.")
-        }
-    };
+    let message = tr_args(
+        language,
+        "app.skills.invalid",
+        &[("error_count", &error_count.to_string())],
+    );
     app_event_tx.send(AppEvent::InsertHistoryCell(Box::new(
         crate::history_cell::new_warning_event(message),
     )));
@@ -514,10 +512,11 @@ impl App {
                     .await
                     .wrap_err_with(|| {
                         let path_display = path.display();
-                        match config.language {
-                            Language::ZhCn => format!("无法从 {path_display} 恢复会话"),
-                            Language::En => format!("Failed to resume session from {path_display}"),
-                        }
+                        tr_args(
+                            config.language,
+                            "app.session.resume_failed",
+                            &[("path", &path_display.to_string())],
+                        )
                     })?;
                 let init = crate::chatwidget::ChatWidgetInit {
                     config: config.clone(),
@@ -540,7 +539,11 @@ impl App {
                     .await
                     .wrap_err_with(|| {
                         let path_display = path.display();
-                        format!("Failed to fork session from {path_display}")
+                        tr_args(
+                            config.language,
+                            "app.session.fork_failed",
+                            &[("path", &path_display.to_string())],
+                        )
                     })?;
                 let init = crate::chatwidget::ChatWidgetInit {
                     config: config.clone(),
@@ -1479,12 +1482,7 @@ impl App {
                     let mut lines: Vec<Line<'static>> = vec![summary.usage_line.clone().into()];
                     if let Some(command) = summary.resume_command {
                         let spans = vec![
-                            tr(
-                                self.config.language,
-                                "继续该会话请运行 ",
-                                "To continue this session, run ",
-                            )
-                            .into(),
+                            tr(self.config.language, "app.session.resume_hint").into(),
                             command.cyan(),
                         ];
                         lines.push(spans.into());
@@ -1542,12 +1540,8 @@ impl App {
                                         vec![summary.usage_line.clone().into()];
                                     if let Some(command) = summary.resume_command {
                                         let spans = vec![
-                                            tr(
-                                                self.config.language,
-                                                "继续该会话请运行 ",
-                                                "To continue this session, run ",
-                                            )
-                                            .into(),
+                                            tr(self.config.language, "app.session.resume_hint")
+                                                .into(),
                                             command.cyan(),
                                         ];
                                         lines.push(spans.into());
@@ -1556,17 +1550,14 @@ impl App {
                                 }
                             }
                             Err(err) => {
-                                let message = match self.config.language {
-                                    Language::ZhCn => {
-                                        format!("从 {} 恢复会话失败：{err}", path.display())
-                                    }
-                                    Language::En => {
-                                        format!(
-                                            "Failed to resume session from {}: {err}",
-                                            path.display()
-                                        )
-                                    }
-                                };
+                                let message = tr_args(
+                                    self.config.language,
+                                    "app.session.resume_failed_detail",
+                                    &[
+                                        ("path", &path.display().to_string()),
+                                        ("error", &err.to_string()),
+                                    ],
+                                );
                                 self.chat_widget.add_error_message(message);
                             }
                         }
@@ -1624,12 +1615,8 @@ impl App {
                                         vec![summary.usage_line.clone().into()];
                                     if let Some(command) = summary.resume_command {
                                         let spans = vec![
-                                            tr(
-                                                self.config.language,
-                                                "继续该会话请运行 ",
-                                                "To continue this session, run ",
-                                            )
-                                            .into(),
+                                            tr(self.config.language, "app.session.resume_hint")
+                                                .into(),
                                             command.cyan(),
                                         ];
                                         lines.push(spans.into());
@@ -1639,14 +1626,14 @@ impl App {
                             }
                             Err(err) => {
                                 let path_display = path.display();
-                                let message = match self.config.language {
-                                    Language::ZhCn => {
-                                        format!("从 {path_display} 分叉会话失败：{err}")
-                                    }
-                                    Language::En => {
-                                        format!("Failed to fork session from {path_display}: {err}")
-                                    }
-                                };
+                                let message = tr_args(
+                                    self.config.language,
+                                    "app.session.fork_failed_detail",
+                                    &[
+                                        ("path", &path_display.to_string()),
+                                        ("error", &err.to_string()),
+                                    ],
+                                );
                                 self.chat_widget.add_error_message(message);
                             }
                         }
@@ -1723,20 +1710,17 @@ impl App {
                 let _ = tui.enter_alt_screen();
                 let pager_lines: Vec<ratatui::text::Line<'static>> = if text.trim().is_empty() {
                     vec![
-                        tr(
-                            self.config.language,
-                            "未检测到变更。",
-                            "No changes detected.",
-                        )
-                        .italic()
-                        .into(),
+                        tr(self.config.language, "app.diff.no_changes")
+                            .italic()
+                            .into(),
                     ]
                 } else {
                     text.lines().map(ansi_escape_line).collect()
                 };
                 self.overlay = Some(Overlay::new_static_with_lines(
                     pager_lines,
-                    "D I F F".to_string(),
+                    tr(self.config.language, "app.diff.title").to_string(),
+                    self.config.language,
                 ));
                 tui.frame_requester().schedule_frame();
             }
@@ -1931,26 +1915,16 @@ impl App {
                                 self.app_event_tx
                                     .send(AppEvent::UpdateSandboxPolicy(preset.sandbox.clone()));
                                 let message = match mode {
-                                    WindowsSandboxEnableMode::Elevated => {
-                                        match self.config.language {
-                                            Language::ZhCn => {
-                                                "已启用提升权限的代理沙盒。".to_string()
-                                            }
-                                            Language::En => {
-                                                "Enabled elevated agent sandbox.".to_string()
-                                            }
-                                        }
-                                    }
-                                    WindowsSandboxEnableMode::Legacy => {
-                                        match self.config.language {
-                                            Language::ZhCn => {
-                                                "已启用非提升权限的代理沙盒。".to_string()
-                                            }
-                                            Language::En => {
-                                                "Enabled non-elevated agent sandbox.".to_string()
-                                            }
-                                        }
-                                    }
+                                    WindowsSandboxEnableMode::Elevated => tr(
+                                        self.config.language,
+                                        "app.windows_sandbox.enabled_elevated",
+                                    )
+                                    .to_string(),
+                                    WindowsSandboxEnableMode::Legacy => tr(
+                                        self.config.language,
+                                        "app.windows_sandbox.enabled_non_elevated",
+                                    )
+                                    .to_string(),
                                 };
                                 self.chat_widget.add_info_message(message, None);
                             }
@@ -1960,14 +1934,11 @@ impl App {
                                 error = %err,
                                 "failed to enable Windows sandbox feature"
                             );
-                            let message = match self.config.language {
-                                Language::ZhCn => {
-                                    format!("启用 Windows 实验性沙盒失败：{err}")
-                                }
-                                Language::En => {
-                                    format!("Failed to enable the Windows sandbox feature: {err}")
-                                }
-                            };
+                            let message = tr_args(
+                                self.config.language,
+                                "app.windows_sandbox.enable_failed",
+                                &[("error", &err.to_string())],
+                            );
                             self.chat_widget.add_error_message(message);
                         }
                     }
@@ -1986,32 +1957,24 @@ impl App {
                     .await
                 {
                     Ok(()) => {
-                        let mut message = match self.config.language {
-                            Language::ZhCn => format!("模型已切换为 {model}"),
-                            Language::En => format!("Model changed to {model}"),
-                        };
+                        let mut message = tr_args(
+                            self.config.language,
+                            "app.model.changed",
+                            &[("model", &model)],
+                        );
                         if let Some(label) =
                             Self::reasoning_label_for(&model, effort, self.config.language)
                         {
-                            match self.config.language {
-                                Language::ZhCn => message.push('，'),
-                                Language::En => message.push(' '),
-                            }
+                            message
+                                .push_str(tr(self.config.language, "app.model.effort_separator"));
                             message.push_str(label);
                         }
                         if let Some(profile) = profile {
-                            match self.config.language {
-                                Language::ZhCn => {
-                                    message.push_str("（配置档：");
-                                    message.push_str(profile);
-                                    message.push('）');
-                                }
-                                Language::En => {
-                                    message.push_str(" for ");
-                                    message.push_str(profile);
-                                    message.push_str(" profile");
-                                }
-                            }
+                            message.push_str(&tr_args(
+                                self.config.language,
+                                "app.model.profile_suffix",
+                                &[("profile", profile)],
+                            ));
                         }
                         self.chat_widget.add_info_message(message, None);
                     }
@@ -2021,19 +1984,17 @@ impl App {
                             "failed to persist model selection"
                         );
                         let message = if let Some(profile) = profile {
-                            match self.config.language {
-                                Language::ZhCn => {
-                                    format!("保存配置 `{profile}` 的模型失败：{err}")
-                                }
-                                Language::En => {
-                                    format!("Failed to save model for profile `{profile}`: {err}")
-                                }
-                            }
+                            tr_args(
+                                self.config.language,
+                                "app.model.save_profile_failed",
+                                &[("profile", profile), ("error", &err.to_string())],
+                            )
                         } else {
-                            match self.config.language {
-                                Language::ZhCn => format!("保存默认模型失败：{err}"),
-                                Language::En => format!("Failed to save default model: {err}"),
-                            }
+                            tr_args(
+                                self.config.language,
+                                "app.model.save_default_failed",
+                                &[("error", &err.to_string())],
+                            )
                         };
                         self.chat_widget.add_error_message(message);
                     }
@@ -2047,10 +2008,8 @@ impl App {
                 {
                     Ok(()) => {
                         let label = language_name(language, language);
-                        let message = format!(
-                            "{}{label}",
-                            tr(language, "语言已切换为 ", "Language set to ")
-                        );
+                        let message =
+                            tr_args(language, "app.language.changed", &[("label", label)]);
                         self.chat_widget.add_info_message(message, None);
                     }
                     Err(err) => {
@@ -2058,9 +2017,10 @@ impl App {
                             error = %err,
                             "failed to persist language selection"
                         );
-                        let message = format!(
-                            "{}{err}",
-                            tr(language, "保存语言设置失败：", "Failed to save language: ")
+                        let message = tr_args(
+                            language,
+                            "app.language.save_failed",
+                            &[("error", &err.to_string())],
                         );
                         self.chat_widget.add_error_message(message);
                     }
@@ -2084,10 +2044,11 @@ impl App {
                             error = %err,
                             "failed to persist approval selection"
                         );
-                        let message = match self.config.language {
-                            Language::ZhCn => format!("保存授权设置失败：{err}"),
-                            Language::En => format!("Failed to save approval settings: {err}"),
-                        };
+                        let message = tr_args(
+                            self.config.language,
+                            "app.approvals.save_failed",
+                            &[("error", &err.to_string())],
+                        );
                         self.chat_widget.add_error_message(message);
                     }
                 }
@@ -2095,10 +2056,11 @@ impl App {
             AppEvent::UpdateAskForApprovalPolicy(policy) => {
                 if let Err(err) = self.config.approval_policy.set(policy) {
                     tracing::warn!(%err, "failed to set approval policy on app config");
-                    let message = match self.config.language {
-                        Language::ZhCn => format!("设置审批策略失败：{err}"),
-                        Language::En => format!("Failed to set approval policy: {err}"),
-                    };
+                    let message = tr_args(
+                        self.config.language,
+                        "app.approvals.policy_failed",
+                        &[("error", &err.to_string())],
+                    );
                     self.chat_widget.add_error_message(message);
                     return Ok(AppRunControl::Continue);
                 }
@@ -2114,10 +2076,11 @@ impl App {
 
                 if let Err(err) = self.config.sandbox_policy.set(policy.clone()) {
                     tracing::warn!(%err, "failed to set sandbox policy on app config");
-                    let message = match self.config.language {
-                        Language::ZhCn => format!("设置沙盒策略失败：{err}"),
-                        Language::En => format!("Failed to set sandbox policy: {err}"),
-                    };
+                    let message = tr_args(
+                        self.config.language,
+                        "app.sandbox.policy_failed",
+                        &[("error", &err.to_string())],
+                    );
                     self.chat_widget.add_error_message(message);
                     return Ok(AppRunControl::Continue);
                 }
@@ -2129,10 +2092,11 @@ impl App {
                 }
                 if let Err(err) = self.chat_widget.set_sandbox_policy(policy) {
                     tracing::warn!(%err, "failed to set sandbox policy on chat config");
-                    let message = match self.config.language {
-                        Language::ZhCn => format!("设置沙盒策略失败：{err}"),
-                        Language::En => format!("Failed to set sandbox policy: {err}"),
-                    };
+                    let message = tr_args(
+                        self.config.language,
+                        "app.sandbox.policy_failed",
+                        &[("error", &err.to_string())],
+                    );
                     self.chat_widget.add_error_message(message);
                     return Ok(AppRunControl::Continue);
                 }
@@ -2189,12 +2153,11 @@ impl App {
                         error = %err,
                         "failed to persist full access warning acknowledgement"
                     );
-                    let message = match self.config.language {
-                        Language::ZhCn => format!("保存完全访问确认偏好失败：{err}"),
-                        Language::En => {
-                            format!("Failed to save full access confirmation preference: {err}")
-                        }
-                    };
+                    let message = tr_args(
+                        self.config.language,
+                        "app.full_access.save_pref_failed",
+                        &[("error", &err.to_string())],
+                    );
                     self.chat_widget.add_error_message(message);
                 }
             }
@@ -2208,12 +2171,11 @@ impl App {
                         error = %err,
                         "failed to persist world-writable warning acknowledgement"
                     );
-                    let message = match self.config.language {
-                        Language::ZhCn => format!("保存代理模式警告偏好失败：{err}"),
-                        Language::En => {
-                            format!("Failed to save Agent mode warning preference: {err}")
-                        }
-                    };
+                    let message = tr_args(
+                        self.config.language,
+                        "app.world_writable.save_pref_failed",
+                        &[("error", &err.to_string())],
+                    );
                     self.chat_widget.add_error_message(message);
                 }
             }
@@ -2227,12 +2189,11 @@ impl App {
                         error = %err,
                         "failed to persist rate limit switch prompt preference"
                     );
-                    let message = match self.config.language {
-                        Language::ZhCn => format!("保存速率限制提醒偏好失败：{err}"),
-                        Language::En => {
-                            format!("Failed to save rate limit reminder preference: {err}")
-                        }
-                    };
+                    let message = tr_args(
+                        self.config.language,
+                        "app.rate_limit.save_pref_failed",
+                        &[("error", &err.to_string())],
+                    );
                     self.chat_widget.add_error_message(message);
                 }
             }
@@ -2249,12 +2210,11 @@ impl App {
                         error = %err,
                         "failed to persist model migration prompt acknowledgement"
                     );
-                    let message = match self.config.language {
-                        Language::ZhCn => format!("保存模型迁移提示偏好失败：{err}"),
-                        Language::En => {
-                            format!("Failed to save model migration prompt preference: {err}")
-                        }
-                    };
+                    let message = tr_args(
+                        self.config.language,
+                        "app.model_migration.save_pref_failed",
+                        &[("error", &err.to_string())],
+                    );
                     self.chat_widget.add_error_message(message);
                 }
             }
@@ -2276,7 +2236,8 @@ impl App {
                     let diff_summary = DiffSummary::new(changes, cwd);
                     self.overlay = Some(Overlay::new_static_with_renderables(
                         vec![diff_summary.into()],
-                        "P A T C H".to_string(),
+                        tr(self.config.language, "app.overlay.patch_title").to_string(),
+                        self.config.language,
                     ));
                 }
                 ApprovalRequest::Exec { command, .. } => {
@@ -2285,7 +2246,8 @@ impl App {
                     let full_cmd_lines = highlight_bash_to_lines(&full_cmd);
                     self.overlay = Some(Overlay::new_static_with_lines(
                         full_cmd_lines,
-                        "E X E C".to_string(),
+                        tr(self.config.language, "app.overlay.command_title").to_string(),
+                        self.config.language,
                     ));
                 }
                 ApprovalRequest::McpElicitation {
@@ -2302,7 +2264,8 @@ impl App {
                     .wrap(Wrap { trim: false });
                     self.overlay = Some(Overlay::new_static_with_renderables(
                         vec![Box::new(paragraph)],
-                        "E L I C I T A T I O N".to_string(),
+                        tr(self.config.language, "app.overlay.elicitation_title").to_string(),
+                        self.config.language,
                     ));
                 }
             },
@@ -2314,20 +2277,15 @@ impl App {
         reasoning_effort: Option<ReasoningEffortConfig>,
         language: Language,
     ) -> &'static str {
-        match (language, reasoning_effort) {
-            (Language::ZhCn, Some(ReasoningEffortConfig::Minimal)) => "推理强度：极低",
-            (Language::ZhCn, Some(ReasoningEffortConfig::Low)) => "推理强度：低",
-            (Language::ZhCn, Some(ReasoningEffortConfig::Medium)) => "推理强度：中",
-            (Language::ZhCn, Some(ReasoningEffortConfig::High)) => "推理强度：高",
-            (Language::ZhCn, Some(ReasoningEffortConfig::XHigh)) => "推理强度：极高",
-            (Language::ZhCn, None | Some(ReasoningEffortConfig::None)) => "推理强度：默认",
-            (Language::En, Some(ReasoningEffortConfig::Minimal)) => "minimal",
-            (Language::En, Some(ReasoningEffortConfig::Low)) => "low",
-            (Language::En, Some(ReasoningEffortConfig::Medium)) => "medium",
-            (Language::En, Some(ReasoningEffortConfig::High)) => "high",
-            (Language::En, Some(ReasoningEffortConfig::XHigh)) => "xhigh",
-            (Language::En, None | Some(ReasoningEffortConfig::None)) => "default",
-        }
+        let key = match reasoning_effort {
+            Some(ReasoningEffortConfig::Minimal) => "app.reasoning.minimal",
+            Some(ReasoningEffortConfig::Low) => "app.reasoning.low",
+            Some(ReasoningEffortConfig::Medium) => "app.reasoning.medium",
+            Some(ReasoningEffortConfig::High) => "app.reasoning.high",
+            Some(ReasoningEffortConfig::XHigh) => "app.reasoning.xhigh",
+            None | Some(ReasoningEffortConfig::None) => "app.reasoning.default",
+        };
+        tr(language, key)
     }
 
     fn reasoning_label_for(
@@ -2358,7 +2316,10 @@ impl App {
             } => {
                 // Enter alternate screen and set viewport to full size.
                 let _ = tui.enter_alt_screen();
-                self.overlay = Some(Overlay::new_transcript(self.transcript_cells.clone()));
+                self.overlay = Some(Overlay::new_transcript(
+                    self.transcript_cells.clone(),
+                    self.config.language,
+                ));
                 tui.frame_requester().schedule_frame();
             }
             // Esc primes/advances backtracking only in normal (not working) mode

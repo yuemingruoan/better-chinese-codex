@@ -12,7 +12,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
+use codex_protocol::config_types::Language;
+
 use crate::exec_command::relativize_to_home;
+use crate::i18n::tr;
 use crate::render::Insets;
 use crate::render::line_utils::prefix_lines;
 use crate::render::renderable::ColumnRenderable;
@@ -80,9 +83,10 @@ pub(crate) fn create_diff_summary(
     changes: &HashMap<PathBuf, FileChange>,
     cwd: &Path,
     wrap_cols: usize,
+    language: Language,
 ) -> Vec<RtLine<'static>> {
     let rows = collect_rows(changes);
-    render_changes_block(rows, wrap_cols, cwd)
+    render_changes_block(rows, wrap_cols, cwd, language)
 }
 
 // Shared row for per-file presentation
@@ -133,7 +137,12 @@ fn render_line_count_summary(added: usize, removed: usize) -> Vec<RtSpan<'static
     spans
 }
 
-fn render_changes_block(rows: Vec<Row>, wrap_cols: usize, cwd: &Path) -> Vec<RtLine<'static>> {
+fn render_changes_block(
+    rows: Vec<Row>,
+    wrap_cols: usize,
+    cwd: &Path,
+    language: Language,
+) -> Vec<RtLine<'static>> {
     let mut out: Vec<RtLine<'static>> = Vec::new();
 
     let render_path = |row: &Row| -> Vec<RtSpan<'static>> {
@@ -149,13 +158,13 @@ fn render_changes_block(rows: Vec<Row>, wrap_cols: usize, cwd: &Path) -> Vec<RtL
     let total_added: usize = rows.iter().map(|r| r.added).sum();
     let total_removed: usize = rows.iter().map(|r| r.removed).sum();
     let file_count = rows.len();
-    let noun = "个文件";
+    let noun = tr(language, "diff_render.noun.files");
     let mut header_spans: Vec<RtSpan<'static>> = vec!["• ".dim()];
     if let [row] = &rows[..] {
         let verb = match &row.change {
-            FileChange::Add { .. } => "新增",
-            FileChange::Delete { .. } => "删除",
-            _ => "修改",
+            FileChange::Add { .. } => tr(language, "diff_render.verb.add"),
+            FileChange::Delete { .. } => tr(language, "diff_render.verb.delete"),
+            _ => tr(language, "diff_render.verb.update"),
         };
         header_spans.push(verb.bold());
         header_spans.push(" ".into());
@@ -163,7 +172,7 @@ fn render_changes_block(rows: Vec<Row>, wrap_cols: usize, cwd: &Path) -> Vec<RtL
         header_spans.push(" ".into());
         header_spans.extend(render_line_count_summary(row.added, row.removed));
     } else {
-        header_spans.push("已修改".bold());
+        header_spans.push(tr(language, "diff_render.verb.changed").bold());
         header_spans.push(format!(" {file_count} {noun} ").into());
         header_spans.extend(render_line_count_summary(total_added, total_removed));
     }
@@ -439,7 +448,7 @@ mod tests {
     use ratatui::widgets::WidgetRef;
     use ratatui::widgets::Wrap;
     fn diff_summary_for_tests(changes: &HashMap<PathBuf, FileChange>) -> Vec<RtLine<'static>> {
-        create_diff_summary(changes, &PathBuf::from("/"), 80)
+        create_diff_summary(changes, &PathBuf::from("/"), 80, Language::ZhCn)
     }
 
     fn snapshot_lines(name: &str, lines: Vec<RtLine<'static>>, width: u16, height: u16) {
@@ -617,7 +626,7 @@ mod tests {
             },
         );
 
-        let lines = create_diff_summary(&changes, &PathBuf::from("/"), 72);
+        let lines = create_diff_summary(&changes, &PathBuf::from("/"), 72, Language::ZhCn);
 
         // Render with backend width wider than wrap width to avoid Paragraph auto-wrap.
         snapshot_lines("apply_update_block_wraps_long_lines", lines, 80, 12);
@@ -640,7 +649,7 @@ mod tests {
             },
         );
 
-        let lines = create_diff_summary(&changes, &PathBuf::from("/"), 28);
+        let lines = create_diff_summary(&changes, &PathBuf::from("/"), 28, Language::ZhCn);
         snapshot_lines_text("apply_update_block_wraps_long_lines_text", &lines);
     }
 
@@ -667,7 +676,7 @@ mod tests {
             },
         );
 
-        let lines = create_diff_summary(&changes, &PathBuf::from("/"), 80);
+        let lines = create_diff_summary(&changes, &PathBuf::from("/"), 80, Language::ZhCn);
         snapshot_lines_text("apply_update_block_line_numbers_three_digits_text", &lines);
     }
 
@@ -690,7 +699,7 @@ mod tests {
             },
         );
 
-        let lines = create_diff_summary(&changes, &cwd, 80);
+        let lines = create_diff_summary(&changes, &cwd, 80, Language::ZhCn);
 
         snapshot_lines("apply_update_block_relativizes_path", lines, 80, 10);
     }

@@ -154,6 +154,7 @@ use codex_login::ShutdownHandle;
 use codex_login::run_login_server;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ForcedLoginMethod;
+use codex_protocol::config_types::Language;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::GitInfo as CoreGitInfo;
@@ -310,6 +311,7 @@ impl CodexMessageProcessor {
 
     fn review_request_from_target(
         target: ApiReviewTarget,
+        language: Language,
     ) -> Result<(ReviewRequest, String), JSONRPCErrorError> {
         fn invalid_request(message: String) -> JSONRPCErrorError {
             JSONRPCErrorError {
@@ -358,7 +360,7 @@ impl CodexMessageProcessor {
             ApiReviewTarget::Custom { instructions } => CoreReviewTarget::Custom { instructions },
         };
 
-        let hint = codex_core::review_prompts::user_facing_hint(&core_target);
+        let hint = codex_core::review_prompts::user_facing_hint(&core_target, language);
         let review_request = ReviewRequest {
             target: core_target,
             user_facing_hint: Some(hint.clone()),
@@ -3510,13 +3512,14 @@ impl CodexMessageProcessor {
             }
         };
 
-        let (review_request, display_text) = match Self::review_request_from_target(target) {
-            Ok(value) => value,
-            Err(err) => {
-                self.outgoing.send_error(request_id, err).await;
-                return;
-            }
-        };
+        let (review_request, display_text) =
+            match Self::review_request_from_target(target, self.config.language) {
+                Ok(value) => value,
+                Err(err) => {
+                    self.outgoing.send_error(request_id, err).await;
+                    return;
+                }
+            };
 
         let delivery = delivery.unwrap_or(ApiReviewDelivery::Inline).to_core();
         match delivery {
@@ -3656,6 +3659,7 @@ impl CodexMessageProcessor {
         let turn_summary_store = self.turn_summary_store.clone();
         let api_version_for_task = api_version;
         let fallback_model_provider = self.config.model_provider_id.clone();
+        let language = self.config.language;
         tokio::spawn(async move {
             loop {
                 tokio::select! {
@@ -3719,6 +3723,7 @@ impl CodexMessageProcessor {
                             turn_summary_store.clone(),
                             api_version_for_task,
                             fallback_model_provider.clone(),
+                            language,
                         )
                         .await;
                     }

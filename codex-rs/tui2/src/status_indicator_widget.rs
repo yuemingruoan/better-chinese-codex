@@ -20,6 +20,8 @@ use unicode_width::UnicodeWidthStr;
 use crate::app_event::AppEvent;
 use crate::app_event_sender::AppEventSender;
 use crate::exec_cell::spinner;
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::key_hint;
 use crate::render::renderable::Renderable;
 use crate::shimmer::shimmer_spans;
@@ -49,36 +51,21 @@ pub(crate) struct StatusIndicatorWidget {
 // Format elapsed seconds into a compact human-friendly form used by the status line.
 // Examples: 0s, 59s, 1m 00s, 59m 59s, 1h 00m 00s, 2h 03m 09s
 pub fn fmt_elapsed_compact(language: Language, elapsed_secs: u64) -> String {
-    match language {
-        Language::ZhCn => {
-            if elapsed_secs < 60 {
-                return format!("{elapsed_secs}秒");
-            }
-            if elapsed_secs < 3600 {
-                let minutes = elapsed_secs / 60;
-                let seconds = elapsed_secs % 60;
-                return format!("{minutes}分 {seconds:02}秒");
-            }
-            let hours = elapsed_secs / 3600;
-            let minutes = (elapsed_secs % 3600) / 60;
-            let seconds = elapsed_secs % 60;
-            format!("{hours}小时 {minutes:02}分 {seconds:02}秒")
-        }
-        Language::En => {
-            if elapsed_secs < 60 {
-                return format!("{elapsed_secs}s");
-            }
-            if elapsed_secs < 3600 {
-                let minutes = elapsed_secs / 60;
-                let seconds = elapsed_secs % 60;
-                return format!("{minutes}m {seconds:02}s");
-            }
-            let hours = elapsed_secs / 3600;
-            let minutes = (elapsed_secs % 3600) / 60;
-            let seconds = elapsed_secs % 60;
-            format!("{hours}h {minutes:02}m {seconds:02}s")
-        }
+    let seconds_suffix = tr(language, "status_indicator.elapsed.seconds_suffix");
+    let minutes_suffix = tr(language, "status_indicator.elapsed.minutes_suffix");
+    let hours_suffix = tr(language, "status_indicator.elapsed.hours_suffix");
+    if elapsed_secs < 60 {
+        return format!("{elapsed_secs}{seconds_suffix}");
     }
+    if elapsed_secs < 3600 {
+        let minutes = elapsed_secs / 60;
+        let seconds = elapsed_secs % 60;
+        return format!("{minutes}{minutes_suffix} {seconds:02}{seconds_suffix}");
+    }
+    let hours = elapsed_secs / 3600;
+    let minutes = (elapsed_secs % 3600) / 60;
+    let seconds = elapsed_secs % 60;
+    format!("{hours}{hours_suffix} {minutes:02}{minutes_suffix} {seconds:02}{seconds_suffix}")
 }
 
 impl StatusIndicatorWidget {
@@ -89,10 +76,7 @@ impl StatusIndicatorWidget {
         language: Language,
     ) -> Self {
         Self {
-            header: match language {
-                Language::ZhCn => String::from("工作中"),
-                Language::En => String::from("Working"),
-            },
+            header: tr(language, "status_indicator.header.working").to_string(),
             details: None,
             show_interrupt_hint: true,
             language,
@@ -246,21 +230,24 @@ impl Renderable for StatusIndicatorWidget {
         }
         spans.push(" ".into());
         if self.show_interrupt_hint {
-            let (prefix, suffix) = match self.language {
-                Language::ZhCn => (format!("（{pretty_elapsed} • 按 "), " 以中断）"),
-                Language::En => (format!("({pretty_elapsed} • "), " to interrupt)"),
-            };
+            let prefix = tr_args(
+                self.language,
+                "status_indicator.interrupt.prefix",
+                &[("elapsed", pretty_elapsed.as_str())],
+            );
+            let suffix = tr(self.language, "status_indicator.interrupt.suffix");
             spans.extend(vec![
-                prefix.dim(),
+                Span::from(prefix).dim(),
                 key_hint::plain(KeyCode::Esc).into(),
-                suffix.dim(),
+                Span::from(suffix).dim(),
             ]);
         } else {
-            let idle = match self.language {
-                Language::ZhCn => format!("（{pretty_elapsed}）"),
-                Language::En => format!("({pretty_elapsed})"),
-            };
-            spans.push(idle.dim());
+            let idle = tr_args(
+                self.language,
+                "status_indicator.idle",
+                &[("elapsed", pretty_elapsed.as_str())],
+            );
+            spans.push(Span::from(idle).dim());
         }
 
         let mut lines = Vec::new();

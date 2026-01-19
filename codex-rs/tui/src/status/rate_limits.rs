@@ -1,4 +1,6 @@
 use crate::chatwidget::get_limits_duration;
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::text_formatting::capitalize_first;
 
 use super::helpers::format_reset_timestamp;
@@ -123,16 +125,16 @@ pub(crate) fn compose_rate_limit_data(
                 let label: String = primary
                     .window_minutes
                     .map(get_limits_duration)
-                    .unwrap_or_else(|| match language {
-                        Language::ZhCn => "5 小时".to_string(),
-                        Language::En => "5 hours".to_string(),
+                    .unwrap_or_else(|| {
+                        tr(language, "status.rate_limits.default_primary_window").to_string()
                     });
                 let label = capitalize_first(&label);
                 rows.push(StatusRateLimitRow {
-                    label: match language {
-                        Language::ZhCn => format!("{label} 限额"),
-                        Language::En => format!("{label} limit"),
-                    },
+                    label: tr_args(
+                        language,
+                        "status.rate_limits.window_label",
+                        &[("label", label.as_str())],
+                    ),
                     value: StatusRateLimitValue::Window {
                         percent_used: primary.used_percent,
                         resets_at: primary.resets_at.clone(),
@@ -144,16 +146,16 @@ pub(crate) fn compose_rate_limit_data(
                 let label: String = secondary
                     .window_minutes
                     .map(get_limits_duration)
-                    .unwrap_or_else(|| match language {
-                        Language::ZhCn => "每周".to_string(),
-                        Language::En => "weekly".to_string(),
+                    .unwrap_or_else(|| {
+                        tr(language, "status.rate_limits.default_secondary_window").to_string()
                     });
                 let label = capitalize_first(&label);
                 rows.push(StatusRateLimitRow {
-                    label: match language {
-                        Language::ZhCn => format!("{label} 限额"),
-                        Language::En => format!("{label} limit"),
-                    },
+                    label: tr_args(
+                        language,
+                        "status.rate_limits.window_label",
+                        &[("label", label.as_str())],
+                    ),
                     value: StatusRateLimitValue::Window {
                         percent_used: secondary.used_percent,
                         resets_at: secondary.resets_at.clone(),
@@ -195,10 +197,12 @@ pub(crate) fn render_status_limit_progress_bar(percent_remaining: f64) -> String
 }
 
 pub(crate) fn format_status_limit_summary(percent_remaining: f64, language: Language) -> String {
-    match language {
-        Language::ZhCn => format!("剩余 {percent_remaining:.0}%"),
-        Language::En => format!("{percent_remaining:.0}% left"),
-    }
+    let percent = format!("{percent_remaining:.0}");
+    tr_args(
+        language,
+        "status.rate_limits.remaining_percent",
+        &[("percent", percent.as_str())],
+    )
 }
 
 /// Builds a single `StatusRateLimitRow` for credits when the snapshot indicates
@@ -214,27 +218,21 @@ fn credit_status_row(
     }
     if credits.unlimited {
         return Some(StatusRateLimitRow {
-            label: match language {
-                Language::ZhCn => "额度".to_string(),
-                Language::En => "Credits".to_string(),
-            },
-            value: StatusRateLimitValue::Text(match language {
-                Language::ZhCn => "无限额度".to_string(),
-                Language::En => "Unlimited".to_string(),
-            }),
+            label: tr(language, "status.rate_limits.credits_label").to_string(),
+            value: StatusRateLimitValue::Text(
+                tr(language, "status.rate_limits.credits_unlimited").to_string(),
+            ),
         });
     }
     let balance = credits.balance.as_ref()?;
     let display_balance = format_credit_balance(balance)?;
     Some(StatusRateLimitRow {
-        label: match language {
-            Language::ZhCn => "额度".to_string(),
-            Language::En => "Credits".to_string(),
-        },
-        value: StatusRateLimitValue::Text(match language {
-            Language::ZhCn => format!("{display_balance} 额度"),
-            Language::En => format!("{display_balance} credits"),
-        }),
+        label: tr(language, "status.rate_limits.credits_label").to_string(),
+        value: StatusRateLimitValue::Text(tr_args(
+            language,
+            "status.rate_limits.credits_balance",
+            &[("amount", display_balance.as_str())],
+        )),
     })
 }
 

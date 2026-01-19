@@ -1,3 +1,4 @@
+use crate::i18n::tr_args;
 use codex_core::protocol::SandboxPolicy;
 use codex_protocol::config_types::Language;
 use std::path::PathBuf;
@@ -28,14 +29,11 @@ fn format_warning(additional_dirs: &[PathBuf], language: Language) -> String {
         .map(|path| path.to_string_lossy())
         .collect::<Vec<_>>()
         .join(", ");
-    match language {
-        Language::ZhCn => format!(
-            "由于当前沙箱模式为只读，--add-dir ({joined_paths}) 将被忽略。请切换到 workspace-write 或 danger-full-access 以允许额外的可写根目录。"
-        ),
-        Language::En => format!(
-            "Since the sandbox is read-only, --add-dir ({joined_paths}) will be ignored. Switch to workspace-write or danger-full-access to allow additional writable roots."
-        ),
-    }
+    tr_args(
+        language,
+        "additional_dirs.read_only_warning",
+        &[("paths", &joined_paths)],
+    )
 }
 
 #[cfg(test)]

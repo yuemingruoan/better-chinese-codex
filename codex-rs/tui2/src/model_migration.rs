@@ -1,4 +1,5 @@
 use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::key_hint;
 use crate::markdown_render::render_markdown_text_with_width;
 use crate::render::Insets;
@@ -53,15 +54,9 @@ impl MigrationMenuOption {
     }
 
     fn label(self, language: Language) -> &'static str {
-        match language {
-            Language::ZhCn => match self {
-                Self::TryNewModel => "试用新模型",
-                Self::UseExistingModel => "继续使用当前模型",
-            },
-            Language::En => match self {
-                Self::TryNewModel => "Try new model",
-                Self::UseExistingModel => "Use existing model",
-            },
+        match self {
+            Self::TryNewModel => tr(language, "model_migration.option.try_new_model"),
+            Self::UseExistingModel => tr(language, "model_migration.option.use_existing_model"),
         }
     }
 }
@@ -92,12 +87,11 @@ pub(crate) fn migration_copy_for_models(
         };
     }
 
-    let heading_text = Span::from(match language {
-        Language::ZhCn => format!("Codex 已升级，欢迎使用 {target_display_name}。"),
-        Language::En => {
-            format!("Codex just got an upgrade. Introducing {target_display_name}.")
-        }
-    })
+    let heading_text = Span::from(tr_args(
+        language,
+        "model_migration.heading",
+        &[("target", target_display_name.as_str())],
+    ))
     .bold();
     let description_line: Line<'static>;
     if let Some(migration_copy) = &migration_copy {
@@ -107,36 +101,35 @@ pub(crate) fn migration_copy_for_models(
             .filter(|desc| !desc.is_empty())
             .map(Line::from)
             .unwrap_or_else(|| {
-                Line::from(match language {
-                    Language::ZhCn => {
-                        format!("推荐使用 {target_display_name}，以获得更好的性能与稳定性。")
-                    }
-                    Language::En => format!(
-                        "{target_display_name} is recommended for better performance and reliability."
-                    ),
-                })
+                Line::from(tr_args(
+                    language,
+                    "model_migration.description_default",
+                    &[("target", target_display_name.as_str())],
+                ))
             });
     }
 
     let mut content = vec![];
     if migration_copy.is_none() {
-        content.push(Line::from(match language {
-            Language::ZhCn => format!("我们建议从 {current_model} 切换到 {target_model}。"),
-            Language::En => {
-                format!("We recommend switching from {current_model} to {target_model}.")
-            }
-        }));
+        content.push(Line::from(tr_args(
+            language,
+            "model_migration.recommend_switch",
+            &[("current", current_model), ("target", target_model)],
+        )));
         content.push(Line::from(""));
     }
 
     if let Some(model_link) = model_link {
+        let description_text = description_line.to_string();
         content.push(Line::from(vec![
-            match language {
-                Language::ZhCn => format!("{description_line} 了解更多 {target_display_name}："),
-                Language::En => {
-                    format!("{description_line} Learn more about {target_display_name} at ")
-                }
-            }
+            tr_args(
+                language,
+                "model_migration.learn_more",
+                &[
+                    ("description", description_text.as_str()),
+                    ("target", target_display_name.as_str()),
+                ],
+            )
             .into(),
             model_link.cyan().underlined(),
         ]));
@@ -147,13 +140,14 @@ pub(crate) fn migration_copy_for_models(
     }
 
     if can_opt_out {
-        content.push(Line::from(match language {
-            Language::ZhCn => format!("如果你愿意，也可以继续使用 {current_model}。"),
-            Language::En => format!("You can continue using {current_model} if you prefer."),
-        }));
+        content.push(Line::from(tr_args(
+            language,
+            "model_migration.keep_current",
+            &[("current", current_model)],
+        )));
     } else {
         content.push(Line::from(
-            tr(language, "按 Enter 继续", "Press enter to continue").dim(),
+            tr(language, "model_migration.continue_hint").dim(),
         ));
     }
 
@@ -363,13 +357,9 @@ impl ModelMigrationScreen {
     fn render_menu(&self, column: &mut ColumnRenderable) {
         column.push(Line::from(""));
         column.push(
-            Paragraph::new(tr(
-                self.copy.language,
-                "请选择 Codex 接下来的处理方式。",
-                "Choose how you'd like Codex to proceed.",
-            ))
-            .wrap(Wrap { trim: false })
-            .inset(Insets::tlbr(0, 2, 0, 0)),
+            Paragraph::new(tr(self.copy.language, "model_migration.prompt.choose"))
+                .wrap(Wrap { trim: false })
+                .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.push(Line::from(""));
 
@@ -384,13 +374,13 @@ impl ModelMigrationScreen {
         column.push(Line::from(""));
         column.push(
             Line::from(vec![
-                tr(self.copy.language, "使用 ", "Use ").dim(),
+                tr(self.copy.language, "model_migration.hint.use").dim(),
                 key_hint::plain(KeyCode::Up).into(),
                 "/".dim(),
                 key_hint::plain(KeyCode::Down).into(),
-                tr(self.copy.language, " 切换，按 ", " to move, press ").dim(),
+                tr(self.copy.language, "model_migration.hint.to_move").dim(),
                 key_hint::plain(KeyCode::Enter).into(),
-                tr(self.copy.language, " 确认", " to confirm").dim(),
+                tr(self.copy.language, "model_migration.hint.confirm").dim(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );

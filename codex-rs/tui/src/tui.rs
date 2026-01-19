@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
+use codex_protocol::config_types::Language;
 use crossterm::Command;
 use crossterm::SynchronizedUpdate;
 use crossterm::event::DisableBracketedPaste;
@@ -38,6 +39,7 @@ use tokio_stream::Stream;
 pub use self::frame_requester::FrameRequester;
 use crate::custom_terminal;
 use crate::custom_terminal::Terminal as CustomTerminal;
+use crate::i18n::tr;
 use crate::notifications::DesktopNotificationBackend;
 use crate::notifications::NotificationBackendKind;
 use crate::notifications::detect_backend;
@@ -88,9 +90,10 @@ impl Command for EnableAlternateScroll {
 
     #[cfg(windows)]
     fn execute_winapi(&self) -> Result<()> {
-        Err(std::io::Error::other(
-            "尝试通过 WinAPI 执行 EnableAlternateScroll；请改用 ANSI 序列",
-        ))
+        Err(std::io::Error::other(tr(
+            Language::En,
+            "terminal.error.winapi_enable_alt_scroll",
+        )))
     }
 
     #[cfg(windows)]
@@ -109,9 +112,10 @@ impl Command for DisableAlternateScroll {
 
     #[cfg(windows)]
     fn execute_winapi(&self) -> Result<()> {
-        Err(std::io::Error::other(
-            "尝试通过 WinAPI 执行 DisableAlternateScroll；请改用 ANSI 序列",
-        ))
+        Err(std::io::Error::other(tr(
+            Language::En,
+            "terminal.error.winapi_disable_alt_scroll",
+        )))
     }
 
     #[cfg(windows)]
@@ -201,12 +205,18 @@ fn flush_terminal_input_buffer() {
 pub(crate) fn flush_terminal_input_buffer() {}
 
 /// Initialize the terminal (inline viewport; history stays in normal scrollback)
-pub fn init() -> Result<Terminal> {
+pub fn init(language: Language) -> Result<Terminal> {
     if !stdin().is_terminal() {
-        return Err(std::io::Error::other("stdin is not a terminal"));
+        return Err(std::io::Error::other(tr(
+            language,
+            "terminal.error.stdin_not_terminal",
+        )));
     }
     if !stdout().is_terminal() {
-        return Err(std::io::Error::other("stdout 不是终端"));
+        return Err(std::io::Error::other(tr(
+            language,
+            "terminal.error.stdout_not_terminal",
+        )));
     }
     set_modes()?;
 

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use codex_protocol::config_types::Language;
 use codex_protocol::config_types::WebSearchMode;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ContentItem;
@@ -18,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 use crate::codex::Session;
 use crate::codex::TurnContext;
 use crate::codex_delegate::run_codex_thread_one_shot;
+use crate::i18n::tr;
 use crate::review_format::format_review_findings_block;
 use crate::review_format::render_review_output_text;
 use crate::state::TaskKind;
@@ -210,13 +210,7 @@ pub(crate) async fn exit_review_mode(
         (rendered, assistant_message)
     } else {
         let rendered = crate::client_common::review_exit_interrupted_template(language).to_string();
-        let assistant_message = match language {
-            Language::ZhCn => "审查已中断。请重新运行 /review 并等待完成。".to_string(),
-            Language::En => {
-                "Review was interrupted. Please re-run /review and wait for it to complete."
-                    .to_string()
-            }
-        };
+        let assistant_message = tr(language, "review.interrupted").to_string();
         (rendered, assistant_message)
     };
 

@@ -1,8 +1,13 @@
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 use codex_protocol::config_types::Language;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use tempfile::Builder;
+
+const INVALID_RGBA_BUFFER: &str = "invalid RGBA buffer";
+const ANDROID_PASTE_NOT_SUPPORTED: &str = "clipboard image paste is not supported on Android";
 
 #[derive(Debug, Clone)]
 pub enum PasteImageError {
@@ -14,24 +19,17 @@ pub enum PasteImageError {
 
 impl std::fmt::Display for PasteImageError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PasteImageError::ClipboardUnavailable(msg) => {
-                write!(f, "剪贴板不可用：{msg}")
-            }
-            PasteImageError::NoImage(msg) => write!(f, "剪贴板中没有图像：{msg}"),
-            PasteImageError::EncodeFailed(msg) => write!(f, "无法编码图像：{msg}"),
-            PasteImageError::IoError(msg) => write!(f, "I/O 错误：{msg}"),
-        }
+        write!(f, "{}", self.to_message(Language::En))
     }
 }
 impl std::error::Error for PasteImageError {}
 
 impl PasteImageError {
     fn localized_detail<'a>(&'a self, language: Language, msg: &'a str) -> Cow<'a, str> {
-        match (language, msg) {
-            (Language::En, "无效的 RGBA 缓冲区") => Cow::Borrowed("Invalid RGBA buffer"),
-            (Language::En, "Android 上暂不支持粘贴剪贴板图像") => {
-                Cow::Borrowed("Clipboard image paste is not supported on Android")
+        match msg {
+            INVALID_RGBA_BUFFER => Cow::Borrowed(tr(language, "clipboard.detail.invalid_rgba")),
+            ANDROID_PASTE_NOT_SUPPORTED => {
+                Cow::Borrowed(tr(language, "clipboard.detail.android_paste_not_supported"))
             }
             _ => Cow::Borrowed(msg),
         }
@@ -39,37 +37,25 @@ impl PasteImageError {
 
     pub fn to_message(&self, language: Language) -> String {
         match self {
-            PasteImageError::ClipboardUnavailable(msg) => format!(
-                "{}: {}",
-                match language {
-                    Language::ZhCn => "剪贴板不可用",
-                    Language::En => "Clipboard unavailable",
-                },
-                self.localized_detail(language, msg)
+            PasteImageError::ClipboardUnavailable(msg) => tr_args(
+                language,
+                "clipboard.error.clipboard_unavailable",
+                &[("detail", self.localized_detail(language, msg).as_ref())],
             ),
-            PasteImageError::NoImage(msg) => format!(
-                "{}: {}",
-                match language {
-                    Language::ZhCn => "剪贴板中没有图像",
-                    Language::En => "No image in clipboard",
-                },
-                self.localized_detail(language, msg)
+            PasteImageError::NoImage(msg) => tr_args(
+                language,
+                "clipboard.error.no_image",
+                &[("detail", self.localized_detail(language, msg).as_ref())],
             ),
-            PasteImageError::EncodeFailed(msg) => format!(
-                "{}: {}",
-                match language {
-                    Language::ZhCn => "无法编码图像",
-                    Language::En => "Failed to encode image",
-                },
-                self.localized_detail(language, msg)
+            PasteImageError::EncodeFailed(msg) => tr_args(
+                language,
+                "clipboard.error.encode_failed",
+                &[("detail", self.localized_detail(language, msg).as_ref())],
             ),
-            PasteImageError::IoError(msg) => format!(
-                "{}: {}",
-                match language {
-                    Language::ZhCn => "I/O 错误",
-                    Language::En => "I/O error",
-                },
-                self.localized_detail(language, msg)
+            PasteImageError::IoError(msg) => tr_args(
+                language,
+                "clipboard.error.io_error",
+                &[("detail", self.localized_detail(language, msg).as_ref())],
             ),
         }
     }
@@ -134,7 +120,7 @@ pub fn paste_image_as_png() -> Result<(Vec<u8>, PastedImageInfo), PasteImageErro
         tracing::debug!("clipboard image opened from image: {}x{}", w, h);
 
         let Some(rgba_img) = image::RgbaImage::from_raw(w, h, img.bytes.into_owned()) else {
-            return Err(PasteImageError::EncodeFailed("无效的 RGBA 缓冲区".into()));
+            return Err(PasteImageError::EncodeFailed(INVALID_RGBA_BUFFER.into()));
         };
 
         image::DynamicImage::ImageRgba8(rgba_img)
@@ -165,7 +151,7 @@ pub fn paste_image_as_png() -> Result<(Vec<u8>, PastedImageInfo), PasteImageErro
 #[cfg(target_os = "android")]
 pub fn paste_image_as_png() -> Result<(Vec<u8>, PastedImageInfo), PasteImageError> {
     Err(PasteImageError::ClipboardUnavailable(
-        "Android 上暂不支持粘贴剪贴板图像".into(),
+        ANDROID_PASTE_NOT_SUPPORTED.into(),
     ))
 }
 
@@ -285,7 +271,7 @@ fn try_dump_windows_clipboard_image() -> Option<String> {
 pub fn paste_image_to_temp_png() -> Result<(PathBuf, PastedImageInfo), PasteImageError> {
     // Keep error consistent with paste_image_as_png.
     Err(PasteImageError::ClipboardUnavailable(
-        "Android 上暂不支持粘贴剪贴板图像".into(),
+        ANDROID_PASTE_NOT_SUPPORTED.into(),
     ))
 }
 

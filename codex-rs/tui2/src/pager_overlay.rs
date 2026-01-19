@@ -21,6 +21,7 @@ use std::sync::Arc;
 use crate::chatwidget::ActiveCellTranscriptKey;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::UserHistoryCell;
+use crate::i18n::tr;
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
 use crate::render::Insets;
@@ -29,6 +30,7 @@ use crate::render::renderable::Renderable;
 use crate::style::user_message_style;
 use crate::tui;
 use crate::tui::TuiEvent;
+use codex_protocol::config_types::Language;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::MouseEvent;
@@ -53,19 +55,28 @@ pub(crate) enum Overlay {
 }
 
 impl Overlay {
-    pub(crate) fn new_transcript(cells: Vec<Arc<dyn HistoryCell>>) -> Self {
-        Self::Transcript(TranscriptOverlay::new(cells))
+    pub(crate) fn new_transcript(cells: Vec<Arc<dyn HistoryCell>>, language: Language) -> Self {
+        Self::Transcript(TranscriptOverlay::new(cells, language))
     }
 
-    pub(crate) fn new_static_with_lines(lines: Vec<Line<'static>>, title: String) -> Self {
-        Self::Static(StaticOverlay::with_title(lines, title))
+    pub(crate) fn new_static_with_lines(
+        lines: Vec<Line<'static>>,
+        title: String,
+        language: Language,
+    ) -> Self {
+        Self::Static(StaticOverlay::with_title(lines, title, language))
     }
 
     pub(crate) fn new_static_with_renderables(
         renderables: Vec<Box<dyn Renderable>>,
         title: String,
+        language: Language,
     ) -> Self {
-        Self::Static(StaticOverlay::with_renderables(renderables, title))
+        Self::Static(StaticOverlay::with_renderables(
+            renderables,
+            title,
+            language,
+        ))
     }
 
     pub(crate) fn handle_event(&mut self, tui: &mut tui::Tui, event: TuiEvent) -> Result<()> {
@@ -104,11 +115,22 @@ const KEY_CTRL_T: KeyBinding = key_hint::ctrl(KeyCode::Char('t'));
 const KEY_CTRL_C: KeyBinding = key_hint::ctrl(KeyCode::Char('c'));
 
 // Common pager navigation hints rendered on the first line
-const PAGER_KEY_HINTS: &[(&[KeyBinding], &str)] = &[
-    (&[KEY_UP, KEY_DOWN], "to scroll"),
-    (&[KEY_PAGE_UP, KEY_PAGE_DOWN], "to page"),
-    (&[KEY_HOME, KEY_END], "to jump"),
-];
+fn pager_key_hints(language: Language) -> [(&'static [KeyBinding], &'static str); 3] {
+    [
+        (
+            &[KEY_UP, KEY_DOWN],
+            tr(language, "pager_overlay.hint.scroll"),
+        ),
+        (
+            &[KEY_PAGE_UP, KEY_PAGE_DOWN],
+            tr(language, "pager_overlay.hint.page"),
+        ),
+        (
+            &[KEY_HOME, KEY_END],
+            tr(language, "pager_overlay.hint.jump"),
+        ),
+    ]
+}
 
 // Render a single line of key hints from (key(s), description) pairs.
 fn render_key_hints(area: Rect, buf: &mut Buffer, pairs: &[(&[KeyBinding], &str)]) {
@@ -449,6 +471,7 @@ pub(crate) struct TranscriptOverlay {
     /// Cache key for the render-only live tail appended after committed cells.
     live_tail_key: Option<LiveTailKey>,
     is_done: bool,
+    language: Language,
 }
 
 /// Cache key for the active-cell "live tail" appended to the transcript overlay.
@@ -471,17 +494,18 @@ impl TranscriptOverlay {
     ///
     /// This overlay does not own the "active cell"; callers may optionally append a live tail via
     /// `sync_live_tail` during draws to reflect in-flight activity.
-    pub(crate) fn new(transcript_cells: Vec<Arc<dyn HistoryCell>>) -> Self {
+    pub(crate) fn new(transcript_cells: Vec<Arc<dyn HistoryCell>>, language: Language) -> Self {
         Self {
             view: PagerView::new(
                 Self::render_cells(&transcript_cells, None),
-                "T R A N S C R I P T".to_string(),
+                tr(language, "pager_overlay.title.transcript").to_string(),
                 usize::MAX,
             ),
             cells: transcript_cells,
             highlight_cell: None,
             live_tail_key: None,
             is_done: false,
+            language,
         }
     }
 
@@ -654,12 +678,21 @@ impl TranscriptOverlay {
     fn render_hints(&self, area: Rect, buf: &mut Buffer) {
         let line1 = Rect::new(area.x, area.y, area.width, 1);
         let line2 = Rect::new(area.x, area.y.saturating_add(1), area.width, 1);
-        render_key_hints(line1, buf, PAGER_KEY_HINTS);
+        let pager_hints = pager_key_hints(self.language);
+        render_key_hints(line1, buf, &pager_hints);
 
-        let mut pairs: Vec<(&[KeyBinding], &str)> =
-            vec![(&[KEY_Q], "to quit"), (&[KEY_ESC], "to edit prev")];
+        let mut pairs: Vec<(&[KeyBinding], &str)> = vec![
+            (&[KEY_Q], tr(self.language, "pager_overlay.hint.quit")),
+            (
+                &[KEY_ESC],
+                tr(self.language, "pager_overlay.hint.edit_prev"),
+            ),
+        ];
         if self.highlight_cell.is_some() {
-            pairs.push((&[KEY_ENTER], "to edit message"));
+            pairs.push((
+                &[KEY_ENTER],
+                tr(self.language, "pager_overlay.hint.edit_message"),
+            ));
         }
         render_key_hints(line2, buf, &pairs);
     }
@@ -701,26 +734,38 @@ impl TranscriptOverlay {
 pub(crate) struct StaticOverlay {
     view: PagerView,
     is_done: bool,
+    language: Language,
 }
 
 impl StaticOverlay {
-    pub(crate) fn with_title(lines: Vec<Line<'static>>, title: String) -> Self {
+    pub(crate) fn with_title(lines: Vec<Line<'static>>, title: String, language: Language) -> Self {
         let paragraph = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
-        Self::with_renderables(vec![Box::new(CachedRenderable::new(paragraph))], title)
+        Self::with_renderables(
+            vec![Box::new(CachedRenderable::new(paragraph))],
+            title,
+            language,
+        )
     }
 
-    pub(crate) fn with_renderables(renderables: Vec<Box<dyn Renderable>>, title: String) -> Self {
+    pub(crate) fn with_renderables(
+        renderables: Vec<Box<dyn Renderable>>,
+        title: String,
+        language: Language,
+    ) -> Self {
         Self {
             view: PagerView::new(renderables, title, 0),
             is_done: false,
+            language,
         }
     }
 
     fn render_hints(&self, area: Rect, buf: &mut Buffer) {
         let line1 = Rect::new(area.x, area.y, area.width, 1);
         let line2 = Rect::new(area.x, area.y.saturating_add(1), area.width, 1);
-        render_key_hints(line1, buf, PAGER_KEY_HINTS);
-        let pairs: Vec<(&[KeyBinding], &str)> = vec![(&[KEY_Q], "to quit")];
+        let pager_hints = pager_key_hints(self.language);
+        render_key_hints(line1, buf, &pager_hints);
+        let pairs: Vec<(&[KeyBinding], &str)> =
+            vec![(&[KEY_Q], tr(self.language, "pager_overlay.hint.quit"))];
         render_key_hints(line2, buf, &pairs);
     }
 
@@ -834,9 +879,12 @@ mod tests {
 
     #[test]
     fn edit_prev_hint_is_visible() {
-        let mut overlay = TranscriptOverlay::new(vec![Arc::new(TestCell {
-            lines: vec![Line::from("hello")],
-        })]);
+        let mut overlay = TranscriptOverlay::new(
+            vec![Arc::new(TestCell {
+                lines: vec![Line::from("hello")],
+            })],
+            Language::En,
+        );
 
         // Render into a small buffer and assert the backtrack hint is present
         let area = Rect::new(0, 0, 40, 10);
@@ -851,26 +899,30 @@ mod tests {
             }
             s.push('\n');
         }
+        let expected = tr(Language::En, "pager_overlay.hint.edit_prev");
         assert!(
-            s.contains("edit prev"),
-            "expected 'edit prev' hint in overlay footer, got: {s:?}"
+            s.contains(expected),
+            "expected '{expected}' hint in overlay footer, got: {s:?}"
         );
     }
 
     #[test]
     fn transcript_overlay_snapshot_basic() {
         // Prepare a transcript overlay with a few lines
-        let mut overlay = TranscriptOverlay::new(vec![
-            Arc::new(TestCell {
-                lines: vec![Line::from("alpha")],
-            }),
-            Arc::new(TestCell {
-                lines: vec![Line::from("beta")],
-            }),
-            Arc::new(TestCell {
-                lines: vec![Line::from("gamma")],
-            }),
-        ]);
+        let mut overlay = TranscriptOverlay::new(
+            vec![
+                Arc::new(TestCell {
+                    lines: vec![Line::from("alpha")],
+                }),
+                Arc::new(TestCell {
+                    lines: vec![Line::from("beta")],
+                }),
+                Arc::new(TestCell {
+                    lines: vec![Line::from("gamma")],
+                }),
+            ],
+            Language::En,
+        );
         let mut term = Terminal::new(TestBackend::new(40, 10)).expect("term");
         term.draw(|f| overlay.render(f.area(), f.buffer_mut()))
             .expect("draw");
@@ -879,9 +931,12 @@ mod tests {
 
     #[test]
     fn transcript_overlay_renders_live_tail() {
-        let mut overlay = TranscriptOverlay::new(vec![Arc::new(TestCell {
-            lines: vec![Line::from("alpha")],
-        })]);
+        let mut overlay = TranscriptOverlay::new(
+            vec![Arc::new(TestCell {
+                lines: vec![Line::from("alpha")],
+            })],
+            Language::En,
+        );
         overlay.sync_live_tail(
             40,
             Some(ActiveCellTranscriptKey {
@@ -900,9 +955,12 @@ mod tests {
 
     #[test]
     fn transcript_overlay_sync_live_tail_is_noop_for_identical_key() {
-        let mut overlay = TranscriptOverlay::new(vec![Arc::new(TestCell {
-            lines: vec![Line::from("alpha")],
-        })]);
+        let mut overlay = TranscriptOverlay::new(
+            vec![Arc::new(TestCell {
+                lines: vec![Line::from("alpha")],
+            })],
+            Language::En,
+        );
 
         let calls = std::cell::Cell::new(0usize);
         let key = ActiveCellTranscriptKey {
@@ -955,7 +1013,8 @@ mod tests {
                 content: "hello\nworld\n".to_string(),
             },
         );
-        let approval_cell: Arc<dyn HistoryCell> = Arc::new(new_patch_event(approval_changes, &cwd));
+        let approval_cell: Arc<dyn HistoryCell> =
+            Arc::new(new_patch_event(approval_changes, &cwd, Language::En));
         cells.push(approval_cell);
 
         let mut apply_changes = HashMap::new();
@@ -965,7 +1024,8 @@ mod tests {
                 content: "hello\nworld\n".to_string(),
             },
         );
-        let apply_begin_cell: Arc<dyn HistoryCell> = Arc::new(new_patch_event(apply_changes, &cwd));
+        let apply_begin_cell: Arc<dyn HistoryCell> =
+            Arc::new(new_patch_event(apply_changes, &cwd, Language::En));
         cells.push(apply_begin_cell);
 
         let apply_end_cell: Arc<dyn HistoryCell> = history_cell::new_approval_decision_cell(
@@ -997,7 +1057,7 @@ mod tests {
         let exec_cell: Arc<dyn HistoryCell> = Arc::new(exec_cell);
         cells.push(exec_cell);
 
-        let mut overlay = TranscriptOverlay::new(cells);
+        let mut overlay = TranscriptOverlay::new(cells, Language::En);
         let area = Rect::new(0, 0, 80, 12);
         let mut buf = Buffer::empty(area);
 
@@ -1019,6 +1079,7 @@ mod tests {
                     }) as Arc<dyn HistoryCell>
                 })
                 .collect(),
+            Language::En,
         );
         let mut term = Terminal::new(TestBackend::new(40, 12)).expect("term");
         term.draw(|f| overlay.render(f.area(), f.buffer_mut()))
@@ -1046,6 +1107,7 @@ mod tests {
                     }) as Arc<dyn HistoryCell>
                 })
                 .collect(),
+            Language::En,
         );
         let mut term = Terminal::new(TestBackend::new(40, 12)).expect("term");
         term.draw(|f| overlay.render(f.area(), f.buffer_mut()))
@@ -1066,6 +1128,7 @@ mod tests {
         let mut overlay = StaticOverlay::with_title(
             vec!["one".into(), "two".into(), "three".into()],
             "S T A T I C".to_string(),
+            Language::En,
         );
         let mut term = Terminal::new(TestBackend::new(40, 10)).expect("term");
         term.draw(|f| overlay.render(f.area(), f.buffer_mut()))
@@ -1109,6 +1172,7 @@ mod tests {
                     }) as Arc<dyn HistoryCell>
                 })
                 .collect(),
+            Language::En,
         );
         let area = Rect::new(0, 0, 40, 15);
 
@@ -1172,6 +1236,7 @@ mod tests {
         let mut overlay = StaticOverlay::with_title(
             vec!["a very long line that should wrap when rendered within a narrow pager overlay width".into()],
             "S T A T I C".to_string(),
+            Language::En,
         );
         let mut term = Terminal::new(TestBackend::new(24, 8)).expect("term");
         term.draw(|f| overlay.render(f.area(), f.buffer_mut()))

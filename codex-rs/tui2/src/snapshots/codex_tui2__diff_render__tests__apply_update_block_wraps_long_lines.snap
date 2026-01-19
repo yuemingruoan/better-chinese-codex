@@ -2,7 +2,7 @@
 source: tui2/src/diff_render.rs
 expression: terminal.backend()
 ---
-"• Edited long_example.txt (+1 -1)                                               "
+"• Updated long_example.txt (+1 -1)                                              "
 "    1  line 1                                                                   "
 "    2 -short                                                                    "
 "    2 +short this_is_a_very_long_modified_line_that_should_wrap_across_m        "
