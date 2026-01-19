@@ -3,11 +3,11 @@ source: tui/src/pager_overlay.rs
 expression: snapshot
 ---
 / 会 话 记 录 / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /
-• 新 增  foo.txt (+2 -0)
+• Added foo.txt (+2 -0)
     1 +hello
     2 +world
 
-• 新 增  foo.txt (+2 -0)
+• Added foo.txt (+2 -0)
     1 +hello
     2 +world
 ─────────────────────────────────────────────────────────────────────────── 0% ─

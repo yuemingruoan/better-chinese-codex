@@ -221,7 +221,12 @@ async fn entered_review_mode_defaults_to_current_changes_banner() {
 
     let cells = drain_insert_history(&mut rx);
     let banner = lines_to_single_string(cells.last().expect("review banner"));
-    assert_eq!(banner, ">> 代码审查开始：current changes <<\n");
+    let expected = tr_args(
+        chat.config.language,
+        "chatwidget.review.started",
+        &[("hint", tr(chat.config.language, "review.hint.uncommitted"))],
+    );
+    assert_eq!(banner, format!("{expected}\n"));
     assert!(chat.is_review_mode);
 }
 

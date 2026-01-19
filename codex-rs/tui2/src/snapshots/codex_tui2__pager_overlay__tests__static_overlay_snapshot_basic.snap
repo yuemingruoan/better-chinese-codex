@@ -9,6 +9,6 @@ expression: term.backend()
 "~                                       "
 "~                                       "
 "───────────────────────────────── 100% ─"
-" ↑/↓ to scroll   pgup/pgdn to page   hom"
-" q to quit                              "
+" ↑/↓ Scroll   pgup/pgdn Page   home/end "
+" q Quit                                 "
 "                                        "
