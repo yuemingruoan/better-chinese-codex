@@ -192,7 +192,7 @@ impl CommandPopup {
                     CommandItem::UserPrompt(i) => {
                         let prompt = &self.prompts[i];
                         let description = prompt.description.clone().unwrap_or_else(|| {
-                            tr(self.language, "发送已保存的提示词", "Send saved prompt").to_string()
+                            tr(self.language, "command_popup.send_saved_prompt").to_string()
                         });
                         (
                             format!("/{PROMPTS_CMD_PREFIX}:{}", prompt.name),

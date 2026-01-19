@@ -264,6 +264,7 @@ none = "无"
 
 [status.account]
 unknown = "未知"
+api_key_configured = "已配置 API 密钥（运行 codex login 以使用 ChatGPT）"
 
 [status.approval]
 unknown = "未知"
@@ -287,9 +288,6 @@ data_not_available = "暂无数据"
 warning_label = "警告"
 stale_warning = "限额数据可能已过期，请开始新的对话刷新。"
 reset_at = "（${resets_at} 重置）"
-
-[status.account]
-api_key_configured = "已配置 API 密钥（运行 codex login 以使用 ChatGPT）"
 
 [status.fields]
 model = "模型"

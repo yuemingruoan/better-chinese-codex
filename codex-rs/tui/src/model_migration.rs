@@ -361,8 +361,7 @@ impl ModelMigrationScreen {
         column.push(
             Paragraph::new(tr(
                 self.copy.language,
-                "请选择 Codex 接下来的处理方式。",
-                "Choose how you'd like Codex to proceed.",
+                "model_migration.prompt.choose",
             ))
             .wrap(Wrap { trim: false })
             .inset(Insets::tlbr(0, 2, 0, 0)),
@@ -380,13 +379,13 @@ impl ModelMigrationScreen {
         column.push(Line::from(""));
         column.push(
             Line::from(vec![
-                tr(self.copy.language, "使用 ", "Use ").dim(),
+                tr(self.copy.language, "model_migration.hint.use").dim(),
                 key_hint::plain(KeyCode::Up).into(),
                 "/".dim(),
                 key_hint::plain(KeyCode::Down).into(),
-                tr(self.copy.language, " 切换，按 ", " to move, press ").dim(),
+                tr(self.copy.language, "model_migration.hint.to_move").dim(),
                 key_hint::plain(KeyCode::Enter).into(),
-                tr(self.copy.language, " 确认", " to confirm").dim(),
+                tr(self.copy.language, "model_migration.hint.confirm").dim(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );

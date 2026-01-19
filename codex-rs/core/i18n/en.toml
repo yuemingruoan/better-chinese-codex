@@ -267,6 +267,7 @@ none = "<none>"
 
 [status.account]
 unknown = "Unknown"
+api_key_configured = "API key configured (run codex login to use ChatGPT)"
 
 [status.approval]
 unknown = "<unknown>"
@@ -290,9 +291,6 @@ data_not_available = "data not available yet"
 warning_label = "Warning"
 stale_warning = "Limit data may be stale; start a new chat to refresh."
 reset_at = "(${resets_at} reset)"
-
-[status.account]
-api_key_configured = "API key configured (run codex login to use ChatGPT)"
 
 [status.fields]
 model = "Model"

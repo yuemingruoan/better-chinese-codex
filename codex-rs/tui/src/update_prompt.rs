@@ -200,7 +200,7 @@ impl WidgetRef for &UpdatePromptScreen {
         column.push("");
         column.push(Line::from(vec![
             padded_emoji("  ✨").bold().cyan(),
-            tr(self.language, "发现新版本！", "Update available!").bold(),
+            tr(self.language, "update_prompt.title").bold(),
             " ".into(),
             format!(
                 "{current} -> {latest}",
@@ -212,54 +212,39 @@ impl WidgetRef for &UpdatePromptScreen {
         column.push("");
         column.push(
             Line::from(vec![
-                tr(
-                    self.language,
-                    "请打开发布页面下载最新版：",
-                    "Release notes: ",
-                )
-                .dim(),
+                tr(self.language, "update_prompt.release_prefix").dim(),
                 release_url.dim().underlined(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.push(
             Line::from(vec![
-                tr(
-                    self.language,
-                    "页面包含 Windows / macOS / Linux 的安装说明。",
-                    "The page includes Windows / macOS / Linux installation instructions.",
-                )
-                .dim(),
+                tr(self.language, "update_prompt.install_note").dim(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.push("");
         column.push(selection_option_row(
             0,
-            tr(
-                self.language,
-                "立即打开发布页（默认浏览器）",
-                "Open release page now (default browser)",
-            )
-            .to_string(),
+            tr(self.language, "update_prompt.option.open_now").to_string(),
             self.highlighted == UpdateSelection::UpdateNow,
         ));
         column.push(selection_option_row(
             1,
-            tr(self.language, "暂时跳过", "Skip").to_string(),
+            tr(self.language, "update_prompt.option.skip").to_string(),
             self.highlighted == UpdateSelection::NotNow,
         ));
         column.push(selection_option_row(
             2,
-            tr(self.language, "本版本内不再提醒", "Skip until next version").to_string(),
+            tr(self.language, "update_prompt.option.skip_until_next").to_string(),
             self.highlighted == UpdateSelection::DontRemind,
         ));
         column.push("");
         column.push(
             Line::from(vec![
-                tr(self.language, "按 ", "Press ").dim(),
+                tr(self.language, "update_prompt.hint.press").dim(),
                 key_hint::plain(KeyCode::Enter).into(),
-                tr(self.language, " 继续", " to continue").dim(),
+                tr(self.language, "update_prompt.hint.continue").dim(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );

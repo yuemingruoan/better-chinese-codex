@@ -38,6 +38,7 @@ use std::sync::RwLock;
 
 use crate::LoginStatus;
 use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::onboarding::onboarding_screen::KeyboardHandler;
 use crate::onboarding::onboarding_screen::StepStateProvider;
 use crate::shimmer::shimmer_spans;
@@ -195,12 +196,7 @@ impl AuthModeWidget {
     fn disallow_api_login(&mut self) {
         self.highlighted_mode = AuthMode::ChatGPT;
         self.error = Some(
-            tr(
-                self.language,
-                "已禁用 API 密钥登录。",
-                "API key login is disabled.",
-            )
-            .to_string(),
+            tr(self.language, "onboarding.auth.api_key_disabled").to_string(),
         );
         *self.sign_in_state.write().unwrap() = SignInState::PickMode;
         self.request_frame.schedule_frame();
@@ -211,21 +207,11 @@ impl AuthModeWidget {
         let mut lines: Vec<Line> = vec![
             Line::from(vec![
                 "  ".into(),
-                tr(
-                    language,
-                    "使用 ChatGPT 登录，在您的付费计划中使用 Codex",
-                    "Sign in with ChatGPT to use Codex as part of your paid plan",
-                )
-                .into(),
+                tr(language, "onboarding.auth.pick.chatgpt_line1").into(),
             ]),
             Line::from(vec![
                 "  ".into(),
-                tr(
-                    language,
-                    "或连接 API 密钥以按量计费",
-                    "or connect an API key for usage-based billing",
-                )
-                .into(),
+                tr(language, "onboarding.auth.pick.chatgpt_line2").into(),
             ]),
             "".into(),
         ];
@@ -260,24 +246,16 @@ impl AuthModeWidget {
         };
 
         let chatgpt_description = if !self.is_chatgpt_login_allowed() {
-            tr(language, "已禁用 ChatGPT 登录", "ChatGPT login is disabled")
+            tr(language, "onboarding.auth.chatgpt_disabled")
         } else if is_headless_environment() {
-            tr(
-                language,
-                "检测到无头环境，使用设备码登录",
-                "Uses device code login (headless environment detected)",
-            )
+            tr(language, "onboarding.auth.chatgpt_headless")
         } else {
-            tr(
-                language,
-                "Plus、Pro、Team 与 Enterprise 计划已包含用量",
-                "Usage included with Plus, Pro, Team, and Enterprise plans",
-            )
+            tr(language, "onboarding.auth.chatgpt_included_usage")
         };
         lines.extend(create_mode_item(
             0,
             AuthMode::ChatGPT,
-            tr(language, "使用 ChatGPT 登录", "Sign in with ChatGPT"),
+            tr(language, "onboarding.auth.option.chatgpt"),
             chatgpt_description,
         ));
         lines.push("".into());
@@ -285,17 +263,13 @@ impl AuthModeWidget {
             lines.extend(create_mode_item(
                 1,
                 AuthMode::ApiKey,
-                tr(language, "使用自有 API 密钥", "Provide your own API key"),
-                tr(language, "按实际使用量付费", "Pay for what you use"),
+                tr(language, "onboarding.auth.option.api_key"),
+                tr(language, "onboarding.auth.option.api_key_description"),
             ));
             lines.push("".into());
         } else {
             lines.push(
-                tr(
-                    language,
-                    "  此工作区已禁用 API 密钥登录。请使用 ChatGPT 登录以继续。",
-                    "  API key login is disabled by this workspace. Sign in with ChatGPT to continue.",
-                )
+                tr(language, "onboarding.auth.pick.api_key_disabled_workspace")
                 .dim()
                 .into(),
             );
@@ -304,7 +278,7 @@ impl AuthModeWidget {
         lines.push(
             // AE: Following styles.md, this should probably be Cyan because it's a user input tip.
             //     But leaving this for a future cleanup.
-            tr(language, "  按 Enter 继续", "  Press Enter to continue")
+            tr(language, "onboarding.auth.press_enter_continue")
                 .dim()
                 .into(),
         );
@@ -327,17 +301,11 @@ impl AuthModeWidget {
                 .schedule_frame_in(std::time::Duration::from_millis(100));
             spans.extend(shimmer_spans(tr(
                 language,
-                "请在浏览器中完成登录",
-                "Finish signing in via your browser",
+                "onboarding.auth.continue_in_browser.title",
             )));
         } else {
             spans.push(
-                tr(
-                    language,
-                    "请在浏览器中完成登录",
-                    "Finish signing in via your browser",
-                )
-                .into(),
+                tr(language, "onboarding.auth.continue_in_browser.title").into(),
             );
         }
         let mut lines = vec![spans.into(), "".into()];
@@ -347,12 +315,7 @@ impl AuthModeWidget {
             && !state.auth_url.is_empty()
         {
             lines.push(
-                tr(
-                    language,
-                    "  若链接未自动打开，请手动访问下列链接完成认证：",
-                    "  If the link doesn't open automatically, open the following link to authenticate:",
-                )
-                .into(),
+                tr(language, "onboarding.auth.continue_in_browser.manual_link").into(),
             );
             lines.push("".into());
             lines.push(Line::from(vec![
@@ -361,26 +324,15 @@ impl AuthModeWidget {
             ]));
             lines.push("".into());
             lines.push(Line::from(vec![
-                "  On a remote or headless machine? Use ".into(),
+                tr(language, "onboarding.auth.continue_in_browser.remote_prefix").into(),
                 "codex login --device-auth".cyan(),
-                " instead".into(),
-            ]));
-            lines.push("".into());
-            lines.push(Line::from(vec![
-                tr(
-                    language,
-                    "  远程或无头环境请使用 ",
-                    "  On a remote or headless machine? Use ",
-                )
-                .into(),
-                "codex login --device-auth".cyan(),
-                tr(language, " 登录", " instead").into(),
+                tr(language, "onboarding.auth.continue_in_browser.remote_suffix").into(),
             ]));
             lines.push("".into());
         }
 
         lines.push(
-            tr(language, "  按 Esc 取消", "  Press Esc to cancel")
+            tr(language, "onboarding.auth.press_esc_cancel")
                 .dim()
                 .into(),
         );
@@ -391,72 +343,45 @@ impl AuthModeWidget {
 
     fn render_chatgpt_success_message(&self, area: Rect, buf: &mut Buffer) {
         let language = self.language;
-        let codex_docs = match language {
-            Language::ZhCn => {
-                "\u{1b}]8;;https://github.com/openai/codex\u{7}Codex 文档\u{1b}]8;;\u{7}"
-            }
-            Language::En => {
-                "\u{1b}]8;;https://github.com/openai/codex\u{7}Codex docs\u{1b}]8;;\u{7}"
-            }
-        };
-        let training_prefs = match language {
-            Language::ZhCn => {
-                "\u{1b}]8;;https://chatgpt.com/#settings\u{7}训练数据偏好设置\u{1b}]8;;\u{7}"
-            }
-            Language::En => {
-                "\u{1b}]8;;https://chatgpt.com/#settings\u{7}training data preferences\u{1b}]8;;\u{7}"
-            }
-        };
+        let codex_docs_label = tr(language, "onboarding.auth.link.codex_docs");
+        let codex_docs = format!(
+            "\u{1b}]8;;{url}\u{7}{label}\u{1b}]8;;\u{7}",
+            url = "https://github.com/openai/codex",
+            label = codex_docs_label
+        );
+        let training_prefs_label = tr(language, "onboarding.auth.link.training_prefs");
+        let training_prefs = format!(
+            "\u{1b}]8;;{url}\u{7}{label}\u{1b}]8;;\u{7}",
+            url = "https://chatgpt.com/#settings",
+            label = training_prefs_label
+        );
         let lines = vec![
-            tr(
-                language,
-                "✓ 已使用您的 ChatGPT 帐号登录",
-                "✓ Signed in with your ChatGPT account",
-            )
+            tr(language, "onboarding.auth.success.title")
             .fg(Color::Green)
             .into(),
             "".into(),
-            tr(language, "  开始之前：", "  Before you start:").into(),
+            tr(language, "onboarding.auth.success.before_you_start").into(),
             "".into(),
-            tr(
-                language,
-                "  决定希望授予 Codex 多少自主权",
-                "  Decide how much autonomy you want to grant Codex",
-            )
-            .into(),
+            tr(language, "onboarding.auth.success.decide_autonomy").into(),
             Line::from(vec![
-                tr(language, "  详情请参阅 ", "  For more details see the ").into(),
+                tr(language, "onboarding.auth.success.more_details_prefix").into(),
                 codex_docs.underlined(),
             ])
             .dim(),
             "".into(),
-            tr(language, "  Codex 也可能犯错", "  Codex can make mistakes").into(),
-            tr(
-                language,
-                "  请审查它编写的代码和执行的命令",
-                "  Review the code it writes and commands it runs",
-            )
-            .dim()
-            .into(),
-            "".into(),
-            tr(
-                language,
-                "  由您的 ChatGPT 帐号提供支持",
-                "  Powered by your ChatGPT account",
-            )
-            .into(),
-            Line::from(vec![
-                tr(
-                    language,
-                    "  将使用您计划中的速率限制与 ",
-                    "  Uses your plan's rate limits and ",
-                )
+            tr(language, "onboarding.auth.success.mistakes_title").into(),
+            tr(language, "onboarding.auth.success.mistakes_detail")
+                .dim()
                 .into(),
+            "".into(),
+            tr(language, "onboarding.auth.success.powered_by_account").into(),
+            Line::from(vec![
+                tr(language, "onboarding.auth.success.rate_limits_prefix").into(),
                 training_prefs.underlined(),
             ])
             .dim(),
             "".into(),
-            tr(language, "  按 Enter 继续", "  Press Enter to continue")
+            tr(language, "onboarding.auth.press_enter_continue")
                 .fg(Color::Cyan)
                 .into(),
         ];
@@ -468,11 +393,7 @@ impl AuthModeWidget {
 
     fn render_chatgpt_success(&self, area: Rect, buf: &mut Buffer) {
         let lines = vec![
-            tr(
-                self.language,
-                "✓ 已使用您的 ChatGPT 帐号登录",
-                "✓ Signed in with your ChatGPT account",
-            )
+            tr(self.language, "onboarding.auth.success.title")
             .fg(Color::Green)
             .into(),
         ];
@@ -485,16 +406,11 @@ impl AuthModeWidget {
     fn render_api_key_configured(&self, area: Rect, buf: &mut Buffer) {
         let language = self.language;
         let lines = vec![
-            tr(language, "✓ API 密钥已配置", "✓ API key configured")
+            tr(language, "onboarding.auth.api_key_configured.title")
                 .fg(Color::Green)
                 .into(),
             "".into(),
-            tr(
-                language,
-                "  Codex 将使用您的 API 密钥按量计费。",
-                "  Codex will use usage-based billing with your API key.",
-            )
-            .into(),
+            tr(language, "onboarding.auth.api_key_configured.detail").into(),
         ];
 
         Paragraph::new(lines)
@@ -514,39 +430,20 @@ impl AuthModeWidget {
         let mut intro_lines: Vec<Line> = vec![
             Line::from(vec![
                 "> ".into(),
-                tr(
-                    language,
-                    "使用您自己的 OpenAI API 密钥以按量计费",
-                    "Use your own OpenAI API key for usage-based billing",
-                )
-                .bold(),
+                tr(language, "onboarding.auth.api_key_entry.title").bold(),
             ]),
             "".into(),
-            tr(
-                language,
-                "  请在下方粘贴或输入 API 密钥。密钥会本地存储在 auth.json 中。",
-                "  Paste or type your API key below. It will be stored locally in auth.json.",
-            )
-            .into(),
+            tr(language, "onboarding.auth.api_key_entry.instructions").into(),
             "".into(),
         ];
         if state.prepopulated_from_env {
             intro_lines.push(
-                tr(
-                    language,
-                    "  检测到 OPENAI_API_KEY 环境变量。",
-                    "  Detected OPENAI_API_KEY environment variable.",
-                )
-                .into(),
+                tr(language, "onboarding.auth.api_key_entry.detected_env").into(),
             );
             intro_lines.push(
-                tr(
-                    language,
-                    "  如想使用其他帐号，请粘贴不同的密钥。",
-                    "  Paste a different key if you prefer to use another account.",
-                )
-                .dim()
-                .into(),
+                tr(language, "onboarding.auth.api_key_entry.use_different_key")
+                    .dim()
+                    .into(),
             );
             intro_lines.push("".into());
         }
@@ -556,12 +453,8 @@ impl AuthModeWidget {
 
         let content_line: Line = if state.value.is_empty() {
             vec![
-                tr(
-                    language,
-                    "粘贴或输入您的 API 密钥",
-                    "Paste or type your API key",
-                )
-                .dim(),
+                tr(language, "onboarding.auth.api_key_entry.placeholder")
+                    .dim(),
             ]
             .into()
         } else {
@@ -571,7 +464,7 @@ impl AuthModeWidget {
             .wrap(Wrap { trim: false })
             .block(
                 Block::default()
-                    .title(tr(language, "API 密钥", "API key"))
+                    .title(tr(language, "onboarding.auth.api_key_entry.block_title"))
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
                     .border_style(Style::default().fg(Color::Cyan)),
@@ -579,10 +472,10 @@ impl AuthModeWidget {
             .render(input_area, buf);
 
         let mut footer_lines: Vec<Line> = vec![
-            tr(language, "  按 Enter 保存", "  Press Enter to save")
+            tr(language, "onboarding.auth.api_key_entry.save_hint")
                 .dim()
                 .into(),
-            tr(language, "  按 Esc 返回", "  Press Esc to go back")
+            tr(language, "onboarding.auth.api_key_entry.back_hint")
                 .dim()
                 .into(),
         ];
@@ -612,7 +505,7 @@ impl AuthModeWidget {
                         let trimmed = state.value.trim().to_string();
                         if trimmed.is_empty() {
                             self.error = Some(
-                                tr(self.language, "API 密钥不能为空", "API key cannot be empty")
+                                tr(self.language, "onboarding.auth.api_key_entry.empty_error")
                                     .to_string(),
                             );
                             should_request_frame = true;
@@ -731,10 +624,11 @@ impl AuthModeWidget {
                 *self.sign_in_state.write().unwrap() = SignInState::ApiKeyConfigured;
             }
             Err(err) => {
-                self.error = Some(match self.language {
-                    Language::ZhCn => format!("保存 API 密钥失败：{err}"),
-                    Language::En => format!("Failed to save API key: {err}"),
-                });
+                self.error = Some(tr_args(
+                    self.language,
+                    "onboarding.auth.api_key_entry.save_failed",
+                    &[("err", &err.to_string())],
+                ));
                 let mut guard = self.sign_in_state.write().unwrap();
                 if let SignInState::ApiKeyEntry(existing) = &mut *guard {
                     if existing.value.is_empty() {
@@ -899,11 +793,7 @@ mod tests {
 
         assert_eq!(
             widget.error.as_deref(),
-            Some(tr(
-                Language::En,
-                "已禁用 API 密钥登录。",
-                "API key login is disabled.",
-            ))
+            Some(tr(Language::En, "onboarding.auth.api_key_disabled"))
         );
         assert!(matches!(
             &*widget.sign_in_state.read().unwrap(),
@@ -919,11 +809,7 @@ mod tests {
 
         assert_eq!(
             widget.error.as_deref(),
-            Some(tr(
-                Language::En,
-                "已禁用 API 密钥登录。",
-                "API key login is disabled.",
-            ))
+            Some(tr(Language::En, "onboarding.auth.api_key_disabled"))
         );
         assert!(matches!(
             &*widget.sign_in_state.read().unwrap(),

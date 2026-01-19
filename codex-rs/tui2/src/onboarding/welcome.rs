@@ -81,14 +81,9 @@ impl WidgetRef for &WelcomeWidget {
         }
         lines.push(Line::from(vec![
             "  ".into(),
-            tr(self.language, "欢迎使用 ", "Welcome to ").into(),
+            tr(self.language, "onboarding.welcome.prefix").into(),
             "Codex".bold(),
-            tr(
-                self.language,
-                "，OpenAI 的命令行编程助手",
-                ", OpenAI's command-line coding agent",
-            )
-            .into(),
+            tr(self.language, "onboarding.welcome.suffix").into(),
         ]));
 
         Paragraph::new(lines)

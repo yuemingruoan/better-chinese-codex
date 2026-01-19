@@ -276,7 +276,8 @@ impl WidgetRef for &OssSelectionWidget<'_> {
         ])
         .areas(response_chunk.inner(Margin::new(1, 0)));
 
-        Line::from(tr(self.language, "选择提供方？", "Select provider?")).render(title_area, buf);
+        Line::from(tr(self.language, "oss_selection.prompt.choose_provider"))
+            .render(title_area, buf);
 
         self.confirmation_prompt.clone().render(prompt_chunk, buf);
         let areas = Layout::horizontal(
