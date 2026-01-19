@@ -176,6 +176,7 @@ use std::path::Path;
 use chrono::Local;
 use codex_common::approval_presets::ApprovalPreset;
 use codex_common::approval_presets::builtin_approval_presets;
+use codex_common::token_usage::split_total_and_last;
 use codex_core::AuthManager;
 use codex_core::CodexAuth;
 use codex_core::ThreadManager;
@@ -966,6 +967,7 @@ impl ChatWidget {
             Some(info) => self.apply_token_info(info),
             None => {
                 self.bottom_pane.set_context_window(None, None);
+                self.bottom_pane.set_token_usage(None);
                 self.token_info = None;
                 self.last_api_token_usage = None;
             }
@@ -973,18 +975,40 @@ impl ChatWidget {
     }
 
     fn apply_token_info(&mut self, info: TokenUsageInfo) {
-        let percent = self.context_remaining_percent(&info);
+        let total_usage = info.total_token_usage.clone();
+        let last_usage = info.last_token_usage.clone();
+        let percent = self.context_used_percent(&info);
         let used_tokens = self.context_used_tokens(&info, percent.is_some());
         self.bottom_pane.set_context_window(percent, used_tokens);
-        self.last_api_token_usage = Some(info.last_token_usage.clone());
+        self.capture_last_api_usage(&last_usage);
+        self.refresh_token_usage_display(&total_usage);
         self.token_info = Some(info);
     }
 
-    fn context_remaining_percent(&self, info: &TokenUsageInfo) -> Option<i64> {
-        info.model_context_window.map(|window| {
-            info.last_token_usage
-                .percent_of_context_window_remaining(window)
-        })
+    fn capture_last_api_usage(&mut self, usage: &TokenUsage) {
+        if usage.input_tokens != 0
+            || usage.cached_input_tokens != 0
+            || usage.output_tokens != 0
+            || usage.reasoning_output_tokens != 0
+        {
+            self.last_api_token_usage = Some(usage.clone());
+        }
+    }
+
+    fn refresh_token_usage_display(&mut self, total_usage: &TokenUsage) {
+        let last_usage = self.last_api_token_usage.clone().unwrap_or_default();
+        if total_usage.is_zero() && last_usage.is_zero() {
+            self.bottom_pane.set_token_usage(None);
+            return;
+        }
+
+        let split = split_total_and_last(total_usage, &last_usage);
+        self.bottom_pane.set_token_usage(Some(split));
+    }
+
+    fn context_used_percent(&self, info: &TokenUsageInfo) -> Option<i64> {
+        info.model_context_window
+            .map(|window| info.last_token_usage.percent_of_context_window_used(window))
     }
 
     fn context_used_tokens(&self, info: &TokenUsageInfo, percent_known: bool) -> Option<i64> {
@@ -1002,6 +1026,7 @@ impl ChatWidget {
                 Some(info) => self.apply_token_info(info),
                 None => {
                     self.bottom_pane.set_context_window(None, None);
+                    self.bottom_pane.set_token_usage(None);
                     self.token_info = None;
                 }
             }
