@@ -2,6 +2,8 @@ use crate::history_cell::CompositeHistoryCell;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::with_border_with_inner_width;
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::version::CODEX_CLI_VERSION;
 use chrono::DateTime;
 use chrono::Local;
@@ -120,10 +122,7 @@ impl StatusHistoryCell {
             .iter()
             .find(|(k, _)| *k == "approval")
             .map(|(_, v)| v.clone())
-            .unwrap_or_else(|| match config.language {
-                Language::ZhCn => "未知".to_string(),
-                Language::En => "<unknown>".to_string(),
-            });
+            .unwrap_or_else(|| tr(config.language, "status.approval.unknown").to_string());
         let sandbox = match config.sandbox_policy.get() {
             SandboxPolicy::DangerFullAccess => "danger-full-access".to_string(),
             SandboxPolicy::ReadOnly => "read-only".to_string(),
@@ -182,33 +181,14 @@ impl StatusHistoryCell {
 
         vec![
             Span::from(total_fmt),
-            Span::from(match self.language {
-                Language::ZhCn => " 总计 ",
-                Language::En => " total ",
-            }),
-            Span::from(match self.language {
-                Language::ZhCn => "（",
-                Language::En => " (",
-            })
-            .dim(),
+            Span::from(tr(self.language, "status.token_usage.total_label")),
+            Span::from(tr(self.language, "status.token_usage.paren_open")).dim(),
             Span::from(input_fmt).dim(),
-            Span::from(match self.language {
-                Language::ZhCn => " 输入",
-                Language::En => " input",
-            })
-            .dim(),
+            Span::from(tr(self.language, "status.token_usage.input_label")).dim(),
             Span::from(" + ").dim(),
             Span::from(output_fmt).dim(),
-            Span::from(match self.language {
-                Language::ZhCn => " 输出",
-                Language::En => " output",
-            })
-            .dim(),
-            Span::from(match self.language {
-                Language::ZhCn => "）",
-                Language::En => ")",
-            })
-            .dim(),
+            Span::from(tr(self.language, "status.token_usage.output_label")).dim(),
+            Span::from(tr(self.language, "status.token_usage.paren_close")).dim(),
         ]
     }
 
@@ -218,28 +198,18 @@ impl StatusHistoryCell {
         let used_fmt = format_tokens_compact(context.tokens_in_context);
         let window_fmt = format_tokens_compact(context.window);
 
+        let percent_value = percent.to_string();
         Some(vec![
-            Span::from(match self.language {
-                Language::ZhCn => format!("剩余 {percent}%"),
-                Language::En => format!("{percent}% left"),
-            }),
-            Span::from(match self.language {
-                Language::ZhCn => "（",
-                Language::En => " (",
-            })
-            .dim(),
+            Span::from(tr_args(
+                self.language,
+                "status.context_window.remaining",
+                &[("percent", percent_value.as_str())],
+            )),
+            Span::from(tr(self.language, "status.context_window.paren_open")).dim(),
             Span::from(used_fmt).dim(),
-            Span::from(match self.language {
-                Language::ZhCn => " 已用 / ",
-                Language::En => " used / ",
-            })
-            .dim(),
+            Span::from(tr(self.language, "status.context_window.used_ratio")).dim(),
             Span::from(window_fmt).dim(),
-            Span::from(match self.language {
-                Language::ZhCn => "）",
-                Language::En => ")",
-            })
-            .dim(),
+            Span::from(tr(self.language, "status.context_window.paren_close")).dim(),
         ])
     }
 
@@ -251,14 +221,8 @@ impl StatusHistoryCell {
         match &self.rate_limits {
             StatusRateLimitData::Available(rows_data) => {
                 if rows_data.is_empty() {
-                    let label = match self.language {
-                        Language::ZhCn => "限制",
-                        Language::En => "Limits",
-                    };
-                    let value = match self.language {
-                        Language::ZhCn => "暂无数据",
-                        Language::En => "data not available yet",
-                    };
+                    let label = tr(self.language, "status.rate_limits.label");
+                    let value = tr(self.language, "status.rate_limits.data_not_available");
                     return vec![formatter.line(label, vec![Span::from(value).dim()])];
                 }
 
@@ -268,27 +232,14 @@ impl StatusHistoryCell {
                 let mut lines =
                     self.rate_limit_row_lines(rows_data, available_inner_width, formatter);
                 lines.push(formatter.line(
-                    match self.language {
-                        Language::ZhCn => "警告",
-                        Language::En => "Warning",
-                    },
-                    vec![Span::from(match self.language {
-                        Language::ZhCn => "限额数据可能已过期，请开始新的对话刷新。",
-                        Language::En => "Limit data may be stale; start a new chat to refresh.",
-                    })
-                    .dim()],
+                    tr(self.language, "status.rate_limits.warning_label"),
+                    vec![Span::from(tr(self.language, "status.rate_limits.stale_warning")).dim()],
                 ));
                 lines
             }
             StatusRateLimitData::Missing => {
-                let label = match self.language {
-                    Language::ZhCn => "限制",
-                    Language::En => "Limits",
-                };
-                let value = match self.language {
-                    Language::ZhCn => "暂无数据",
-                    Language::En => "data not available yet",
-                };
+                let label = tr(self.language, "status.rate_limits.label");
+                let value = tr(self.language, "status.rate_limits.data_not_available");
                 vec![formatter.line(label, vec![Span::from(value).dim()])]
             }
         }
@@ -321,10 +272,11 @@ impl StatusHistoryCell {
                     let base_line = Line::from(base_spans.clone());
 
                     if let Some(resets_at) = resets_at.as_ref() {
-                        let resets_span = Span::from(match self.language {
-                            Language::ZhCn => format!("（{resets_at} 重置）"),
-                            Language::En => format!("({resets_at} reset)"),
-                        })
+                        let resets_span = Span::from(tr_args(
+                            self.language,
+                            "status.rate_limits.reset_at",
+                            &[("resets_at", resets_at.as_str())],
+                        ))
                         .dim();
                         let mut inline_spans = base_spans.clone();
                         inline_spans.push(Span::from(" ").dim());
@@ -358,14 +310,7 @@ impl StatusHistoryCell {
         match &self.rate_limits {
             StatusRateLimitData::Available(rows) => {
                 if rows.is_empty() {
-                    push_label(
-                        labels,
-                        seen,
-                        match self.language {
-                            Language::ZhCn => "限制",
-                            Language::En => "Limits",
-                        },
-                    );
+                    push_label(labels, seen, tr(self.language, "status.rate_limits.label"));
                 } else {
                     for row in rows {
                         push_label(labels, seen, row.label.as_str());
@@ -376,23 +321,11 @@ impl StatusHistoryCell {
                 for row in rows {
                     push_label(labels, seen, row.label.as_str());
                 }
-                push_label(
-                    labels,
-                    seen,
-                    match self.language {
-                        Language::ZhCn => "警告",
-                        Language::En => "Warning",
-                    },
-                );
+                push_label(labels, seen, tr(self.language, "status.rate_limits.warning_label"));
             }
-            StatusRateLimitData::Missing => push_label(
-                labels,
-                seen,
-                match self.language {
-                    Language::ZhCn => "限制",
-                    Language::En => "Limits",
-                },
-            ),
+            StatusRateLimitData::Missing => {
+                push_label(labels, seen, tr(self.language, "status.rate_limits.label"));
+            }
         }
     }
 }
@@ -421,48 +354,20 @@ impl HistoryCell for StatusHistoryCell {
                 (None, Some(plan)) => plan.clone(),
                 (None, None) => "ChatGPT".to_string(),
             },
-            StatusAccountDisplay::ApiKey => match language {
-                Language::ZhCn => "已配置 API 密钥（运行 codex login 以使用 ChatGPT）".to_string(),
-                Language::En => "API key configured (run codex login to use ChatGPT)".to_string(),
-            },
+            StatusAccountDisplay::ApiKey => {
+                tr(language, "status.account.api_key_configured").to_string()
+            }
         });
 
-        let label_model = match language {
-            Language::ZhCn => "模型",
-            Language::En => "Model",
-        };
-        let label_directory = match language {
-            Language::ZhCn => "目录",
-            Language::En => "Directory",
-        };
-        let label_approval = match language {
-            Language::ZhCn => "审批",
-            Language::En => "Approval",
-        };
-        let label_sandbox = match language {
-            Language::ZhCn => "沙箱",
-            Language::En => "Sandbox",
-        };
-        let label_model_provider = match language {
-            Language::ZhCn => "模型提供方",
-            Language::En => "Model provider",
-        };
-        let label_account = match language {
-            Language::ZhCn => "帐号",
-            Language::En => "Account",
-        };
-        let label_session = match language {
-            Language::ZhCn => "会话",
-            Language::En => "Session",
-        };
-        let label_token_usage = match language {
-            Language::ZhCn => "Token 使用",
-            Language::En => "Token usage",
-        };
-        let label_context_window = match language {
-            Language::ZhCn => "上下文窗口",
-            Language::En => "Context window",
-        };
+        let label_model = tr(language, "status.fields.model");
+        let label_directory = tr(language, "status.fields.directory");
+        let label_approval = tr(language, "status.fields.approval");
+        let label_sandbox = tr(language, "status.fields.sandbox");
+        let label_model_provider = tr(language, "status.fields.model_provider");
+        let label_account = tr(language, "status.fields.account");
+        let label_session = tr(language, "status.fields.session");
+        let label_token_usage = tr(language, "status.fields.token_usage");
+        let label_context_window = tr(language, "status.fields.context_window");
 
         let mut labels: Vec<String> = vec![
             label_model,
@@ -496,26 +401,14 @@ impl HistoryCell for StatusHistoryCell {
         let value_width = formatter.value_width(available_inner_width);
 
         let note_first_line = Line::from(vec![
-            Span::from(match language {
-                Language::ZhCn => "访问 ",
-                Language::En => "Visit ",
-            })
-            .cyan(),
+            Span::from(tr(language, "status.note.visit_prefix")).cyan(),
             "https://chatgpt.com/codex/settings/usage"
                 .cyan()
                 .underlined(),
-            Span::from(match language {
-                Language::ZhCn => " 获取最新的",
-                Language::En => " for up-to-date",
-            })
-            .cyan(),
+            Span::from(tr(language, "status.note.up_to_date_prefix")).cyan(),
         ]);
         let note_second_line = Line::from(vec![
-            Span::from(match language {
-                Language::ZhCn => "速率限制与额度信息",
-                Language::En => "information on rate limits and credits",
-            })
-            .cyan(),
+            Span::from(tr(language, "status.note.rate_limits_and_credits")).cyan(),
         ]);
         let note_lines = word_wrap_lines(
             [note_first_line, note_second_line],

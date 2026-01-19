@@ -1,0 +1,360 @@
+# Simplified Chinese translations
+
+[slash_command.description]
+approvals = "配置 Codex 无需审批即可执行的操作"
+checkpoint = "阶段性记录 AI 所执行的操作"
+clean = "清理剪贴板图片缓存"
+compact = "总结当前对话以避免上下文超限"
+diff = "显示 git diff（包含未跟踪文件）"
+elevate_sandbox = "配置提升权限的沙箱"
+exit = "退出 Codex"
+experimental = "切换实验功能"
+feedback = "向维护者发送日志"
+fork = "分叉已保存的会话"
+init = "创建包含 Codex 指南的 AGENTS.md 文件"
+lang = "切换界面语言"
+mcp = "列出已配置的 MCP 工具"
+mention = "在消息中提及文件"
+model = "选择模型及推理强度"
+new = "在对话中开始新的聊天"
+ps = "列出后台终端"
+resume = "恢复已保存的会话"
+review = "审查当前改动并查找问题"
+rollout = "打印部署文件路径"
+sdd_develop = "启动基于 SDD 的开发流程"
+skills = "使用技能提升特定任务的表现"
+status = "显示会话配置与令牌使用情况"
+test_approval = "测试审批请求"
+logout = "注销 Codex 登录"
+
+[tooltips]
+items = [
+  "对话变长时可使用 /compact 总结历史，释放上下文。",
+  "用 /new 开启新话题；之前的会话仍会保留在历史中。",
+  "遇到异常时可用 /feedback 向维护者发送日志。",
+  "用 /model 快速切换模型或推理强度。",
+  "可以用 `!` 在 Codex 中运行任意 shell 命令（例如 `!ls`）",
+  "输入 / 打开命令弹窗；Tab 可自动补全斜杠命令和已保存的提示词。",
+  "可用自定义提示词创建自己的 `/` 命令。更多信息：https://developers.openai.com/codex/guides/slash-commands#create-your-own-slash-commands-with-custom-prompts",
+  "当输入框为空时，按 Esc 退回并编辑上一条消息；按 Enter 确认。",
+  "按 Ctrl+V 粘贴图片以附加到下一条消息。",
+  "运行 `codex resume` 可恢复之前的会话。",
+]
+
+[prompt]
+init = '''请生成一个名为 AGENTS.md 的文件，为本仓库贡献者提供指南。
+目标是撰写一份结构清晰、言简意赅的文档，使用有描述性的标题，并在每个部分给出可执行的说明。
+可根据需要对以下大纲进行增删：若有额外相关内容可新增章节，不适用的部分可省略。
+请将文件生成于根目录下（除非用户额外指定目录）的 .codex 目录下（若该目录不存在可自行创建）exp:"PROJECT_DIR/.codex/AGENTS.md"
+资料来源：
+- 该项目先前可能使用过其他AI Agent进行开发，并且可能遗留了它们的记忆管理文档，你可以扫描“~/.claude/CLAUDE.md”，“./CLAUDE.md”，“./CLAUDE.local.md”,"./GEMINI.md"这些文件（如果存在的话）来获取它们的记忆管理文档，可以为你的文档编写提供有力参考，但内容来源可信度有限，时效性亦可能存在问题，需再次进行核实。
+- 用户可能会在/.codex目录下存放一个名为PROMPT.md的文件，其中存储了该项目作者想要达到的目的和编码时的要求，你可以根据里面的需求编写需求描述更加精准的AGENTS.md，其中你认为需要注意的事项也应当保存到AGENTS.md中。
+- 大部分项目都会包含README.md，你可以阅读它来获得该项目的大致作用，对项目用途拥有更清晰的认知。
+
+文档要求
+
+- 将文档标题设为 “Repository Guidelines”。
+- 使用 Markdown 标题（#、## 等）组织结构。
+- 不作强制的字数要求，但尽量保持简洁，不过不可一味的追求简洁导致遗留必要的项目细节
+- 说明应当直接、具体，贴合本仓库。
+- 在合适的位置给出示例（命令、目录路径、命名规则等）。
+- 保持专业且具有指导性的语气。
+
+推荐章节
+
+项目结构与模块组织
+
+- 概述项目结构，说明源码、测试与资源文件的位置。
+- 用户已经确定的项目结构中已指定用途的文件和其对应的用途。
+构建、测试与开发命令
+
+- 列出本地构建、测试与运行的关键命令（例如 npm test、make build）。
+- 简要说明各命令的作用。
+
+代码风格与命名规范
+
+- 指出缩进规则、语言特定的风格偏好及命名模式。
+- 说明使用的格式化或静态检查工具。
+
+测试指引
+
+- 说明测试框架与覆盖率要求。
+- 写明测试命名规范以及执行方式。
+
+提交与合并请求指南
+
+- 总结仓库中常见的提交信息风格。
+- 说明合并请求需要包含的要素（描述、关联问题、截图等）。
+
+（可选）根据实际情况补充其他章节，如安全与配置提示、架构概览、面向代理的特别说明等。
+'''
+
+sdd_plan = '''你是资深开发规划师。请根据“需求描述”先判断信息是否充分：  
+- 在向用户提问前，**必须先阅读项目内相关代码/文档**以澄清上下文；仅当代码中无法确认或存在多个合理语义时才提问。  
+- 若存在不明确处，且**在代码/文档中无法确认或存在多种合理解释**，再列出需向用户确认的问题清单并请用户补充，此时不要生成 task.md。  
+- 需求清晰后，生成 task.md 文件（写入项目根目录下 `.codex/task.md`，必要时先创建 `.codex` 目录），不要在回复中内联整个文件，只需汇报摘要并请用户提出异议。
+
+## 需求描述
+（把用户提供的功能/问题原文粘贴在这里）
+
+## task.md 应包含的章节
+1) **标题与目标**：一句话概述要解决的问题与完成定义。  
+2) **交付物**：列出最终需要提交的成果（代码、文档、脚本等）。  
+3) **范围 / 非范围**：各 3~6 条，明确本迭代做与不做。  
+4) **工作项清单**：表格列 `ID`、`内容`、`完成状态`、`负责人`、`实施要点`、`验证方式`；完成状态用 `[ ]` / `[x]` 勾选，初始为 `[ ]`，ID 用 T1/T2… 短标签。  
+   - 实施要点：拆分为可落地的步骤、建议使用的内部工具/命令（如 apply_patch、just fmt、cargo test -p <crate>），以及代码或配置变更的关键点。  
+   - 验证方式：列出对应的测试/检查（优先 TDD：若缺少测试先补测试再实现），包含命令、预期结果或日志信号。  
+5) **里程碑与顺序**：按实际需要细分里程碑（不少于 2 个，可多于 4 个），按先后列出依赖的任务 ID；将大块工作拆成粒度更小、能在单次提交/PR 中完成并可验证产出的阶段。  
+6) **风险与缓解**：列 3~5 条风险，给出对应缓解措施。  
+7) **验收与测试**：列必须通过的检查（单测/集成/手测/观测信号）及数据或日志验证要点。  
+8) **回滚与清理**：说明出问题时的回滚步骤以及需清理的资源/分支。  
+9) **工具与命令**：列执行阶段要用的主要工具/命令，注明何时使用、产出和注意事项。  
+10) **测试计划**：明确每个任务/模块需要覆盖的测试类型与命令（如 `cargo test -p <crate> <filter>`、`cargo insta test`、`npm test -- <pattern>` 等），说明预期通过标准与日志信号。  
+11) **汇报清单**：列需要向用户同步的节点与内容（至少：计划确认要点、分支名称、已完成任务/剩余任务、测试与验证结果、阻塞或待决事项）。  
+
+## 工具使用指引（写入 “工具与命令” 章节）
+- **修改文件**：优先用 `apply_patch`（或等效补丁）提交变更，避免长代码块口述。  
+- **运行命令**：使用 shell 工具执行 git 操作、`just fmt`、`cargo test -p <crate>`、`cargo insta` 等，简述目的与成功信号。  
+- **分支管理**：用 git 创建/切换/删除分支，避免在主分支直接提交。  
+- **进度同步**：以 `.codex/task.md` 为准，完成每一步时更新“完成状态”勾选。  
+- **汇报**：执行阶段按“汇报清单”定期向用户更新：计划确认、当前分支名、进展与剩余任务、测试结果、阻塞或待决项。  
+
+## 其他规范
+- 需求不清晰时，只输出需确认的问题列表并等待用户回应。  
+- 需求清晰时，使用 `apply_patch` 或等效方式写入 `.codex/task.md`（覆盖旧内容）；回复中不要贴出完整文件，只做摘要 + 路径提示。  
+- 生成 task.md 后，按 `/checkpoint` 规范在 `.codex/checkpoint.md` 追加一条记录（若不存在则创建）。  
+- 用简洁中文，优先列表/表格，避免大段落。  
+- 不要虚构不可验证的信息；若需外部决策，用明确占位符（如“待与产品确认 XXX”）。  
+- 在提出问题前必须先阅读项目相关文件/现有实现（通过文件阅读或必要的只读命令）以澄清上下文。  
+- 需求存在不明确处时，列出需向用户确认的关键问题，并先行确认；确认后再生成 task.md。  
+- 可列出建议执行的命令，但不要在输出中直接执行；执行留待后续开发阶段。  
+'''
+
+sdd_execute = '''你是资深代码执行代理。上一轮已用 SDD 计划生成器产出并确认了 `.codex/task.md`；请在此上下文下按计划执行开发，保持可见的进度与验证记录。
+
+核心原则
+- **分支隔离**：全程在独立分支开发，不改主分支，不合并。  
+- **逐项提交**：每完成 task.md 列表中的一项（或拆分子项）并通过验证后，立即提交 commit；提交信息写明已完成的功能。  
+- **最小可验证增量**：每个变更尽量小且可验证，完成后立即验证。  
+- **TDD 优先**：若缺少测试，先补测试再实现；实现后确保相关测试通过。  
+- **透明汇报**：关键节点向用户汇报进度、测试结果、阻塞。  
+- **安全操作**：优先使用 `apply_patch` 修改文件；命令前说明目的与期望结果。  
+
+执行步骤（顺序）
+1. **环境确认**：确保当前目录为项目根；若缺少 `.codex/task.md` 立即停止并提示。  
+2. **分支管理**：分支已由系统工具创建并切换，无需手动执行 git 命令。  
+3. **读取计划**：阅读 `.codex/task.md`，列出将要执行的任务 ID、实施要点、验证方式。  
+4. **建立进度跟踪**：以 `.codex/task.md` 为准维护“完成状态”勾选；如需可视化，再使用内置 Plan/TODO 工具同步（可选），必要时将任务拆成更小的子项（实现与验证分开）。  
+5. **任务执行循环**（对每个任务/子项）：  
+   - **阅读/定位**：查看相关代码/文档，确认现状。  
+   - **测试先行**：若无覆盖，先编写或补充测试；记录计划运行的命令。  
+   - **实现改动**：用 `apply_patch` 进行最小变更。  
+   - **验证**：运行对应命令（如 `just fmt`，`cargo test -p <crate>`，必要时 `cargo insta test`），收集结果/日志要点。  
+   - **提交变更**：每完成一个任务/子项并验证通过后立刻提交 commit，提交信息以“完成 <功能/子项>”等描述已完成内容。  
+   - **勾选进度**：先在 `.codex/task.md` 中勾选完成状态（`[ ]`→`[x]`），可选同步到 Plan/TODO，并在回复中同步结果与测试状态。  
+6. **收尾检查**：按计划的测试/格式化要求执行：  
+   - 代码格式：运行项目约定的格式化命令（如 `just fmt`、`npm run fmt`、`pnpm lint --fix` 等）。  
+   - 测试：根据任务/测试计划运行对应命令（如 `cargo test -p <crate>`、`cargo insta test`、`npm test -- <pattern>`、`pnpm test --filter <name>` 等），并记录结果。  
+7. **阶段总结**：整理分支名、已完成/剩余任务、测试结果、已知问题或阻塞，向用户汇报。  
+
+汇报节奏（对话中执行）
+- **开始前**：报告分支名、将执行的任务 ID/顺序、预期运行的主要命令，并提醒用户开发在独立分支上完成，完成后请再次运行 `/sdd-develop` 选择合并更新。  
+- **每完成 1–2 个任务**：说明改动与验证结果（通过/失败+日志要点）、Plan/TODO 勾选情况，并明确下一步要做的任务/子项与计划运行的命令。  
+- **阶段结束**：总结分支名、完成/剩余任务、整体测试状态、存在的阻塞或需确认事项，并提出下一阶段的优先级与预定动作。  
+
+额外注意
+- 若发现需求不明或与 `.codex/task.md` 冲突，暂停并向用户提问后再继续。  
+- 若需调整任务（新增/删除/重排），先提议并获得用户同意，再更新 Plan/TODO。  
+- 不要合并主分支或删除分支；等待用户后续选择合并或放弃。  
+'''
+
+sdd_merge = '''你是资深合并更新协助代理。用户选择通过 Pull Request 合并本次 SDD 分支更新。不要使用程序内置的 SDD Git 自动合并流程，请按仓库实际流程指导并执行合并与收尾。
+
+前提检查：
+- 确认当前分支为本次 SDD 开发分支（如 `sdd/...`），主分支保持干净。  
+- 确认最新测试已通过（参考 `.codex/task.md` 和执行记录）；如缺失测试结果，先补跑并汇报。  
+
+执行步骤：
+1. **准备 PR 信息**：整理 PR 标题与描述，包含变更摘要、测试结果、风险与回滚、关联任务（来自 `.codex/task.md`）。  
+2. **通过 PR 合并**：按平台/仓库流程创建或更新 PR，并以 **Merge commit** 方式合并。如需同步主分支，按团队流程处理并记录冲突要点。  
+3. **清理现场**：删除 `.codex/task.md` 及本次任务相关的临时记录/日志；合并后清理本地/远端分支（遵循团队流程）；检查是否残留调试代码、临时文件或配置。  
+4. **写入 checkpoint**：按 `/checkpoint` 规范在 `.codex/checkpoint.md` 追加一条阶段性记录，包含完成事项与后续待办。  
+5. **向用户汇报**：当前分支与目标分支、PR 结果（链接/编号或已合并说明）、最终测试结果、清理与 checkpoint 摘要、未决事项/风险。  
+
+注意：
+- 若遇到冲突、测试失败或流程阻塞，先说明原因并给出可选方案。  
+'''
+
+checkpoint = '''请根据当前会话与工作区的最新进展，在仓库的 checkpoint.md 中追加一条阶段性记录。
+
+执行要求：
+
+1. 先定位 checkpoint 文件：优先查找项目根目录下的 `.codex/checkpoint.md`；若不存在但其他位置已有 checkpoint.md，请沿用现有路径；若完全不存在，则在根目录创建 `.codex` 目录并新建该文件。
+2. 保留既有内容，仅在文件末尾追加新日志，并确保相邻日志块之间留出一个空行。
+3. 新日志需包含以下结构：
+   - 一行形如 `## YYYY-MM-DD HH:MM:SS CST` 的时间戳，使用北京时间（可通过 `date "+%Y-%m-%d %H:%M:%S CST"` 获取；若受限无法获取，请在时间戳后说明）。
+   - 一个无序列表，概述本阶段完成的关键操作。每条以动词开头，内容具体、客观。
+   - 一个无序列表，汇总尚未解决的问题、风险或下一步计划；若暂无待办，请写 `- 当前暂无待办`。
+4. 若文件中存在或用户要求保留 `## NO_AI_ASSIST` 标识，请保持在文件顶部；除非收到明确指示，不要新增或删除该标识。
+5. 优先使用中文撰写内容，可添加必要的补充短语帮助后续 Agent 快速理解上下文。
+6. 完成操作后，以 Markdown 摘要向用户汇报所做的变更，并展示新增日志片段以便确认。
+
+请立即开始执行上述步骤。
+'''
+
+[footer.hint]
+shortcuts = " 查看快捷键"
+queue_message = " 排队发送"
+quit_again = " 再次退出"
+edit_previous_again = " 再次编辑上一条消息"
+edit_previous = " 编辑上一条消息"
+
+[footer.context]
+used = "上下文已用"
+used_suffix = "已用"
+
+footer.token_usage = "↑ ${input_prior} + ${input_last} tokens（${cached_prior} + ${cached_last} tokens 缓存）↓ ${output_prior} + ${output_last} tokens（${reasoning_prior} + ${reasoning_last} 推理 tokens）"
+
+[footer.shortcuts]
+commands = " 命令"
+shell_commands = " 运行 Shell 命令"
+insert_newline = " 换行"
+queue_message = " 排队发送"
+file_paths = " 文件路径"
+paste_image = " 粘贴图片"
+external_editor = " 用外部编辑器编辑"
+quit = " 退出"
+show_transcript = " 查看记录"
+
+[footer.copy]
+copied = "已复制"
+failed = "复制失败"
+
+[footer.transcript]
+scroll = " 滚动"
+jump = " 跳转"
+copy_selection = " 复制选区"
+
+[popup.hint]
+press = "按 "
+confirm_or = " 确认，或 "
+go_back = " 返回"
+
+[additional_dirs]
+read_only_warning = "由于当前沙箱模式为只读，--add-dir (${paths}) 将被忽略。请切换到 workspace-write 或 danger-full-access 以允许额外的可写根目录。"
+
+[clipboard.detail]
+invalid_rgba = "无效的 RGBA 缓冲区"
+android_paste_not_supported = "Android 上暂不支持粘贴剪贴板图像"
+
+[clipboard.error]
+clipboard_unavailable = "剪贴板不可用：${detail}"
+no_image = "剪贴板中没有图像：${detail}"
+encode_failed = "无法编码图像：${detail}"
+io_error = "I/O 错误：${detail}"
+
+[status]
+reasoning = "推理 ${effort}"
+summaries_off = "概述已关闭"
+summaries = "摘要 ${summary}"
+
+[status.agents]
+unknown_file = "未知"
+none = "无"
+
+[status.account]
+unknown = "未知"
+
+[status.approval]
+unknown = "未知"
+
+[status.token_usage]
+total_label = " 总计 "
+paren_open = "（"
+input_label = " 输入"
+output_label = " 输出"
+paren_close = "）"
+
+[status.context_window]
+remaining = "剩余 ${percent}%"
+paren_open = "（"
+used_ratio = " 已用 / "
+paren_close = "）"
+
+[status.rate_limits]
+label = "限制"
+data_not_available = "暂无数据"
+warning_label = "警告"
+stale_warning = "限额数据可能已过期，请开始新的对话刷新。"
+reset_at = "（${resets_at} 重置）"
+
+[status.account]
+api_key_configured = "已配置 API 密钥（运行 codex login 以使用 ChatGPT）"
+
+[status.fields]
+model = "模型"
+directory = "目录"
+approval = "审批"
+sandbox = "沙箱"
+model_provider = "模型提供方"
+account = "帐号"
+session = "会话"
+token_usage = "Token 使用"
+context_window = "上下文窗口"
+
+[status.note]
+visit_prefix = "访问 "
+up_to_date_prefix = " 获取最新的"
+rate_limits_and_credits = "速率限制与额度信息"
+
+status.rate_limits.default_primary_window = "5 小时"
+status.rate_limits.default_secondary_window = "每周"
+status.rate_limits.window_label = "${label} 限额"
+status.rate_limits.remaining_percent = "剩余 ${percent}%"
+status.rate_limits.credits_label = "额度"
+status.rate_limits.credits_unlimited = "无限额度"
+status.rate_limits.credits_balance = "${amount} 额度"
+
+[model_migration.option]
+try_new_model = "试用新模型"
+use_existing_model = "继续使用当前模型"
+
+[model_migration]
+heading = "Codex 已升级，欢迎使用 ${target}。"
+description_default = "推荐使用 ${target}，以获得更好的性能与稳定性。"
+recommend_switch = "我们建议从 ${current} 切换到 ${target}。"
+learn_more = "${description} 了解更多 ${target}："
+keep_current = "如果你愿意，也可以继续使用 ${current}。"
+continue_hint = "按 Enter 继续"
+
+[status_indicator.elapsed]
+seconds_suffix = "秒"
+minutes_suffix = "分"
+hours_suffix = "小时"
+
+[status_indicator.header]
+working = "工作中"
+
+[status_indicator.interrupt]
+prefix = "（${elapsed} • 按 "
+suffix = " 以中断）"
+
+[status_indicator]
+idle = "（${elapsed}）"
+
+[oss_selection]
+title = "选择开源模型提供者"
+subtitle = "  请选择本地 AI 服务，之后可以记住该偏好。"
+status_legend = "  ● 运行中  ○ 未运行"
+hint_select_quit = "  按 Enter 选择 • Ctrl+C 退出"
+
+[oss_selection.option]
+lmstudio = "本地 LM Studio 服务（默认端口 1234）"
+ollama_responses = "本地 Ollama 服务（Responses API，默认端口 11434）"
+ollama_chat = "本地 Ollama 服务（Chat API，默认端口 11434）"
+
+[oss_selection.prompt]
+choose_provider = "选择提供者？"
+
+[oss_selection.error]
+save_preference = "保存 OSS 提供者偏好失败：${error}"

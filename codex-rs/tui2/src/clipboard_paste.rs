@@ -2,6 +2,7 @@ use std::path::Path;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use crate::i18n::tr_args;
 use codex_protocol::config_types::Language;
 use std::path::PathBuf;
 use tempfile::Builder;
@@ -45,14 +46,23 @@ impl EncodedImageFormat {
 
 impl PasteImageError {
     pub fn to_message(&self, language: Language) -> String {
-        match (language, self) {
-            (Language::ZhCn, Self::ClipboardUnavailable(msg)) => {
-                format!("剪贴板不可用：{msg}")
+        match self {
+            Self::ClipboardUnavailable(msg) => tr_args(
+                language,
+                "clipboard.error.clipboard_unavailable",
+                &[("detail", msg)],
+            ),
+            Self::NoImage(msg) => {
+                tr_args(language, "clipboard.error.no_image", &[("detail", msg)])
             }
-            (Language::ZhCn, Self::NoImage(msg)) => format!("剪贴板中没有图片：{msg}"),
-            (Language::ZhCn, Self::EncodeFailed(msg)) => format!("无法编码图片：{msg}"),
-            (Language::ZhCn, Self::IoError(msg)) => format!("I/O 错误：{msg}"),
-            (Language::En, _) => self.to_string(),
+            Self::EncodeFailed(msg) => tr_args(
+                language,
+                "clipboard.error.encode_failed",
+                &[("detail", msg)],
+            ),
+            Self::IoError(msg) => {
+                tr_args(language, "clipboard.error.io_error", &[("detail", msg)])
+            }
         }
     }
 }

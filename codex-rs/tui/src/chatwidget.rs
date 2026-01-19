@@ -201,52 +201,27 @@ fn user_shell_command_help_title(language: Language) -> &'static str {
 fn user_shell_command_help_hint(language: Language) -> &'static str {
     tr(language, "示例：!ls", "Example: !ls")
 }
-const INIT_PROMPT_ZH: &str = include_str!("../prompt_for_init_command.md");
-const INIT_PROMPT_EN: &str = include_str!("../prompt_for_init_command_en.md");
-const SDD_PLAN_PROMPT_ZH: &str = include_str!("../prompt_for_sdd_plan.md");
-const SDD_PLAN_PROMPT_EN: &str = include_str!("../prompt_for_sdd_plan_en.md");
-const SDD_EXEC_PROMPT_ZH: &str = include_str!("../prompt_for_sdd_execute.md");
-const SDD_EXEC_PROMPT_EN: &str = include_str!("../prompt_for_sdd_execute_en.md");
-const SDD_MERGE_PROMPT_ZH: &str = include_str!("../prompt_for_sdd_merge.md");
-const SDD_MERGE_PROMPT_EN: &str = include_str!("../prompt_for_sdd_merge_en.md");
 const SDD_BRANCH_PREFIX: &str = "sdd/";
 const SDD_BASE_BRANCH: &str = "develop-main";
-const CHECKPOINT_PROMPT_ZH: &str = include_str!("../prompt_for_checkpoint_command.md");
-const CHECKPOINT_PROMPT_EN: &str = include_str!("../prompt_for_checkpoint_command_en.md");
 
 fn init_prompt(language: Language) -> &'static str {
-    match language {
-        Language::ZhCn => INIT_PROMPT_ZH,
-        Language::En => INIT_PROMPT_EN,
-    }
+    tr(language, "prompt.init")
 }
 
 fn checkpoint_prompt(language: Language) -> &'static str {
-    match language {
-        Language::ZhCn => CHECKPOINT_PROMPT_ZH,
-        Language::En => CHECKPOINT_PROMPT_EN,
-    }
+    tr(language, "prompt.checkpoint")
 }
 
 fn sdd_plan_prompt_template(language: Language) -> &'static str {
-    match language {
-        Language::ZhCn => SDD_PLAN_PROMPT_ZH,
-        Language::En => SDD_PLAN_PROMPT_EN,
-    }
+    tr(language, "prompt.sdd_plan")
 }
 
 fn sdd_exec_prompt_template(language: Language) -> &'static str {
-    match language {
-        Language::ZhCn => SDD_EXEC_PROMPT_ZH,
-        Language::En => SDD_EXEC_PROMPT_EN,
-    }
+    tr(language, "prompt.sdd_execute")
 }
 
 fn sdd_merge_prompt_template(language: Language) -> &'static str {
-    match language {
-        Language::ZhCn => SDD_MERGE_PROMPT_ZH,
-        Language::En => SDD_MERGE_PROMPT_EN,
-    }
+    tr(language, "prompt.sdd_merge")
 }
 const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 // Track information about an in-flight exec command.

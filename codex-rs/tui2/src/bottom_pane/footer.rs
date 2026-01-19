@@ -11,6 +11,7 @@
 #[cfg(target_os = "linux")]
 use crate::clipboard_paste::is_probably_wsl;
 use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
 use crate::render::line_utils::prefix_lines;
@@ -131,10 +132,10 @@ fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
         line.push_span(" · ".dim());
         match feedback {
             TranscriptCopyFeedback::Copied => {
-                line.push_span(tr(language, "已复制", "Copied").green().bold());
+                line.push_span(tr(language, "footer.copy.copied").green().bold());
             }
             TranscriptCopyFeedback::Failed => {
-                line.push_span(tr(language, "复制失败", "Copy failed").red().bold());
+                line.push_span(tr(language, "footer.copy.failed").red().bold());
             }
         }
     }
@@ -158,19 +159,19 @@ fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
             line.push_span(" · ".dim());
             line.extend(vec![
                 key_hint::plain(KeyCode::Char('?')).into(),
-                tr(props.language, " 查看快捷键", " for shortcuts").dim(),
+                tr(props.language, "footer.hint.shortcuts").dim(),
             ]);
             if props.transcript_scrolled {
                 line.push_span(" · ".dim());
                 line.push_span(key_hint::plain(KeyCode::PageUp));
                 line.push_span("/");
                 line.push_span(key_hint::plain(KeyCode::PageDown));
-                line.push_span(tr(props.language, " 滚动", " scroll").dim());
+                line.push_span(tr(props.language, "footer.transcript.scroll").dim());
                 line.push_span(" · ".dim());
                 line.push_span(key_hint::plain(KeyCode::Home));
                 line.push_span("/");
                 line.push_span(key_hint::plain(KeyCode::End));
-                line.push_span(tr(props.language, " 跳转", " jump").dim());
+                line.push_span(tr(props.language, "footer.transcript.jump").dim());
                 if let Some((current, total)) = props.transcript_scroll_position {
                     line.push_span(" · ".dim());
                     line.push_span(Span::from(format!("{current}/{total}")).dim());
@@ -179,7 +180,7 @@ fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
             if props.transcript_selection_active {
                 line.push_span(" · ".dim());
                 line.push_span(props.transcript_copy_selection_key);
-                line.push_span(tr(props.language, " 复制选区", " copy selection").dim());
+                line.push_span(tr(props.language, "footer.transcript.copy_selection").dim());
             }
             vec![line]
         }
@@ -208,7 +209,7 @@ fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
             if props.is_task_running && props.steer_enabled {
                 line.push_span(" · ".dim());
                 line.push_span(key_hint::plain(KeyCode::Tab));
-                line.push_span(tr(props.language, " 排队发送", " to queue message").dim());
+                line.push_span(tr(props.language, "footer.hint.queue_message").dim());
             }
             vec![line]
         }
@@ -228,7 +229,7 @@ struct ShortcutsState {
 fn quit_shortcut_reminder_line(key: KeyBinding, language: Language) -> Line<'static> {
     Line::from(vec![
         key.into(),
-        tr(language, " 再次退出", " again to quit").into(),
+        tr(language, "footer.hint.quit_again").into(),
     ])
     .dim()
 }
@@ -238,12 +239,7 @@ fn esc_hint_line(esc_backtrack_hint: bool, language: Language) -> Line<'static> 
     if esc_backtrack_hint {
         Line::from(vec![
             esc.into(),
-            tr(
-                language,
-                " 再次编辑上一条消息",
-                " again to edit previous message",
-            )
-            .into(),
+            tr(language, "footer.hint.edit_previous_again").into(),
         ])
         .dim()
     } else {
@@ -251,7 +247,7 @@ fn esc_hint_line(esc_backtrack_hint: bool, language: Language) -> Line<'static> 
             esc.into(),
             " ".into(),
             esc.into(),
-            tr(language, " 编辑上一条消息", " to edit previous message").into(),
+            tr(language, "footer.hint.edit_previous").into(),
         ])
         .dim()
     }
@@ -359,7 +355,7 @@ fn context_window_line(
         let mut line = Line::from(vec![
             Span::from(format!(
                 "{percent}% {}",
-                tr(language, "上下文已用", "context used")
+                tr(language, "footer.context.used")
             ))
             .dim(),
         ]);
@@ -370,14 +366,18 @@ fn context_window_line(
     if let Some(tokens) = used_tokens {
         let used_fmt = format_tokens_compact(tokens);
         let mut line = Line::from(vec![
-            Span::from(format!("{used_fmt} {}", tr(language, "已用", "used"))).dim(),
+            Span::from(format!(
+                "{used_fmt} {}",
+                tr(language, "footer.context.used_suffix")
+            ))
+            .dim(),
         ]);
         append_token_usage(&mut line, token_usage, language);
         return line;
     }
 
     let mut line = Line::from(vec![
-        Span::from(format!("0% {}", tr(language, "上下文已用", "context used"))).dim(),
+        Span::from(format!("0% {}", tr(language, "footer.context.used"))).dim(),
     ]);
     append_token_usage(&mut line, token_usage, language);
     line
@@ -401,14 +401,20 @@ fn append_token_usage(
     let reasoning_prior = format_token_count_compact(token_usage.prior.reasoning_output_tokens);
     let reasoning_last = format_token_count_compact(token_usage.last.reasoning_output_tokens);
 
-    let usage_text = match language {
-        Language::ZhCn => format!(
-            "↑ {input_prior} + {input_last} tokens（{cached_prior} + {cached_last} tokens 缓存）↓ {output_prior} + {output_last} tokens（{reasoning_prior} + {reasoning_last} 推理 tokens）"
-        ),
-        Language::En => format!(
-            "↑ {input_prior} + {input_last} tokens ({cached_prior} + {cached_last} tokens cache) ↓ {output_prior} + {output_last} tokens ({reasoning_prior} + {reasoning_last} reasoning tokens)"
-        ),
-    };
+    let usage_text = tr_args(
+        language,
+        "footer.token_usage",
+        &[
+            ("input_prior", &input_prior),
+            ("input_last", &input_last),
+            ("cached_prior", &cached_prior),
+            ("cached_last", &cached_last),
+            ("output_prior", &output_prior),
+            ("output_last", &output_last),
+            ("reasoning_prior", &reasoning_prior),
+            ("reasoning_last", &reasoning_last),
+        ],
+    );
 
     line.push_span("  ".dim());
     line.push_span(Span::from(usage_text).dim());
@@ -462,8 +468,7 @@ struct ShortcutDescriptor {
     id: ShortcutId,
     bindings: &'static [ShortcutBinding],
     prefix: &'static str,
-    label_zh: &'static str,
-    label_en: &'static str,
+    label_key: &'static str,
 }
 
 impl ShortcutDescriptor {
@@ -477,25 +482,16 @@ impl ShortcutDescriptor {
         match self.id {
             ShortcutId::EditPrevious => {
                 if state.esc_backtrack_hint {
-                    line.push_span(tr(
-                        state.language,
-                        " 再次编辑上一条消息",
-                        " again to edit previous message",
-                    ));
+                    line.push_span(tr(state.language, "footer.hint.edit_previous_again"));
                 } else {
                     line.extend(vec![
                         " ".into(),
                         key_hint::plain(KeyCode::Esc).into(),
-                        tr(
-                            state.language,
-                            " 编辑上一条消息",
-                            " to edit previous message",
-                        )
-                        .into(),
+                        tr(state.language, "footer.hint.edit_previous").into(),
                     ]);
                 }
             }
-            _ => line.push_span(tr(state.language, self.label_zh, self.label_en)),
+            _ => line.push_span(tr(state.language, self.label_key)),
         };
         Some(line)
     }
@@ -509,8 +505,7 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label_zh: " 命令",
-        label_en: " for commands",
+        label_key: "footer.shortcuts.commands",
     },
     ShortcutDescriptor {
         id: ShortcutId::ShellCommands,
@@ -519,8 +514,7 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label_zh: " 运行 Shell 命令",
-        label_en: " for shell commands",
+        label_key: "footer.shortcuts.shell_commands",
     },
     ShortcutDescriptor {
         id: ShortcutId::InsertNewline,
@@ -535,8 +529,7 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             },
         ],
         prefix: "",
-        label_zh: " 换行",
-        label_en: " for newline",
+        label_key: "footer.shortcuts.insert_newline",
     },
     ShortcutDescriptor {
         id: ShortcutId::QueueMessageTab,
@@ -545,8 +538,7 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label_zh: " 排队发送",
-        label_en: " to queue message",
+        label_key: "footer.shortcuts.queue_message",
     },
     ShortcutDescriptor {
         id: ShortcutId::FilePaths,
@@ -555,8 +547,7 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label_zh: " 文件路径",
-        label_en: " for file paths",
+        label_key: "footer.shortcuts.file_paths",
     },
     ShortcutDescriptor {
         id: ShortcutId::PasteImage,
@@ -573,8 +564,7 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             },
         ],
         prefix: "",
-        label_zh: " 粘贴图片",
-        label_en: " to paste images",
+        label_key: "footer.shortcuts.paste_image",
     },
     ShortcutDescriptor {
         id: ShortcutId::EditPrevious,
@@ -583,8 +573,7 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label_zh: "",
-        label_en: "",
+        label_key: "",
     },
     ShortcutDescriptor {
         id: ShortcutId::Quit,
@@ -593,8 +582,7 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label_zh: " 退出",
-        label_en: " to exit",
+        label_key: "footer.shortcuts.quit",
     },
     ShortcutDescriptor {
         id: ShortcutId::ShowTranscript,
@@ -603,8 +591,7 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
             condition: DisplayCondition::Always,
         }],
         prefix: "",
-        label_zh: " 查看记录",
-        label_en: " to view transcript",
+        label_key: "footer.shortcuts.show_transcript",
     },
 ];
 

@@ -1,0 +1,363 @@
+# English translations
+
+[slash_command.description]
+approvals = "choose what Codex can do without approval"
+checkpoint = "record a checkpoint of the AI's actions"
+clean = "clear clipboard image cache"
+compact = "summarize conversation to prevent hitting the context limit"
+diff = "show git diff (including untracked files)"
+elevate_sandbox = "set up elevated agent sandbox"
+exit = "exit Codex"
+experimental = "toggle beta features"
+feedback = "send logs to maintainers"
+fork = "fork a saved chat"
+init = "create an AGENTS.md file with instructions for Codex"
+lang = "change UI language"
+mcp = "list configured MCP tools"
+mention = "mention a file"
+model = "choose what model and reasoning effort to use"
+new = "start a new chat during a conversation"
+ps = "list background terminals"
+resume = "resume a saved chat"
+review = "review my current changes and find issues"
+rollout = "print the rollout file path"
+sdd_develop = "start the SDD development workflow"
+skills = "use skills to improve how Codex performs specific tasks"
+status = "show current session configuration and token usage"
+test_approval = "test approval request"
+logout = "log out of Codex"
+
+[tooltips]
+items = [
+  "Use /compact when the conversation gets long to summarize history and free up context.",
+  "Start a fresh idea with /new; the previous session stays in history.",
+  "Use /feedback to send logs to the maintainers when something looks off.",
+  "Switch models or reasoning effort quickly with /model.",
+  "Use /approvals to control when Codex asks for confirmation.",
+  "Run /review to get a code review of your current changes.",
+  "Use /skills to list available skills or ask Codex to use one.",
+  "Use /status to see the current model, approvals, and token usage.",
+  "Use /fork to branch a saved chat into a new thread.",
+  "Use /init to create an AGENTS.md with project-specific guidance.",
+  "Use /mcp to list configured MCP tools.",
+  "You can run any shell command from Codex using `!` (e.g. `!ls`)",
+  "Type / to open the command popup; Tab autocompletes slash commands and saved prompts.",
+  "You can define your own `/` commands with custom prompts. More info: https://developers.openai.com/codex/guides/slash-commands#create-your-own-slash-commands-with-custom-prompts",
+  "When the composer is empty, press Esc to step back and edit your last message; Enter confirms.",
+  "Press Tab to queue a message instead of sending it immediately; Enter always sends immediately.",
+  "Paste an image with Ctrl+V to attach it to your next message.",
+  "You can resume a previous conversation by running `codex resume`",
+]
+
+[prompt]
+init = '''Generate a file named AGENTS.md that serves as a contributor guide for this repository.
+Your goal is to produce a clear, concise, and well-structured document with descriptive headings and actionable explanations for each section.
+Follow the outline below, but adapt as needed — add sections if relevant, and omit those that do not apply to this project.
+
+Document Requirements
+
+- Title the document "Repository Guidelines".
+- Use Markdown headings (#, ##, etc.) for structure.
+- Keep the document concise. 200-400 words is optimal.
+- Keep explanations short, direct, and specific to this repository.
+- Provide examples where helpful (commands, directory paths, naming patterns).
+- Maintain a professional, instructional tone.
+
+Recommended Sections
+
+Project Structure & Module Organization
+
+- Outline the project structure, including where the source code, tests, and assets are located.
+
+Build, Test, and Development Commands
+
+- List key commands for building, testing, and running locally (e.g., npm test, make build).
+- Briefly explain what each command does.
+
+Coding Style & Naming Conventions
+
+- Specify indentation rules, language-specific style preferences, and naming patterns.
+- Include any formatting or linting tools used.
+
+Testing Guidelines
+
+- Identify testing frameworks and coverage requirements.
+- State test naming conventions and how to run tests.
+
+Commit & Pull Request Guidelines
+
+- Summarize commit message conventions found in the project’s Git history.
+- Outline pull request requirements (descriptions, linked issues, screenshots, etc.).
+
+(Optional) Add other sections if relevant, such as Security & Configuration Tips, Architecture Overview, or Agent-Specific Instructions.
+'''
+
+sdd_plan = '''You are a senior development planner. Based on the "Requirement description", first determine whether the information is sufficient:
+- Before asking the user, **you must read relevant project code/docs** to clarify context; only ask when the code cannot confirm it or there are multiple plausible interpretations.
+- If anything is unclear and **cannot be confirmed in code/docs or has multiple plausible interpretations**, list the questions you need the user to answer and ask for clarification. Do not generate task.md in this case.
+- Once requirements are clear, generate task.md (write it to `.codex/task.md` under the project root; create `.codex` if needed). Do not inline the entire file in the reply; only provide a summary and ask the user for objections.
+
+## Requirement description
+(Paste the user's original feature/problem statement here)
+
+## task.md should include sections
+1) **Title & Goal**: one sentence summarizing the problem and the definition of done.
+2) **Deliverables**: list the final outputs (code, docs, scripts, etc.).
+3) **Scope / Non-scope**: 3–6 items each, clearly stating what is in and out for this iteration.
+4) **Work item list**: table columns `ID`, `Content`, `Completion`, `Owner`, `Implementation Notes`, `Verification`; completion uses `[ ]` / `[x]` checkboxes and starts as `[ ]`, IDs are short tags T1/T2…
+   - Implementation Notes: actionable steps, suggested internal tools/commands (e.g., apply_patch, just fmt, cargo test -p <crate>), and key code/config changes.
+   - Verification: tests/checks (TDD preferred: add tests before implementation if missing), include commands and expected results or log signals.
+5) **Milestones & Order**: split into milestones (at least 2, can be more than 4), list dependent task IDs in order. Break large work into smaller phases suitable for a single commit/PR with verifiable output.
+6) **Risks & Mitigations**: 3–5 risks with mitigations.
+7) **Acceptance & Testing**: required checks (unit/integration/manual/observability) and data/log validation points.
+8) **Rollback & Cleanup**: rollback steps and resources/branches to clean up.
+9) **Tools & Commands**: main tools/commands to use, when to use them, outputs, and cautions.
+10) **Test Plan**: for each task/module, list test types and commands (e.g., `cargo test -p <crate> <filter>`, `cargo insta test`, `npm test -- <pattern>`), expected pass criteria and log signals.
+11) **Reporting Checklist**: checkpoints to report to the user (at least: plan confirmation points, branch name, completed/remaining tasks, test/verification results, blockers or pending items).
+
+## Tool usage guidance (to be included in "Tools & Commands")
+- **File edits**: prefer `apply_patch` (or equivalent patch) to make changes; avoid long inline code blocks.
+- **Run commands**: use the shell tool for git ops, `just fmt`, `cargo test -p <crate>`, `cargo insta`, etc., and briefly state purpose and success signal.
+- **Branch management**: use git to create/switch/delete branches; avoid committing directly on the main branch.
+- **Progress sync**: treat `.codex/task.md` as the source of truth; update the completion checkbox after finishing each step.
+- **Reporting**: during execution, follow the "Reporting Checklist": plan confirmation, current branch, progress vs remaining, test results, blockers/pending items.
+
+## Other rules
+- If requirements are unclear, only output the list of questions and wait for user response.
+- If requirements are clear, write `.codex/task.md` via `apply_patch` or equivalent (overwrite existing); do not paste the full file in the reply, only a summary + file path.
+- After writing task.md, append a checkpoint entry per `/checkpoint` rules in `.codex/checkpoint.md` (create if missing).
+- Use concise English, prefer lists/tables, avoid long paragraphs.
+- Do not fabricate unverifiable information; if an external decision is needed, use an explicit placeholder (e.g., "TBD with product on XXX").
+- Before asking questions, you must read project files/implementation to clarify context.
+- If requirements are unclear, list key questions and confirm first; after confirmation, generate task.md.
+- You may suggest commands, but do not execute them in the response; execution is for the development phase.
+'''
+
+sdd_execute = '''You are a senior execution agent. The previous round already used the SDD planner to produce and confirm `.codex/task.md`; execute the plan in this context and keep visible progress and verification logs.
+
+Core principles
+- **Branch isolation**: Work on a dedicated branch; do not modify or merge into main.
+- **Commit per item**: After each task.md item (or sub-item) is completed and verified, commit immediately; the commit message should describe the completed functionality.
+- **Small, verifiable increments**: Keep each change small and verifiable; validate immediately after completing it.
+- **TDD first**: If tests are missing, add tests before implementation; ensure relevant tests pass after implementation.
+- **Transparent reporting**: Report progress, test results, and blockers at key checkpoints.
+- **Safe operations**: Prefer `apply_patch` for file edits; explain the purpose and expected outcome before running commands.
+
+Execution steps (in order)
+1. **Environment check**: Ensure current directory is the project root; if `.codex/task.md` is missing, stop and notify.
+2. **Branch management**: Branch was already created and checked out by the system tool; no manual git commands needed.
+3. **Read the plan**: Read `.codex/task.md`, list the task IDs, implementation notes, and verification methods you will execute.
+4. **Track progress**: Treat `.codex/task.md` as the source of truth and update the completion checkbox there; optionally sync into the Plan/TODO tool for visibility and split into smaller sub-items if needed (implementation vs verification).
+5. **Task execution loop** (for each task/subtask):
+   - **Read/locate**: Inspect relevant code/docs to confirm current state.
+   - **Test first**: If coverage is missing, add/adjust tests first; record planned commands.
+   - **Implement**: Use `apply_patch` for minimal changes.
+   - **Verify**: Run relevant commands (e.g., `just fmt`, `cargo test -p <crate>`, `cargo insta test`), capture results/log highlights.
+   - **Commit changes**: After each task/subtask is completed and verified, commit immediately; use a message like “Complete <feature/sub-item>” to describe the finished work.
+   - **Mark progress**: Check off completion status in `.codex/task.md` first (`[ ]`→`[x]`), optionally sync to Plan/TODO, and report status + test results in the reply.
+6. **End-of-phase checks**: Run required formatting/tests per plan:
+   - Formatting: run project formatting commands (`just fmt`, `npm run fmt`, `pnpm lint --fix`, etc.).
+   - Tests: run planned commands (`cargo test -p <crate>`, `cargo insta test`, `npm test -- <pattern>`, `pnpm test --filter <name>`, etc.) and record results.
+7. **Phase summary**: Summarize branch name, completed/remaining tasks, test results, and blockers; report next priorities.
+
+Reporting cadence (in conversation)
+- **Before starting**: Report branch name, task IDs/order, and major commands you expect to run; remind the user that work happens on a separate branch and to run `/sdd-develop` again to choose merge updates when done.
+- **Every 1–2 tasks**: Summarize changes, verification results (pass/fail + key logs), Plan/TODO updates, and next steps with planned commands.
+- **Phase end**: Summarize branch name, completed/remaining tasks, overall test status, blockers/decisions needed, and next actions.
+
+Additional notes
+- If requirements are unclear or conflict with `.codex/task.md`, pause and ask for clarification before proceeding.
+- If the task list needs changes (add/remove/reorder), propose and get user approval, then update Plan/TODO.
+- Do not merge into main or delete branches; wait for user direction.
+'''
+
+sdd_merge = '''You are a senior merge-update assistant. The user chose to merge the SDD branch updates via Pull Request. Do not rely on the built-in SDD Git auto-merge flow; follow the repo workflow and execute the merge and cleanup.
+
+Pre-checks:
+- Confirm the current branch is the SDD dev branch (e.g., `sdd/...`) and the main branch is clean.  
+- Ensure the latest tests passed (see `.codex/task.md` and execution logs); if results are missing, run them and report first.  
+
+Execution steps:
+1. **Prepare PR info**: Draft the PR title/body including change summary, test results, risks/rollback, and related tasks (from `.codex/task.md`).  
+2. **Merge via PR**: Create or update the PR per platform/workflow and merge using **Merge commit**. If main needs syncing, follow team workflow and record conflict resolutions.  
+3. **Cleanup**: Delete `.codex/task.md` and task-related temporary records/logs; delete local/remote branches after merge (per workflow); ensure no debug code, temp files, or configs remain.  
+4. **Write checkpoint**: Append a checkpoint entry to `.codex/checkpoint.md` per `/checkpoint` rules, including completed work and next steps.  
+5. **Report to the user**: Branch/target, PR outcome (link/ID or merged note), final test results, cleanup and checkpoint summary, and remaining risks/issues.  
+
+Notes:
+- If conflicts, test failures, or blockers occur, explain and provide options.  
+'''
+
+checkpoint = '''Append a checkpoint entry to checkpoint.md based on the latest progress in the current session and workspace.
+
+Requirements:
+
+1. Locate the checkpoint file: prefer `.codex/checkpoint.md` in the repo root; if it doesn't exist but another checkpoint.md exists elsewhere, reuse that path; if none exist, create `.codex` in the root and create the file.
+2. Preserve existing content and append the new log at the end, leaving a blank line between entries.
+3. The new log must include:
+   - A timestamp line like `## YYYY-MM-DD HH:MM:SS CST` using China Standard Time (you can run `date "+%Y-%m-%d %H:%M:%S CST"`; if you can't access it, note that in the timestamp).
+   - An unordered list summarizing key actions completed in this phase. Each item starts with a verb and is specific and objective.
+   - An unordered list summarizing unresolved issues, risks, or next steps; if there are none, write `- No pending items`.
+4. If the file contains or the user asks to keep the `## NO_AI_ASSIST` marker, keep it at the top; do not add or remove it unless explicitly instructed.
+5. Prefer English when writing the content; add brief clarifying phrases if needed to help the next agent quickly understand context.
+6. After finishing, report changes to the user in a Markdown summary and show the newly added log snippet for confirmation.
+
+Start now.
+'''
+
+[footer.hint]
+shortcuts = " for shortcuts"
+queue_message = " to queue message"
+quit_again = " again to quit"
+edit_previous_again = " again to edit previous message"
+edit_previous = " to edit previous message"
+
+[footer.context]
+used = "context used"
+used_suffix = "used"
+
+footer.token_usage = "↑ ${input_prior} + ${input_last} tokens (${cached_prior} + ${cached_last} tokens cache) ↓ ${output_prior} + ${output_last} tokens (${reasoning_prior} + ${reasoning_last} reasoning tokens)"
+
+[footer.shortcuts]
+commands = " for commands"
+shell_commands = " for shell commands"
+insert_newline = " for newline"
+queue_message = " to queue message"
+file_paths = " for file paths"
+paste_image = " to paste images"
+external_editor = " to edit in external editor"
+quit = " to exit"
+show_transcript = " to view transcript"
+
+[footer.copy]
+copied = "Copied"
+failed = "Copy failed"
+
+[footer.transcript]
+scroll = " scroll"
+jump = " jump"
+copy_selection = " copy selection"
+
+[popup.hint]
+press = "Press "
+confirm_or = " to confirm or "
+go_back = " to go back"
+
+[additional_dirs]
+read_only_warning = "Since the sandbox is read-only, --add-dir (${paths}) will be ignored. Switch to workspace-write or danger-full-access to allow additional writable roots."
+
+[clipboard.detail]
+invalid_rgba = "Invalid RGBA buffer"
+android_paste_not_supported = "Clipboard image paste is not supported on Android"
+
+[clipboard.error]
+clipboard_unavailable = "Clipboard unavailable: ${detail}"
+no_image = "No image in clipboard: ${detail}"
+encode_failed = "Failed to encode image: ${detail}"
+io_error = "I/O error: ${detail}"
+
+[status]
+reasoning = "reasoning ${effort}"
+summaries_off = "summaries off"
+summaries = "summaries ${summary}"
+
+[status.agents]
+unknown_file = "<unknown>"
+none = "<none>"
+
+[status.account]
+unknown = "Unknown"
+
+[status.approval]
+unknown = "<unknown>"
+
+[status.token_usage]
+total_label = " total "
+paren_open = " ("
+input_label = " input"
+output_label = " output"
+paren_close = ")"
+
+[status.context_window]
+remaining = "${percent}% left"
+paren_open = " ("
+used_ratio = " used / "
+paren_close = ")"
+
+[status.rate_limits]
+label = "Limits"
+data_not_available = "data not available yet"
+warning_label = "Warning"
+stale_warning = "Limit data may be stale; start a new chat to refresh."
+reset_at = "(${resets_at} reset)"
+
+[status.account]
+api_key_configured = "API key configured (run codex login to use ChatGPT)"
+
+[status.fields]
+model = "Model"
+directory = "Directory"
+approval = "Approval"
+sandbox = "Sandbox"
+model_provider = "Model provider"
+account = "Account"
+session = "Session"
+token_usage = "Token usage"
+context_window = "Context window"
+
+[status.note]
+visit_prefix = "Visit "
+up_to_date_prefix = " for up-to-date"
+rate_limits_and_credits = "information on rate limits and credits"
+
+status.rate_limits.default_primary_window = "5 hours"
+status.rate_limits.default_secondary_window = "weekly"
+status.rate_limits.window_label = "${label} limit"
+status.rate_limits.remaining_percent = "${percent}% left"
+status.rate_limits.credits_label = "Credits"
+status.rate_limits.credits_unlimited = "Unlimited"
+status.rate_limits.credits_balance = "${amount} credits"
+
+[model_migration.option]
+try_new_model = "Try new model"
+use_existing_model = "Use existing model"
+
+[model_migration]
+heading = "Codex just got an upgrade. Introducing ${target}."
+description_default = "${target} is recommended for better performance and reliability."
+recommend_switch = "We recommend switching from ${current} to ${target}."
+learn_more = "${description} Learn more about ${target} at "
+keep_current = "You can continue using ${current} if you prefer."
+continue_hint = "Press enter to continue"
+
+[status_indicator.elapsed]
+seconds_suffix = "s"
+minutes_suffix = "m"
+hours_suffix = "h"
+
+[status_indicator.header]
+working = "Working"
+
+[status_indicator.interrupt]
+prefix = "(${elapsed} • Press "
+suffix = " to interrupt)"
+
+[status_indicator]
+idle = "(${elapsed})"
+
+[oss_selection]
+title = "Choose an open-source provider"
+subtitle = "  Choose a local AI service; your preference can be saved."
+status_legend = "  ● Running  ○ Not running"
+hint_select_quit = "  Press Enter to select • Ctrl+C to quit"
+
+[oss_selection.option]
+lmstudio = "Local LM Studio service (default port 1234)"
+ollama_responses = "Local Ollama service (Responses API, default port 11434)"
+ollama_chat = "Local Ollama service (Chat API, default port 11434)"
+
+[oss_selection.prompt]
+choose_provider = "Choose a provider?"
+
+[oss_selection.error]
+save_preference = "Failed to save OSS provider preference: ${error}"

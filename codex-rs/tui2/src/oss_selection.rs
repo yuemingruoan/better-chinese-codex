@@ -37,6 +37,7 @@ use std::io;
 use std::time::Duration;
 
 use crate::i18n::tr;
+use crate::i18n::tr_args;
 use codex_protocol::config_types::Language;
 
 #[derive(Clone)]
@@ -101,19 +102,11 @@ impl OssSelectionWidget<'_> {
         let mut contents: Vec<Line> = vec![
             Line::from(vec![
                 "? ".fg(Color::Blue),
-                tr(
-                    language,
-                    "选择开源模型提供者",
-                    "Choose an open-source provider",
-                )
+                tr(language, "oss_selection.title")
                 .bold(),
             ]),
             Line::from(""),
-            Line::from(tr(
-                language,
-                "  请选择本地 AI 服务，之后可以记住该偏好。",
-                "  Choose a local AI service; your preference can be saved.",
-            )),
+            Line::from(tr(language, "oss_selection.subtitle")),
             Line::from(""),
         ];
 
@@ -128,20 +121,13 @@ impl OssSelectionWidget<'_> {
         }
         contents.push(Line::from(""));
         contents.push(
-            Line::from(match language {
-                Language::ZhCn => "  ● 运行中  ○ 未运行",
-                Language::En => "  ● Running  ○ Not running",
-            })
+            Line::from(tr(language, "oss_selection.status_legend"))
             .add_modifier(Modifier::DIM),
         );
 
         contents.push(Line::from(""));
         contents.push(
-            Line::from(tr(
-                language,
-                "  按 Enter 选择 • Ctrl+C 退出",
-                "  Press Enter to select • Ctrl+C to quit",
-            ))
+            Line::from(tr(language, "oss_selection.hint.select_quit"))
             .add_modifier(Modifier::DIM),
         );
 
@@ -150,31 +136,19 @@ impl OssSelectionWidget<'_> {
         let select_options = vec![
             SelectOption {
                 label: Line::from(vec!["L".underlined(), "M Studio".into()]),
-                description: tr(
-                    language,
-                    "本地 LM Studio 服务（默认端口 1234）",
-                    "Local LM Studio service (default port 1234)",
-                ),
+                description: tr(language, "oss_selection.option.lmstudio"),
                 key: KeyCode::Char('l'),
                 provider_id: LMSTUDIO_OSS_PROVIDER_ID,
             },
             SelectOption {
                 label: Line::from(vec!["O".underlined(), "llama".into()]),
-                description: tr(
-                    language,
-                    "本地 Ollama 服务（Responses API，默认端口 11434）",
-                    "Local Ollama service (Responses API, default port 11434)",
-                ),
+                description: tr(language, "oss_selection.option.ollama_responses"),
                 key: KeyCode::Char('o'),
                 provider_id: OLLAMA_OSS_PROVIDER_ID,
             },
             SelectOption {
                 label: Line::from(vec!["Ollama (".into(), "c".underlined(), "hat)".into()]),
-                description: tr(
-                    language,
-                    "本地 Ollama 服务（Chat API，默认端口 11434）",
-                    "Local Ollama service (Chat API, default port 11434)",
-                ),
+                description: tr(language, "oss_selection.option.ollama_chat"),
                 key: KeyCode::Char('c'),
                 provider_id: OLLAMA_CHAT_PROVIDER_ID,
             },
@@ -383,7 +357,15 @@ pub async fn select_oss_provider(
     if let Ok(ref provider) = result
         && let Err(e) = set_default_oss_provider(codex_home, provider)
     {
-        tracing::warn!("Failed to save OSS provider preference: {e}");
+        let error = e.to_string();
+        tracing::warn!(
+            "{}",
+            tr_args(
+                language,
+                "oss_selection.error.save_preference",
+                &[("error", error.as_str())],
+            )
+        );
     }
 
     result

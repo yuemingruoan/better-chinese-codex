@@ -197,34 +197,19 @@ fn user_shell_command_help_title(language: Language) -> &'static str {
 fn user_shell_command_help_hint(language: Language) -> &'static str {
     tr(language, "示例：!ls", "Example: !ls")
 }
-const INIT_PROMPT_ZH: &str = include_str!("../prompt_for_init_command_zh.md");
-const INIT_PROMPT_EN: &str = include_str!("../prompt_for_init_command.md");
-const SDD_PLAN_PROMPT_ZH: &str = include_str!("../prompt_for_sdd_plan.md");
-const SDD_PLAN_PROMPT_EN: &str = include_str!("../prompt_for_sdd_plan_en.md");
-const SDD_EXEC_PROMPT_ZH: &str = include_str!("../prompt_for_sdd_execute.md");
-const SDD_EXEC_PROMPT_EN: &str = include_str!("../prompt_for_sdd_execute_en.md");
 const SDD_BRANCH_PREFIX: &str = "sdd/";
 const SDD_BASE_BRANCH: &str = "develop-main";
 
 fn init_prompt(language: Language) -> &'static str {
-    match language {
-        Language::ZhCn => INIT_PROMPT_ZH,
-        Language::En => INIT_PROMPT_EN,
-    }
+    tr(language, "prompt.init")
 }
 
 fn sdd_plan_prompt_template(language: Language) -> &'static str {
-    match language {
-        Language::ZhCn => SDD_PLAN_PROMPT_ZH,
-        Language::En => SDD_PLAN_PROMPT_EN,
-    }
+    tr(language, "prompt.sdd_plan")
 }
 
 fn sdd_exec_prompt_template(language: Language) -> &'static str {
-    match language {
-        Language::ZhCn => SDD_EXEC_PROMPT_ZH,
-        Language::En => SDD_EXEC_PROMPT_EN,
-    }
+    tr(language, "prompt.sdd_execute")
 }
 // Track information about an in-flight exec command.
 struct RunningCommand {
