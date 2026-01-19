@@ -626,7 +626,7 @@ disabled_during_task = "'/${command}' is disabled while a task is in progress."
 init_exists = "${filename} already exists here. Skipping /init to avoid overwriting it."
 
 [chatwidget.status]
-running = "Running"
+running = "Working"
 working = "Working"
 
 [chatwidget.stream]
