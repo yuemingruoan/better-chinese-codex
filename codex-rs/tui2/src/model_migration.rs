@@ -114,10 +114,7 @@ pub(crate) fn migration_copy_for_models(
         content.push(Line::from(tr_args(
             language,
             "model_migration.recommend_switch",
-            &[
-                ("current", current_model),
-                ("target", target_model),
-            ],
+            &[("current", current_model), ("target", target_model)],
         )));
         content.push(Line::from(""));
     }
@@ -360,12 +357,9 @@ impl ModelMigrationScreen {
     fn render_menu(&self, column: &mut ColumnRenderable) {
         column.push(Line::from(""));
         column.push(
-            Paragraph::new(tr(
-                self.copy.language,
-                "model_migration.prompt.choose",
-            ))
-            .wrap(Wrap { trim: false })
-            .inset(Insets::tlbr(0, 2, 0, 0)),
+            Paragraph::new(tr(self.copy.language, "model_migration.prompt.choose"))
+                .wrap(Wrap { trim: false })
+                .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.push(Line::from(""));
 

@@ -1,5 +1,5 @@
-use codex_core::protocol::SandboxPolicy;
 use crate::i18n::tr_args;
+use codex_core::protocol::SandboxPolicy;
 use codex_protocol::config_types::Language;
 use std::path::PathBuf;
 

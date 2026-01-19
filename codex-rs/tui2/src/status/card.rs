@@ -321,7 +321,11 @@ impl StatusHistoryCell {
                 for row in rows {
                     push_label(labels, seen, row.label.as_str());
                 }
-                push_label(labels, seen, tr(self.language, "status.rate_limits.warning_label"));
+                push_label(
+                    labels,
+                    seen,
+                    tr(self.language, "status.rate_limits.warning_label"),
+                );
             }
             StatusRateLimitData::Missing => {
                 push_label(labels, seen, tr(self.language, "status.rate_limits.label"));

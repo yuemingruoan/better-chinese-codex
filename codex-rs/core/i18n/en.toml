@@ -13,6 +13,7 @@ feedback = "send logs to maintainers"
 fork = "fork a saved chat"
 init = "create an AGENTS.md file with instructions for Codex"
 lang = "change UI language"
+logout = "log out of Codex"
 mcp = "list configured MCP tools"
 mention = "mention a file"
 model = "choose what model and reasoning effort to use"
@@ -25,28 +26,27 @@ sdd_develop = "start the SDD development workflow"
 skills = "use skills to improve how Codex performs specific tasks"
 status = "show current session configuration and token usage"
 test_approval = "test approval request"
-logout = "log out of Codex"
 
 [tooltips]
 items = [
-  "Use /compact when the conversation gets long to summarize history and free up context.",
-  "Start a fresh idea with /new; the previous session stays in history.",
-  "Use /feedback to send logs to the maintainers when something looks off.",
-  "Switch models or reasoning effort quickly with /model.",
-  "Use /approvals to control when Codex asks for confirmation.",
-  "Run /review to get a code review of your current changes.",
-  "Use /skills to list available skills or ask Codex to use one.",
-  "Use /status to see the current model, approvals, and token usage.",
-  "Use /fork to branch a saved chat into a new thread.",
-  "Use /init to create an AGENTS.md with project-specific guidance.",
-  "Use /mcp to list configured MCP tools.",
-  "You can run any shell command from Codex using `!` (e.g. `!ls`)",
-  "Type / to open the command popup; Tab autocompletes slash commands and saved prompts.",
-  "You can define your own `/` commands with custom prompts. More info: https://developers.openai.com/codex/guides/slash-commands#create-your-own-slash-commands-with-custom-prompts",
-  "When the composer is empty, press Esc to step back and edit your last message; Enter confirms.",
-  "Press Tab to queue a message instead of sending it immediately; Enter always sends immediately.",
-  "Paste an image with Ctrl+V to attach it to your next message.",
-  "You can resume a previous conversation by running `codex resume`",
+    "Use /compact when the conversation gets long to summarize history and free up context.",
+    "Start a fresh idea with /new; the previous session stays in history.",
+    "Use /feedback to send logs to the maintainers when something looks off.",
+    "Switch models or reasoning effort quickly with /model.",
+    "Use /approvals to control when Codex asks for confirmation.",
+    "Run /review to get a code review of your current changes.",
+    "Use /skills to list available skills or ask Codex to use one.",
+    "Use /status to see the current model, approvals, and token usage.",
+    "Use /fork to branch a saved chat into a new thread.",
+    "Use /init to create an AGENTS.md with project-specific guidance.",
+    "Use /mcp to list configured MCP tools.",
+    "You can run any shell command from Codex using `!` (e.g. `!ls`)",
+    "Type / to open the command popup; Tab autocompletes slash commands and saved prompts.",
+    "You can define your own `/` commands with custom prompts. More info: https://developers.openai.com/codex/guides/slash-commands#create-your-own-slash-commands-with-custom-prompts",
+    "When the composer is empty, press Esc to step back and edit your last message; Enter confirms.",
+    "Press Tab to queue a message instead of sending it immediately; Enter always sends immediately.",
+    "Paste an image with Ctrl+V to attach it to your next message.",
+    "You can resume a previous conversation by running `codex resume`",
 ]
 
 [prompt]
@@ -206,11 +206,11 @@ Start now.
 '''
 
 [footer.hint]
-shortcuts = " for shortcuts"
+edit_previous = " to edit previous message"
+edit_previous_again = " again to edit previous message"
 queue_message = " to queue message"
 quit_again = " again to quit"
-edit_previous_again = " again to edit previous message"
-edit_previous = " to edit previous message"
+shortcuts = " for shortcuts"
 
 [footer.context]
 used = "context used"
@@ -220,13 +220,13 @@ footer.token_usage = "↑ ${input_prior} + ${input_last} tokens (${cached_prior}
 
 [footer.shortcuts]
 commands = " for commands"
-shell_commands = " for shell commands"
-insert_newline = " for newline"
-queue_message = " to queue message"
-file_paths = " for file paths"
-paste_image = " to paste images"
 external_editor = " to edit in external editor"
+file_paths = " for file paths"
+insert_newline = " for newline"
+paste_image = " to paste images"
+queue_message = " to queue message"
 quit = " to exit"
+shell_commands = " for shell commands"
 show_transcript = " to view transcript"
 
 [footer.copy]
@@ -234,104 +234,104 @@ copied = "Copied"
 failed = "Copy failed"
 
 [footer.transcript]
-scroll = " scroll"
-jump = " jump"
 copy_selection = " copy selection"
+jump = " jump"
+scroll = " scroll"
 
 [popup.hint]
-press = "Press "
 confirm_or = " to confirm or "
 go_back = " to go back"
+press = "Press "
 
 [additional_dirs]
 read_only_warning = "Since the sandbox is read-only, --add-dir (${paths}) will be ignored. Switch to workspace-write or danger-full-access to allow additional writable roots."
 
 [clipboard.detail]
-invalid_rgba = "Invalid RGBA buffer"
 android_paste_not_supported = "Clipboard image paste is not supported on Android"
+invalid_rgba = "Invalid RGBA buffer"
 
 [clipboard.error]
 clipboard_unavailable = "Clipboard unavailable: ${detail}"
-no_image = "No image in clipboard: ${detail}"
 encode_failed = "Failed to encode image: ${detail}"
 io_error = "I/O error: ${detail}"
+no_image = "No image in clipboard: ${detail}"
 
 [status]
 reasoning = "reasoning ${effort}"
-summaries_off = "summaries off"
 summaries = "summaries ${summary}"
+summaries_off = "summaries off"
 
 [status.agents]
-unknown_file = "<unknown>"
 none = "<none>"
+unknown_file = "<unknown>"
 
 [status.account]
-unknown = "Unknown"
 api_key_configured = "API key configured (run codex login to use ChatGPT)"
+unknown = "Unknown"
 
 [status.approval]
 unknown = "<unknown>"
 
 [status.token_usage]
-total_label = " total "
-paren_open = " ("
 input_label = " input"
 output_label = " output"
 paren_close = ")"
+paren_open = " ("
+total_label = " total "
 
 [status.context_window]
-remaining = "${percent}% left"
-paren_open = " ("
-used_ratio = " used / "
 paren_close = ")"
+paren_open = " ("
+remaining = "${percent}% left"
+used_ratio = " used / "
 
 [status.rate_limits]
-label = "Limits"
 data_not_available = "data not available yet"
-warning_label = "Warning"
-stale_warning = "Limit data may be stale; start a new chat to refresh."
+label = "Limits"
 reset_at = "(${resets_at} reset)"
+stale_warning = "Limit data may be stale; start a new chat to refresh."
+warning_label = "Warning"
 
 [status.fields]
-model = "Model"
-directory = "Directory"
-approval = "Approval"
-sandbox = "Sandbox"
-model_provider = "Model provider"
 account = "Account"
+approval = "Approval"
+context_window = "Context window"
+directory = "Directory"
+model = "Model"
+model_provider = "Model provider"
+sandbox = "Sandbox"
 session = "Session"
 token_usage = "Token usage"
-context_window = "Context window"
 
 [status.note]
-visit_prefix = "Visit "
-up_to_date_prefix = " for up-to-date"
 rate_limits_and_credits = "information on rate limits and credits"
+up_to_date_prefix = " for up-to-date"
+visit_prefix = "Visit "
 
-status.rate_limits.default_primary_window = "5 hours"
-status.rate_limits.default_secondary_window = "weekly"
-status.rate_limits.window_label = "${label} limit"
-status.rate_limits.remaining_percent = "${percent}% left"
+status.rate_limits.credits_balance = "${amount} credits"
 status.rate_limits.credits_label = "Credits"
 status.rate_limits.credits_unlimited = "Unlimited"
-status.rate_limits.credits_balance = "${amount} credits"
+status.rate_limits.default_primary_window = "5 hours"
+status.rate_limits.default_secondary_window = "weekly"
+status.rate_limits.remaining_percent = "${percent}% left"
+status.rate_limits.window_label = "${label} limit"
 
 [model_migration.option]
 try_new_model = "Try new model"
 use_existing_model = "Use existing model"
 
 [model_migration]
-heading = "Codex just got an upgrade. Introducing ${target}."
-description_default = "${target} is recommended for better performance and reliability."
-recommend_switch = "We recommend switching from ${current} to ${target}."
-learn_more = "${description} Learn more about ${target} at "
-keep_current = "You can continue using ${current} if you prefer."
 continue_hint = "Press enter to continue"
+description_default = "${target} is recommended for better performance and reliability."
+heading = "Codex just got an upgrade. Introducing ${target}."
+keep_current = "You can continue using ${current} if you prefer."
+learn_more = "${description} Learn more about ${target} at "
+recommend_switch = "We recommend switching from ${current} to ${target}."
 
 [status_indicator.elapsed]
-seconds_suffix = "s"
-minutes_suffix = "m"
 hours_suffix = "h"
+minutes_suffix = "m"
+seconds_suffix = "s"
 
 [status_indicator.header]
 working = "Working"
@@ -344,15 +344,15 @@ suffix = " to interrupt)"
 idle = "(${elapsed})"
 
 [oss_selection]
-title = "Choose an open-source provider"
-subtitle = "  Choose a local AI service; your preference can be saved."
-status_legend = "  ● Running  ○ Not running"
 hint_select_quit = "  Press Enter to select • Ctrl+C to quit"
+status_legend = "  ● Running  ○ Not running"
+subtitle = "  Choose a local AI service; your preference can be saved."
+title = "Choose an open-source provider"
 
 [oss_selection.option]
 lmstudio = "Local LM Studio service (default port 1234)"
-ollama_responses = "Local Ollama service (Responses API, default port 11434)"
 ollama_chat = "Local Ollama service (Chat API, default port 11434)"
+ollama_responses = "Local Ollama service (Responses API, default port 11434)"
 
 [oss_selection.prompt]
 choose_provider = "Choose a provider?"

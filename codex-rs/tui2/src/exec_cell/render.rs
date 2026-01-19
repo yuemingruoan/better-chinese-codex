@@ -257,12 +257,9 @@ impl HistoryCell for ExecCell {
                         push_owned_lines(&wrapped, &mut lines);
                     }
                 }
-                let duration = call
-                    .duration
-                    .map(format_duration)
-                    .unwrap_or_else(|| {
-                        tr(self.language(), "exec_cell.transcript.unknown_duration").to_string()
-                    });
+                let duration = call.duration.map(format_duration).unwrap_or_else(|| {
+                    tr(self.language(), "exec_cell.transcript.unknown_duration").to_string()
+                });
                 let mut result: Line = if output.exit_code == 0 {
                     Line::from("✓".green().bold())
                 } else {
@@ -366,10 +363,7 @@ impl ExecCell {
                                 (Some(q), None) => vec![q.clone().into()],
                                 _ => vec![cmd.clone().into()],
                             };
-                            lines.push((
-                                tr(language, "exec_cell.command.search"),
-                                spans,
-                            ));
+                            lines.push((tr(language, "exec_cell.command.search"), spans));
                         }
                         ParsedCommand::Unknown { cmd } => {
                             lines.push((
@@ -504,9 +498,7 @@ impl ExecCell {
             if raw_output.lines.is_empty() {
                 if !call.is_unified_exec_interaction() {
                     lines.extend(prefix_lines(
-                        vec![Line::from(
-                            tr(language, "exec_cell.output.no_output").dim(),
-                        )],
+                        vec![Line::from(tr(language, "exec_cell.output.no_output").dim())],
                         Span::from(layout.output_block.initial_prefix).dim(),
                         Span::from(layout.output_block.subsequent_prefix),
                     ));

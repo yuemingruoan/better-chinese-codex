@@ -1709,15 +1709,18 @@ impl App {
                 // Enter alternate screen using TUI helper and build pager lines
                 let _ = tui.enter_alt_screen();
                 let pager_lines: Vec<ratatui::text::Line<'static>> = if text.trim().is_empty() {
-                    vec![tr(self.config.language, "app.diff.no_changes")
-                        .italic()
-                        .into()]
+                    vec![
+                        tr(self.config.language, "app.diff.no_changes")
+                            .italic()
+                            .into(),
+                    ]
                 } else {
                     text.lines().map(ansi_escape_line).collect()
                 };
                 self.overlay = Some(Overlay::new_static_with_lines(
                     pager_lines,
                     tr(self.config.language, "app.diff.title").to_string(),
+                    self.config.language,
                 ));
                 tui.frame_requester().schedule_frame();
             }
@@ -1962,7 +1965,8 @@ impl App {
                         if let Some(label) =
                             Self::reasoning_label_for(&model, effort, self.config.language)
                         {
-                            message.push_str(tr(self.config.language, "app.model.effort_separator"));
+                            message
+                                .push_str(tr(self.config.language, "app.model.effort_separator"));
                             message.push_str(label);
                         }
                         if let Some(profile) = profile {
@@ -1983,10 +1987,7 @@ impl App {
                             tr_args(
                                 self.config.language,
                                 "app.model.save_profile_failed",
-                                &[
-                                    ("profile", profile),
-                                    ("error", &err.to_string()),
-                                ],
+                                &[("profile", profile), ("error", &err.to_string())],
                             )
                         } else {
                             tr_args(
@@ -2007,11 +2008,8 @@ impl App {
                 {
                     Ok(()) => {
                         let label = language_name(language, language);
-                        let message = tr_args(
-                            language,
-                            "app.language.changed",
-                            &[("label", &label)],
-                        );
+                        let message =
+                            tr_args(language, "app.language.changed", &[("label", &label)]);
                         self.chat_widget.add_info_message(message, None);
                     }
                     Err(err) => {
@@ -2238,7 +2236,8 @@ impl App {
                     let diff_summary = DiffSummary::new(changes, cwd);
                     self.overlay = Some(Overlay::new_static_with_renderables(
                         vec![diff_summary.into()],
-                        "P A T C H".to_string(),
+                        tr(self.config.language, "app.overlay.patch_title").to_string(),
+                        self.config.language,
                     ));
                 }
                 ApprovalRequest::Exec { command, .. } => {
@@ -2247,7 +2246,8 @@ impl App {
                     let full_cmd_lines = highlight_bash_to_lines(&full_cmd);
                     self.overlay = Some(Overlay::new_static_with_lines(
                         full_cmd_lines,
-                        "E X E C".to_string(),
+                        tr(self.config.language, "app.overlay.command_title").to_string(),
+                        self.config.language,
                     ));
                 }
                 ApprovalRequest::McpElicitation {
@@ -2264,7 +2264,8 @@ impl App {
                     .wrap(Wrap { trim: false });
                     self.overlay = Some(Overlay::new_static_with_renderables(
                         vec![Box::new(paragraph)],
-                        "E L I C I T A T I O N".to_string(),
+                        tr(self.config.language, "app.overlay.elicitation_title").to_string(),
+                        self.config.language,
                     ));
                 }
             },
@@ -2315,7 +2316,10 @@ impl App {
             } => {
                 // Enter alternate screen and set viewport to full size.
                 let _ = tui.enter_alt_screen();
-                self.overlay = Some(Overlay::new_transcript(self.transcript_cells.clone()));
+                self.overlay = Some(Overlay::new_transcript(
+                    self.transcript_cells.clone(),
+                    self.config.language,
+                ));
                 tui.frame_requester().schedule_frame();
             }
             // Esc primes/advances backtracking only in normal (not working) mode

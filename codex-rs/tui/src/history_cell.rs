@@ -351,9 +351,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
         let content = text![
             line![
                 padded_emoji("✨").bold().cyan(),
-                tr(self.language, "history.update.available")
-                    .bold()
-                    .cyan(),
+                tr(self.language, "history.update.available").bold().cyan(),
                 " ",
                 format!("{CODEX_CLI_VERSION} -> {}", self.latest_version).bold(),
             ],
@@ -452,11 +450,7 @@ impl HistoryCell for UnifiedExecInteractionCell {
         push_owned_lines(&header_wrapped, &mut out);
 
         let input_lines: Vec<Line<'static>> = if self.stdin.is_empty() {
-            vec![vec![
-                tr(self.language, "history.unified_exec.waited")
-                    .dim(),
-            ]
-            .into()]
+            vec![vec![tr(self.language, "history.unified_exec.waited").dim()].into()]
         } else {
             self.stdin
                 .lines()
@@ -495,7 +489,10 @@ struct UnifiedExecProcessesCell {
 
 impl UnifiedExecProcessesCell {
     fn new(processes: Vec<String>, language: Language) -> Self {
-        Self { processes, language }
+        Self {
+            processes,
+            language,
+        }
     }
 }
 
@@ -508,11 +505,7 @@ impl HistoryCell for UnifiedExecProcessesCell {
         let wrap_width = width as usize;
         let max_processes = 16usize;
         let mut out: Vec<Line<'static>> = Vec::new();
-        out.push(
-            vec![tr(self.language, "history.unified_exec.processes_title")
-                .bold()]
-            .into(),
-        );
+        out.push(vec![tr(self.language, "history.unified_exec.processes_title").bold()].into());
         out.push("".into());
 
         if self.processes.is_empty() {
@@ -712,9 +705,7 @@ struct CompletedMcpToolCallWithImageOutput {
 }
 impl HistoryCell for CompletedMcpToolCallWithImageOutput {
     fn display_lines(&self, _width: u16) -> Vec<Line<'static>> {
-        vec![
-            tr(self.language, "history.mcp.image_result").into(),
-        ]
+        vec![tr(self.language, "history.mcp.image_result").into()]
     }
 }
 
@@ -918,12 +909,7 @@ pub(crate) fn new_session_info(
                     &[("model", requested_model)],
                 )
                 .into(),
-                tr_args(
-                    language,
-                    "history.model_change.used",
-                    &[("model", model)],
-                )
-                .into(),
+                tr_args(language, "history.model_change.used", &[("model", model)]).into(),
             ];
             parts.push(Box::new(PlainHistoryCell { lines }));
         }
@@ -1189,9 +1175,7 @@ impl McpToolCallCell {
     pub(crate) fn mark_failed(&mut self) {
         let elapsed = self.start_time.elapsed();
         self.duration = Some(elapsed);
-        self.result = Some(Err(
-            tr(self.language, "history.mcp.interrupted").to_string(),
-        ));
+        self.result = Some(Err(tr(self.language, "history.mcp.interrupted").to_string()));
     }
 
     fn render_content_block(&self, block: &mcp_types::ContentBlock, width: usize) -> String {
@@ -1439,9 +1423,7 @@ pub(crate) fn empty_mcp_output(language: Language) -> PlainHistoryCell {
         ]
         .into(),
         "".into(),
-        tr(language, "history.mcp.empty_servers")
-        .italic()
-        .into(),
+        tr(language, "history.mcp.empty_servers").italic().into(),
         Line::from(vec![
             tr(language, "history.mcp.docs_prefix").into(),
             docs_link.underlined(),
@@ -1474,11 +1456,7 @@ pub(crate) fn new_mcp_tools_output(
     ];
 
     if tools.is_empty() {
-        lines.push(
-            tr(language, "history.mcp.empty_tools")
-            .italic()
-            .into(),
-        );
+        lines.push(tr(language, "history.mcp.empty_tools").italic().into());
         lines.push("".into());
         return PlainHistoryCell { lines };
     }
@@ -1657,9 +1635,7 @@ pub(crate) fn new_mcp_tools_output(
             .cloned()
             .unwrap_or_default();
         if server_templates.is_empty() {
-            lines.push(
-                tr(language, "history.mcp.templates_none").into(),
-            );
+            lines.push(tr(language, "history.mcp.templates_none").into());
         } else {
             let mut spans: Vec<Span<'static>> =
                 vec![tr(language, "history.mcp.templates_label").into()];
@@ -1747,13 +1723,7 @@ impl HistoryCell for PlanUpdateCell {
         };
 
         let mut lines: Vec<Line<'static>> = vec![];
-        lines.push(
-            vec![
-                "• ".dim(),
-                tr(self.language, "history.plan.updated").bold(),
-            ]
-            .into(),
-        );
+        lines.push(vec!["• ".dim(), tr(self.language, "history.plan.updated").bold()].into());
 
         let mut indented_lines = vec![];
         let note = self
@@ -1767,9 +1737,7 @@ impl HistoryCell for PlanUpdateCell {
 
         if self.plan.is_empty() {
             indented_lines.push(Line::from(
-                tr(self.language, "history.plan.no_steps")
-                    .dim()
-                    .italic(),
+                tr(self.language, "history.plan.no_steps").dim().italic(),
             ));
         } else {
             for PlanItemArg { step, status } in self.plan.iter() {
@@ -1802,9 +1770,7 @@ pub(crate) fn new_patch_apply_failure(stderr: String, language: Language) -> Pla
 
     // Failure title
     lines.push(Line::from(
-        tr(language, "history.patch_apply_failed")
-            .magenta()
-            .bold(),
+        tr(language, "history.patch_apply_failed").magenta().bold(),
     ));
 
     if !stderr.trim().is_empty() {
@@ -1836,11 +1802,7 @@ pub(crate) fn new_view_image_tool_call(
     let display_path = display_path_for(&path, cwd);
 
     let lines: Vec<Line<'static>> = vec![
-        vec![
-            "• ".dim(),
-            tr(language, "history.view_image").bold(),
-        ]
-        .into(),
+        vec!["• ".dim(), tr(language, "history.view_image").bold()].into(),
         vec!["  └ ".dim(), display_path.dim()].into(),
     ];
 
@@ -2021,8 +1983,8 @@ mod tests {
     fn ps_output_multiline_snapshot() {
         let cell = new_unified_exec_processes_output(
             vec![
-            "echo hello\nand then some extra text".to_string(),
-            "rg \"foo\" src".to_string(),
+                "echo hello\nand then some extra text".to_string(),
+                "rg \"foo\" src".to_string(),
             ],
             Language::En,
         );

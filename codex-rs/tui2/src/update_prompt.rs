@@ -219,10 +219,8 @@ impl WidgetRef for &UpdatePromptScreen {
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.push(
-            Line::from(vec![
-                tr(self.language, "update_prompt.install_note").dim(),
-            ])
-            .inset(Insets::tlbr(0, 2, 0, 0)),
+            Line::from(vec![tr(self.language, "update_prompt.install_note").dim()])
+                .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.push("");
         column.push(selection_option_row(

@@ -102,8 +102,7 @@ impl OssSelectionWidget<'_> {
         let mut contents: Vec<Line> = vec![
             Line::from(vec![
                 "? ".fg(Color::Blue),
-                tr(language, "oss_selection.title")
-                .bold(),
+                tr(language, "oss_selection.title").bold(),
             ]),
             Line::from(""),
             Line::from(tr(language, "oss_selection.subtitle")),
@@ -121,14 +120,12 @@ impl OssSelectionWidget<'_> {
         }
         contents.push(Line::from(""));
         contents.push(
-            Line::from(tr(language, "oss_selection.status_legend"))
-            .add_modifier(Modifier::DIM),
+            Line::from(tr(language, "oss_selection.status_legend")).add_modifier(Modifier::DIM),
         );
 
         contents.push(Line::from(""));
         contents.push(
-            Line::from(tr(language, "oss_selection.hint.select_quit"))
-            .add_modifier(Modifier::DIM),
+            Line::from(tr(language, "oss_selection.hint.select_quit")).add_modifier(Modifier::DIM),
         );
 
         let confirmation_prompt = Paragraph::new(contents).wrap(Wrap { trim: false });

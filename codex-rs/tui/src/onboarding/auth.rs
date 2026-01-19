@@ -195,9 +195,7 @@ impl AuthModeWidget {
 
     fn disallow_api_login(&mut self) {
         self.highlighted_mode = AuthMode::ChatGPT;
-        self.error = Some(
-            tr(self.language, "onboarding.auth.api_key_disabled").to_string(),
-        );
+        self.error = Some(tr(self.language, "onboarding.auth.api_key_disabled").to_string());
         *self.sign_in_state.write().unwrap() = SignInState::PickMode;
         self.request_frame.schedule_frame();
     }
@@ -270,8 +268,8 @@ impl AuthModeWidget {
         } else {
             lines.push(
                 tr(language, "onboarding.auth.pick.api_key_disabled_workspace")
-                .dim()
-                .into(),
+                    .dim()
+                    .into(),
             );
             lines.push("".into());
         }
@@ -304,9 +302,7 @@ impl AuthModeWidget {
                 "onboarding.auth.continue_in_browser.title",
             )));
         } else {
-            spans.push(
-                tr(language, "onboarding.auth.continue_in_browser.title").into(),
-            );
+            spans.push(tr(language, "onboarding.auth.continue_in_browser.title").into());
         }
         let mut lines = vec![spans.into(), "".into()];
 
@@ -314,9 +310,7 @@ impl AuthModeWidget {
         if let SignInState::ChatGptContinueInBrowser(state) = &*sign_in_state
             && !state.auth_url.is_empty()
         {
-            lines.push(
-                tr(language, "onboarding.auth.continue_in_browser.manual_link").into(),
-            );
+            lines.push(tr(language, "onboarding.auth.continue_in_browser.manual_link").into());
             lines.push("".into());
             lines.push(Line::from(vec![
                 "  ".into(),
@@ -324,9 +318,17 @@ impl AuthModeWidget {
             ]));
             lines.push("".into());
             lines.push(Line::from(vec![
-                tr(language, "onboarding.auth.continue_in_browser.remote_prefix").into(),
+                tr(
+                    language,
+                    "onboarding.auth.continue_in_browser.remote_prefix",
+                )
+                .into(),
                 "codex login --device-auth".cyan(),
-                tr(language, "onboarding.auth.continue_in_browser.remote_suffix").into(),
+                tr(
+                    language,
+                    "onboarding.auth.continue_in_browser.remote_suffix",
+                )
+                .into(),
             ]));
             lines.push("".into());
         }
@@ -357,8 +359,8 @@ impl AuthModeWidget {
         );
         let lines = vec![
             tr(language, "onboarding.auth.success.title")
-            .fg(Color::Green)
-            .into(),
+                .fg(Color::Green)
+                .into(),
             "".into(),
             tr(language, "onboarding.auth.success.before_you_start").into(),
             "".into(),
@@ -394,8 +396,8 @@ impl AuthModeWidget {
     fn render_chatgpt_success(&self, area: Rect, buf: &mut Buffer) {
         let lines = vec![
             tr(self.language, "onboarding.auth.success.title")
-            .fg(Color::Green)
-            .into(),
+                .fg(Color::Green)
+                .into(),
         ];
 
         Paragraph::new(lines)
@@ -437,9 +439,7 @@ impl AuthModeWidget {
             "".into(),
         ];
         if state.prepopulated_from_env {
-            intro_lines.push(
-                tr(language, "onboarding.auth.api_key_entry.detected_env").into(),
-            );
+            intro_lines.push(tr(language, "onboarding.auth.api_key_entry.detected_env").into());
             intro_lines.push(
                 tr(language, "onboarding.auth.api_key_entry.use_different_key")
                     .dim()
@@ -452,11 +452,7 @@ impl AuthModeWidget {
             .render(intro_area, buf);
 
         let content_line: Line = if state.value.is_empty() {
-            vec![
-                tr(language, "onboarding.auth.api_key_entry.placeholder")
-                    .dim(),
-            ]
-            .into()
+            vec![tr(language, "onboarding.auth.api_key_entry.placeholder").dim()].into()
         } else {
             Line::from(state.value.clone())
         };

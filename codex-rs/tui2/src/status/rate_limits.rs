@@ -125,7 +125,9 @@ pub(crate) fn compose_rate_limit_data(
                 let label: String = primary
                     .window_minutes
                     .map(get_limits_duration)
-                    .unwrap_or_else(|| tr(language, "status.rate_limits.default_primary_window").to_string());
+                    .unwrap_or_else(|| {
+                        tr(language, "status.rate_limits.default_primary_window").to_string()
+                    });
                 let label = capitalize_first(&label);
                 rows.push(StatusRateLimitRow {
                     label: tr_args(
@@ -144,7 +146,9 @@ pub(crate) fn compose_rate_limit_data(
                 let label: String = secondary
                     .window_minutes
                     .map(get_limits_duration)
-                    .unwrap_or_else(|| tr(language, "status.rate_limits.default_secondary_window").to_string());
+                    .unwrap_or_else(|| {
+                        tr(language, "status.rate_limits.default_secondary_window").to_string()
+                    });
                 let label = capitalize_first(&label);
                 rows.push(StatusRateLimitRow {
                     label: tr_args(

@@ -729,9 +729,7 @@ fn head_to_row(item: &ThreadItem, language: Language) -> Row {
     let preview = preview_from_head(&item.head)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            tr(language, "resume_picker.preview.empty").to_string()
-        });
+        .unwrap_or_else(|| tr(language, "resume_picker.preview.empty").to_string());
 
     Row {
         path: item.path.clone(),
@@ -963,8 +961,8 @@ fn render_list(
         let loading_line: Line = vec![
             "  ".into(),
             tr(state.language, "resume_picker.loading_more")
-            .italic()
-            .dim(),
+                .italic()
+                .dim(),
         ]
         .into();
         let rect = Rect::new(area.x, y, area.width, 1);
@@ -977,12 +975,7 @@ fn render_empty_state_line(state: &PickerState) -> Line<'static> {
         if state.search_state.is_active()
             || (state.pagination.loading.is_pending() && state.pagination.next_cursor.is_some())
         {
-            return vec![
-                tr(state.language, "resume_picker.searching")
-                    .italic()
-                    .dim(),
-            ]
-            .into();
+            return vec![tr(state.language, "resume_picker.searching").italic().dim()].into();
         }
         if state.pagination.reached_scan_cap {
             let msg = tr_args(
@@ -994,8 +987,8 @@ fn render_empty_state_line(state: &PickerState) -> Line<'static> {
         }
         return vec![
             tr(state.language, "resume_picker.search.no_results")
-            .italic()
-            .dim(),
+                .italic()
+                .dim(),
         ]
         .into();
     }
@@ -1012,8 +1005,8 @@ fn render_empty_state_line(state: &PickerState) -> Line<'static> {
     if state.pagination.loading.is_pending() {
         return vec![
             tr(state.language, "resume_picker.loading_more")
-            .italic()
-            .dim(),
+                .italic()
+                .dim(),
         ]
         .into();
     }
@@ -1141,8 +1134,7 @@ fn calculate_column_metrics(rows: &[Row], include_cwd: bool, language: Language)
     let mut labels: Vec<(String, String, String)> = Vec::with_capacity(rows.len());
     let mut max_updated_width =
         UnicodeWidthStr::width(tr(language, "resume_picker.columns.updated"));
-    let mut max_branch_width =
-        UnicodeWidthStr::width(tr(language, "resume_picker.columns.branch"));
+    let mut max_branch_width = UnicodeWidthStr::width(tr(language, "resume_picker.columns.branch"));
     let mut max_cwd_width = if include_cwd {
         UnicodeWidthStr::width(tr(language, "resume_picker.columns.cwd"))
     } else {

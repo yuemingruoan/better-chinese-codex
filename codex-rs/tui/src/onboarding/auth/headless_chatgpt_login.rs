@@ -163,9 +163,7 @@ pub(super) fn render_device_code_login(
             device_code.verification_url.as_str().cyan().underlined(),
         ]));
         lines.push("".into());
-        lines.push(
-            tr(language, "onboarding.auth.device_code.step2").into(),
-        );
+        lines.push(tr(language, "onboarding.auth.device_code.step2").into());
         lines.push("".into());
         lines.push(Line::from(vec![
             "  ".into(),
@@ -187,7 +185,11 @@ pub(super) fn render_device_code_login(
         lines.push("".into());
     }
 
-    lines.push(tr(language, "onboarding.auth.press_esc_cancel").dim().into());
+    lines.push(
+        tr(language, "onboarding.auth.press_esc_cancel")
+            .dim()
+            .into(),
+    );
     Paragraph::new(lines)
         .wrap(Wrap { trim: false })
         .render(area, buf);

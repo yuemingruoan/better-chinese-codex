@@ -884,9 +884,7 @@ impl ChatWidget {
                     }
                     self.add_info_message(
                         tr(self.config.language, "chatwidget.sdd.exec_sent").to_string(),
-                        Some(
-                            tr(self.config.language, "chatwidget.sdd.exec_sent_hint").to_string(),
-                        ),
+                        Some(tr(self.config.language, "chatwidget.sdd.exec_sent_hint").to_string()),
                     );
                     self.open_sdd_dev_options();
                 }
@@ -1488,9 +1486,9 @@ impl ChatWidget {
     fn on_undo_started(&mut self, event: UndoStartedEvent) {
         self.bottom_pane.ensure_status_indicator();
         self.bottom_pane.set_interrupt_hint_visible(false);
-        let message = event.message.unwrap_or_else(|| {
-            tr(self.config.language, "chatwidget.undo.in_progress").to_string()
-        });
+        let message = event
+            .message
+            .unwrap_or_else(|| tr(self.config.language, "chatwidget.undo.in_progress").to_string());
         self.set_status_header(message);
     }
 
@@ -2342,7 +2340,7 @@ impl ChatWidget {
                 let tx = self.app_event_tx.clone();
                 let language = self.config.language;
                 tokio::spawn(async move {
-                    let text = match get_git_diff().await {
+                    let text = match get_git_diff(language).await {
                         Ok((is_git_repo, diff_text)) => {
                             if is_git_repo {
                                 diff_text
@@ -2460,9 +2458,7 @@ impl ChatWidget {
             self.send_user_inputs(prompt, Vec::new());
             self.add_info_message(
                 tr(language, "chatwidget.sdd.plan_request_sent").to_string(),
-                Some(
-                    tr(language, "chatwidget.sdd.plan_request_hint").to_string(),
-                ),
+                Some(tr(language, "chatwidget.sdd.plan_request_hint").to_string()),
             );
             self.open_sdd_plan_options();
             return;
@@ -2475,9 +2471,7 @@ impl ChatWidget {
             }) => {
                 self.add_info_message(
                     tr(language, "chatwidget.sdd.plan_stage").to_string(),
-                    Some(
-                        tr(language, "chatwidget.sdd.use_popup_hint").to_string(),
-                    ),
+                    Some(tr(language, "chatwidget.sdd.use_popup_hint").to_string()),
                 );
                 self.open_sdd_plan_options();
             }
@@ -2487,9 +2481,7 @@ impl ChatWidget {
             }) => {
                 self.add_info_message(
                     tr(language, "chatwidget.sdd.dev_stage").to_string(),
-                    Some(
-                        tr(language, "chatwidget.sdd.use_popup_hint").to_string(),
-                    ),
+                    Some(tr(language, "chatwidget.sdd.use_popup_hint").to_string()),
                 );
                 self.open_sdd_dev_options();
             }
@@ -2565,9 +2557,7 @@ impl ChatWidget {
         let items = vec![
             SelectionItem {
                 name: tr(language, "chatwidget.sdd.option.merge_pr").to_string(),
-                description: Some(
-                    tr(language, "chatwidget.sdd.option.merge_pr_desc").to_string(),
-                ),
+                description: Some(tr(language, "chatwidget.sdd.option.merge_pr_desc").to_string()),
                 actions: vec![Box::new(|tx| tx.send(AppEvent::SddDevMergeBranch))],
                 dismiss_on_select: true,
                 ..Default::default()
@@ -2583,9 +2573,7 @@ impl ChatWidget {
             },
             SelectionItem {
                 name: tr(language, "chatwidget.sdd.option.abandon").to_string(),
-                description: Some(
-                    tr(language, "chatwidget.sdd.option.abandon_desc").to_string(),
-                ),
+                description: Some(tr(language, "chatwidget.sdd.option.abandon_desc").to_string()),
                 actions: vec![Box::new(|tx| tx.send(AppEvent::SddDevAbandonBranch))],
                 dismiss_on_select: true,
                 ..Default::default()
@@ -2629,9 +2617,7 @@ impl ChatWidget {
         let branch_name = match self.sdd_state.as_ref() {
             Some(state) => state.branch_name.clone(),
             None => {
-                self.add_error_message(
-                    tr(language, "chatwidget.sdd.branch_unknown").to_string(),
-                );
+                self.add_error_message(tr(language, "chatwidget.sdd.branch_unknown").to_string());
                 return;
             }
         };
@@ -2673,9 +2659,7 @@ impl ChatWidget {
         self.set_composer_text(String::new());
         self.add_info_message(
             tr(language, "chatwidget.sdd.plan_rework_ready").to_string(),
-            Some(
-                tr(language, "chatwidget.sdd.plan_rework_hint").to_string(),
-            ),
+            Some(tr(language, "chatwidget.sdd.plan_rework_hint").to_string()),
         );
         self.request_redraw();
     }
@@ -2705,9 +2689,7 @@ impl ChatWidget {
         self.set_composer_text(prefill);
         self.add_info_message(
             tr(language, "chatwidget.sdd.continue_prompt_ready").to_string(),
-            Some(
-                tr(language, "chatwidget.sdd.continue_prompt_hint").to_string(),
-            ),
+            Some(tr(language, "chatwidget.sdd.continue_prompt_hint").to_string()),
         );
         self.request_redraw();
     }
@@ -2735,9 +2717,7 @@ impl ChatWidget {
         self.send_user_inputs(prompt, Vec::new());
         self.add_info_message(
             tr(language, "chatwidget.sdd.merge_guidance_sent").to_string(),
-            Some(
-                tr(language, "chatwidget.sdd.merge_guidance_hint").to_string(),
-            ),
+            Some(tr(language, "chatwidget.sdd.merge_guidance_hint").to_string()),
         );
     }
 
@@ -3529,8 +3509,11 @@ impl ChatWidget {
         })];
         let description = if preset.description.is_empty() {
             Some(
-                tr(self.config.language, "chatwidget.rate_limit_prompt.switch_description")
-                    .to_string(),
+                tr(
+                    self.config.language,
+                    "chatwidget.rate_limit_prompt.switch_description",
+                )
+                .to_string(),
             )
         } else {
             Some(preset.description)
@@ -3551,8 +3534,11 @@ impl ChatWidget {
                 ..Default::default()
             },
             SelectionItem {
-                name: tr(self.config.language, "chatwidget.rate_limit_prompt.keep_current")
-                    .to_string(),
+                name: tr(
+                    self.config.language,
+                    "chatwidget.rate_limit_prompt.keep_current",
+                )
+                .to_string(),
                 description: None,
                 selected_description: None,
                 is_current: false,
@@ -3582,9 +3568,7 @@ impl ChatWidget {
         ];
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
-            title: Some(
-                tr(self.config.language, "chatwidget.rate_limit_prompt.title").to_string(),
-            ),
+            title: Some(tr(self.config.language, "chatwidget.rate_limit_prompt.title").to_string()),
             subtitle: Some(tr_args(
                 self.config.language,
                 "chatwidget.rate_limit_prompt.subtitle",
@@ -3962,9 +3946,10 @@ impl ChatWidget {
             let mut effort_label =
                 Self::reasoning_effort_label(self.config.language, effort).to_string();
             if choice.stored == default_choice {
-                effort_label.push_str(
-                    tr(self.config.language, "chatwidget.reasoning.default_suffix"),
-                );
+                effort_label.push_str(tr(
+                    self.config.language,
+                    "chatwidget.reasoning.default_suffix",
+                ));
             }
 
             let description = choice
@@ -4088,15 +4073,25 @@ impl ChatWidget {
                     tr(self.config.language, "chatwidget.approvals.auto.desc"),
                 ),
                 "full-access" => (
-                    tr(self.config.language, "chatwidget.approvals.full_access.label"),
-                    tr(self.config.language, "chatwidget.approvals.full_access.desc"),
+                    tr(
+                        self.config.language,
+                        "chatwidget.approvals.full_access.label",
+                    ),
+                    tr(
+                        self.config.language,
+                        "chatwidget.approvals.full_access.desc",
+                    ),
                 ),
                 _ => (preset.label, preset.description),
             };
             let is_current =
                 Self::preset_matches_current(current_approval, current_sandbox, &preset);
             let name = if preset.id == "auto" && windows_degraded_sandbox_enabled {
-                tr(self.config.language, "chatwidget.approvals.auto_non_elevated_label").to_string()
+                tr(
+                    self.config.language,
+                    "chatwidget.approvals.auto_non_elevated_label",
+                )
+                .to_string()
             } else {
                 label.to_string()
             };
@@ -4177,17 +4172,23 @@ impl ChatWidget {
 
         let footer_note = show_elevate_sandbox_hint.then(|| {
             vec![
-                tr(self.config.language, "chatwidget.approvals.footer_note.prefix").dim(),
+                tr(
+                    self.config.language,
+                    "chatwidget.approvals.footer_note.prefix",
+                )
+                .dim(),
                 "/setup-elevated-sandbox".cyan(),
-                tr(self.config.language, "chatwidget.approvals.footer_note.suffix").dim(),
+                tr(
+                    self.config.language,
+                    "chatwidget.approvals.footer_note.suffix",
+                )
+                .dim(),
             ]
             .into()
         });
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
-            title: Some(
-                tr(self.config.language, "chatwidget.approvals.title").to_string(),
-            ),
+            title: Some(tr(self.config.language, "chatwidget.approvals.title").to_string()),
             footer_note,
             footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
@@ -4342,11 +4343,7 @@ impl ChatWidget {
                 ..Default::default()
             },
             SelectionItem {
-                name: tr(
-                    language,
-                    "chatwidget.full_access.option.continue_remember",
-                )
-                .to_string(),
+                name: tr(language, "chatwidget.full_access.option.continue_remember").to_string(),
                 description: Some(
                     tr(
                         language,
@@ -4392,9 +4389,7 @@ impl ChatWidget {
         let language = self.config.language;
         let mut header_children: Vec<Box<dyn Renderable>> = Vec::new();
         let describe_policy = |policy: &SandboxPolicy| match policy {
-            SandboxPolicy::ReadOnly => {
-                tr(language, "chatwidget.world_writable.policy.read_only")
-            }
+            SandboxPolicy::ReadOnly => tr(language, "chatwidget.world_writable.policy.read_only"),
             _ => tr(language, "chatwidget.world_writable.policy.agent"),
         };
         let mode_label = preset
@@ -4525,11 +4520,7 @@ impl ChatWidget {
             let preset_clone = preset;
             let items = vec![
                 SelectionItem {
-                    name: tr(
-                        language,
-                        "chatwidget.windows_sandbox.legacy.enable",
-                    )
-                    .to_string(),
+                    name: tr(language, "chatwidget.windows_sandbox.legacy.enable").to_string(),
                     description: None,
                     actions: vec![Box::new(move |tx| {
                         tx.send(AppEvent::EnableWindowsSandboxForAgentMode {
@@ -4599,11 +4590,7 @@ impl ChatWidget {
 
         let items = vec![
             SelectionItem {
-                name: tr(
-                    language,
-                    "chatwidget.windows_sandbox.nux.setup_elevated",
-                )
-                .to_string(),
+                name: tr(language, "chatwidget.windows_sandbox.nux.setup_elevated").to_string(),
                 description: None,
                 actions: vec![Box::new(move |tx| {
                     tx.send(AppEvent::BeginWindowsSandboxElevatedSetup {
@@ -4671,11 +4658,14 @@ impl ChatWidget {
         };
 
         let mut lines = Vec::new();
-        lines.push(
-            line![tr(language, "chatwidget.windows_sandbox.fallback.title").bold()],
-        );
+        lines.push(line![
+            tr(language, "chatwidget.windows_sandbox.fallback.title").bold()
+        ]);
         lines.push(line![""]);
-        lines.push(line![tr(language, "chatwidget.windows_sandbox.fallback.body")]);
+        lines.push(line![tr(
+            language,
+            "chatwidget.windows_sandbox.fallback.body"
+        )]);
         lines.push(line![tr(
             language,
             "chatwidget.windows_sandbox.fallback.learn_more"
@@ -4776,7 +4766,11 @@ impl ChatWidget {
         self.bottom_pane.ensure_status_indicator();
         self.bottom_pane.set_interrupt_hint_visible(false);
         self.set_status_header(
-            tr(self.config.language, "chatwidget.windows_sandbox.setup_status").to_string(),
+            tr(
+                self.config.language,
+                "chatwidget.windows_sandbox.setup_status",
+            )
+            .to_string(),
         );
         self.request_redraw();
     }
@@ -5208,7 +5202,9 @@ impl ChatWidget {
         }
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
-            title: Some(tr(self.config.language, "chatwidget.review.base_branch_title").to_string()),
+            title: Some(
+                tr(self.config.language, "chatwidget.review.base_branch_title").to_string(),
+            ),
             footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             is_searchable: true,
@@ -5541,7 +5537,9 @@ pub(crate) fn show_review_commit_picker_with_entries(
         footer_hint: Some(standard_popup_hint_line(chat.config.language)),
         items,
         is_searchable: true,
-        search_placeholder: Some(tr(chat.config.language, "chatwidget.review.search_commits").to_string()),
+        search_placeholder: Some(
+            tr(chat.config.language, "chatwidget.review.search_commits").to_string(),
+        ),
         ..Default::default()
     });
 }

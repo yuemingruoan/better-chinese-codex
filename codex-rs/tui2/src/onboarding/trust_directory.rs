@@ -84,7 +84,10 @@ impl WidgetRef for &TrustDirectoryWidget {
                 TrustDirectorySelection::Trust,
             ));
             options.push((
-                tr(language, "onboarding.trust_directory.option.dont_trust_no_git"),
+                tr(
+                    language,
+                    "onboarding.trust_directory.option.dont_trust_no_git",
+                ),
                 TrustDirectorySelection::DontTrust,
             ));
         }
@@ -164,7 +167,10 @@ impl TrustDirectoryWidget {
             self.error = Some(tr_args(
                 self.language,
                 "onboarding.trust_directory.error.set_trust_failed",
-                &[("path", &target.display().to_string()), ("err", &e.to_string())],
+                &[
+                    ("path", &target.display().to_string()),
+                    ("err", &e.to_string()),
+                ],
             ));
         }
 
@@ -180,7 +186,10 @@ impl TrustDirectoryWidget {
             self.error = Some(tr_args(
                 self.language,
                 "onboarding.trust_directory.error.set_untrust_failed",
-                &[("path", &target.display().to_string()), ("err", &e.to_string())],
+                &[
+                    ("path", &target.display().to_string()),
+                    ("err", &e.to_string()),
+                ],
             ));
         }
 

@@ -52,7 +52,9 @@ impl SlashCommand {
             SlashCommand::Review => tr(language, "slash_command.description.review"),
             SlashCommand::Resume => tr(language, "slash_command.description.resume"),
             SlashCommand::Fork => tr(language, "slash_command.description.fork"),
-            SlashCommand::Quit | SlashCommand::Exit => tr(language, "slash_command.description.exit"),
+            SlashCommand::Quit | SlashCommand::Exit => {
+                tr(language, "slash_command.description.exit")
+            }
             SlashCommand::Diff => tr(language, "slash_command.description.diff"),
             SlashCommand::Clean => tr(language, "slash_command.description.clean"),
             SlashCommand::Mention => tr(language, "slash_command.description.mention"),
@@ -62,7 +64,9 @@ impl SlashCommand {
             SlashCommand::Model => tr(language, "slash_command.description.model"),
             SlashCommand::Lang => tr(language, "slash_command.description.lang"),
             SlashCommand::Approvals => tr(language, "slash_command.description.approvals"),
-            SlashCommand::ElevateSandbox => tr(language, "slash_command.description.elevate_sandbox"),
+            SlashCommand::ElevateSandbox => {
+                tr(language, "slash_command.description.elevate_sandbox")
+            }
             SlashCommand::Mcp => tr(language, "slash_command.description.mcp"),
             SlashCommand::Logout => tr(language, "slash_command.description.logout"),
             SlashCommand::Rollout => tr(language, "slash_command.description.rollout"),

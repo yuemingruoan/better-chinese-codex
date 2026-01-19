@@ -65,9 +65,7 @@ pub fn fmt_elapsed_compact(language: Language, elapsed_secs: u64) -> String {
     let hours = elapsed_secs / 3600;
     let minutes = (elapsed_secs % 3600) / 60;
     let seconds = elapsed_secs % 60;
-    format!(
-        "{hours}{hours_suffix} {minutes:02}{minutes_suffix} {seconds:02}{seconds_suffix}"
-    )
+    format!("{hours}{hours_suffix} {minutes:02}{minutes_suffix} {seconds:02}{seconds_suffix}")
 }
 
 impl StatusIndicatorWidget {

@@ -1,5 +1,5 @@
-use codex_core::features::FEATURES;
 use crate::i18n::tr_list;
+use codex_core::features::FEATURES;
 use codex_protocol::config_types::Language;
 use lazy_static::lazy_static;
 use rand::Rng;
