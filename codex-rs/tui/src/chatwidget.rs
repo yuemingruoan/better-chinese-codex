@@ -1845,9 +1845,7 @@ impl ChatWidget {
         let model = model.filter(|m| !m.trim().is_empty());
         config.model = model.clone();
         let language = config.language;
-        let mut rng = rand::rng();
-        let prompts = example_prompts(language);
-        let placeholder = prompts[rng.random_range(0..prompts.len())].to_string();
+        let placeholder = example_prompt_placeholder(language);
         let codex_op_tx = spawn_agent(config.clone(), app_event_tx.clone(), thread_manager);
 
         let model_for_header = config
@@ -1959,9 +1957,7 @@ impl ChatWidget {
         } = common;
         let model = model.filter(|m| !m.trim().is_empty());
         let language = config.language;
-        let mut rng = rand::rng();
-        let prompts = example_prompts(language);
-        let placeholder = prompts[rng.random_range(0..prompts.len())].to_string();
+        let placeholder = example_prompt_placeholder(language);
 
         let header_model = model.unwrap_or_else(|| session_configured.model.clone());
 
@@ -5444,6 +5440,15 @@ const AGENT_NOTIFICATION_PREVIEW_GRAPHEMES: usize = 200;
 
 fn example_prompts(language: Language) -> &'static [String] {
     tr_list(language, "chatwidget.example_prompts")
+}
+
+fn example_prompt_placeholder(language: Language) -> String {
+    let prompts = example_prompts(language);
+    if prompts.is_empty() {
+        return String::new();
+    }
+    let mut rng = rand::rng();
+    prompts[rng.random_range(0..prompts.len())].to_string()
 }
 
 // Extract the first bold (Markdown) element in the form **...** from `s`.

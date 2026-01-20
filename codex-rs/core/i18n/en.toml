@@ -433,7 +433,7 @@ save_pref_failed = "Failed to save world-writable warning preference: ${error}"
 
 [chatwidget]
 context_compacted = "Context compacted"
-example_prompts = "Explain this codebase"
+example_prompts = ["Explain this codebase"]
 
 [chatwidget.approvals]
 auto_non_elevated_label = "Agent (non-elevated sandbox)"

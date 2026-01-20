@@ -430,7 +430,7 @@ save_pref_failed = "保存自动模式警告偏好失败：${error}"
 
 [chatwidget]
 context_compacted = "上下文已压缩"
-example_prompts = "解释这个代码库"
+example_prompts = ["解释这个代码库"]
 
 [chatwidget.approvals]
 auto_non_elevated_label = "代理（非提升权限沙盒）"
