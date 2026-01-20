@@ -4616,6 +4616,7 @@ impl ChatWidget {
         use ratatui_macros::line;
 
         let _ = reason;
+        let language = self.config.language;
 
         let current_approval = self.config.approval_policy.value();
         let current_sandbox = self.config.sandbox_policy.get();
