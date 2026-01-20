@@ -1,0 +1,1063 @@
+# Simplified Chinese translations
+
+[slash_command.description]
+approvals = "配置 Codex 无需审批即可执行的操作"
+checkpoint = "阶段性记录 AI 所执行的操作"
+clean = "清理剪贴板图片缓存"
+compact = "总结当前对话以避免上下文超限"
+diff = "显示 git diff（包含未跟踪文件）"
+elevate_sandbox = "配置提升权限的沙箱"
+exit = "退出 Codex"
+experimental = "切换实验功能"
+feedback = "向维护者发送日志"
+fork = "分叉已保存的会话"
+init = "创建包含 Codex 指南的 AGENTS.md 文件"
+lang = "切换界面语言"
+mcp = "列出已配置的 MCP 工具"
+mention = "在消息中提及文件"
+model = "选择模型及推理强度"
+new = "在对话中开始新的聊天"
+ps = "列出后台终端"
+resume = "恢复已保存的会话"
+review = "审查当前改动并查找问题"
+rollout = "打印部署文件路径"
+sdd_develop = "启动基于 SDD 的开发流程"
+skills = "使用技能提升特定任务的表现"
+status = "显示会话配置与令牌使用情况"
+test_approval = "测试审批请求"
+logout = "注销 Codex 登录"
+
+[tooltips]
+items = [
+  "对话变长时可使用 /compact 总结历史，释放上下文。",
+  "用 /new 开启新话题；之前的会话仍会保留在历史中。",
+  "遇到异常时可用 /feedback 向维护者发送日志。",
+  "用 /model 快速切换模型或推理强度。",
+  "可以用 `!` 在 Codex 中运行任意 shell 命令（例如 `!ls`）",
+  "输入 / 打开命令弹窗；Tab 可自动补全斜杠命令和已保存的提示词。",
+  "可用自定义提示词创建自己的 `/` 命令。更多信息：https://developers.openai.com/codex/guides/slash-commands#create-your-own-slash-commands-with-custom-prompts",
+  "当输入框为空时，按 Esc 退回并编辑上一条消息；按 Enter 确认。",
+  "按 Ctrl+V 粘贴图片以附加到下一条消息。",
+  "运行 `codex resume` 可恢复之前的会话。",
+]
+
+[prompt]
+init = '''请生成一个名为 AGENTS.md 的文件，为本仓库贡献者提供指南。
+目标是撰写一份结构清晰、言简意赅的文档，使用有描述性的标题，并在每个部分给出可执行的说明。
+可根据需要对以下大纲进行增删：若有额外相关内容可新增章节，不适用的部分可省略。
+请将文件生成于根目录下（除非用户额外指定目录）的 .codex 目录下（若该目录不存在可自行创建）exp:"PROJECT_DIR/.codex/AGENTS.md"
+资料来源：
+- 该项目先前可能使用过其他AI Agent进行开发，并且可能遗留了它们的记忆管理文档，你可以扫描“~/.claude/CLAUDE.md”，“./CLAUDE.md”，“./CLAUDE.local.md”,"./GEMINI.md"这些文件（如果存在的话）来获取它们的记忆管理文档，可以为你的文档编写提供有力参考，但内容来源可信度有限，时效性亦可能存在问题，需再次进行核实。
+- 用户可能会在/.codex目录下存放一个名为PROMPT.md的文件，其中存储了该项目作者想要达到的目的和编码时的要求，你可以根据里面的需求编写需求描述更加精准的AGENTS.md，其中你认为需要注意的事项也应当保存到AGENTS.md中。
+- 大部分项目都会包含README.md，你可以阅读它来获得该项目的大致作用，对项目用途拥有更清晰的认知。
+
+文档要求
+
+- 将文档标题设为 “Repository Guidelines”。
+- 使用 Markdown 标题（#、## 等）组织结构。
+- 不作强制的字数要求，但尽量保持简洁，不过不可一味的追求简洁导致遗留必要的项目细节
+- 说明应当直接、具体，贴合本仓库。
+- 在合适的位置给出示例（命令、目录路径、命名规则等）。
+- 保持专业且具有指导性的语气。
+
+推荐章节
+
+项目结构与模块组织
+
+- 概述项目结构，说明源码、测试与资源文件的位置。
+- 用户已经确定的项目结构中已指定用途的文件和其对应的用途。
+构建、测试与开发命令
+
+- 列出本地构建、测试与运行的关键命令（例如 npm test、make build）。
+- 简要说明各命令的作用。
+
+代码风格与命名规范
+
+- 指出缩进规则、语言特定的风格偏好及命名模式。
+- 说明使用的格式化或静态检查工具。
+
+测试指引
+
+- 说明测试框架与覆盖率要求。
+- 写明测试命名规范以及执行方式。
+
+提交与合并请求指南
+
+- 总结仓库中常见的提交信息风格。
+- 说明合并请求需要包含的要素（描述、关联问题、截图等）。
+
+（可选）根据实际情况补充其他章节，如安全与配置提示、架构概览、面向代理的特别说明等。
+'''
+
+sdd_plan = '''你是资深开发规划师。请根据“需求描述”先判断信息是否充分：  
+- 在向用户提问前，**必须先阅读项目内相关代码/文档**以澄清上下文；仅当代码中无法确认或存在多个合理语义时才提问。  
+- 若存在不明确处，且**在代码/文档中无法确认或存在多种合理解释**，再列出需向用户确认的问题清单并请用户补充，此时不要生成 task.md。  
+- 需求清晰后，生成 task.md 文件（写入项目根目录下 `.codex/task.md`，必要时先创建 `.codex` 目录），不要在回复中内联整个文件，只需汇报摘要并请用户提出异议。
+
+## 需求描述
+（把用户提供的功能/问题原文粘贴在这里）
+
+## task.md 应包含的章节
+1) **标题与目标**：一句话概述要解决的问题与完成定义。  
+2) **交付物**：列出最终需要提交的成果（代码、文档、脚本等）。  
+3) **范围 / 非范围**：各 3~6 条，明确本迭代做与不做。  
+4) **工作项清单**：表格列 `ID`、`内容`、`完成状态`、`负责人`、`实施要点`、`验证方式`；完成状态用 `[ ]` / `[x]` 勾选，初始为 `[ ]`，ID 用 T1/T2… 短标签。  
+   - 实施要点：拆分为可落地的步骤、建议使用的内部工具/命令（如 apply_patch、just fmt、cargo test -p <crate>），以及代码或配置变更的关键点。  
+   - 验证方式：列出对应的测试/检查（优先 TDD：若缺少测试先补测试再实现），包含命令、预期结果或日志信号。  
+5) **里程碑与顺序**：按实际需要细分里程碑（不少于 2 个，可多于 4 个），按先后列出依赖的任务 ID；将大块工作拆成粒度更小、能在单次提交/PR 中完成并可验证产出的阶段。  
+6) **风险与缓解**：列 3~5 条风险，给出对应缓解措施。  
+7) **验收与测试**：列必须通过的检查（单测/集成/手测/观测信号）及数据或日志验证要点。  
+8) **回滚与清理**：说明出问题时的回滚步骤以及需清理的资源/分支。  
+9) **工具与命令**：列执行阶段要用的主要工具/命令，注明何时使用、产出和注意事项。  
+10) **测试计划**：明确每个任务/模块需要覆盖的测试类型与命令（如 `cargo test -p <crate> <filter>`、`cargo insta test`、`npm test -- <pattern>` 等），说明预期通过标准与日志信号。  
+11) **汇报清单**：列需要向用户同步的节点与内容（至少：计划确认要点、分支名称、已完成任务/剩余任务、测试与验证结果、阻塞或待决事项）。  
+
+## 工具使用指引（写入 “工具与命令” 章节）
+- **修改文件**：优先用 `apply_patch`（或等效补丁）提交变更，避免长代码块口述。  
+- **运行命令**：使用 shell 工具执行 git 操作、`just fmt`、`cargo test -p <crate>`、`cargo insta` 等，简述目的与成功信号。  
+- **分支管理**：用 git 创建/切换/删除分支，避免在主分支直接提交。  
+- **进度同步**：以 `.codex/task.md` 为准，完成每一步时更新“完成状态”勾选。  
+- **汇报**：执行阶段按“汇报清单”定期向用户更新：计划确认、当前分支名、进展与剩余任务、测试结果、阻塞或待决项。  
+
+## 其他规范
+- 需求不清晰时，只输出需确认的问题列表并等待用户回应。  
+- 需求清晰时，使用 `apply_patch` 或等效方式写入 `.codex/task.md`（覆盖旧内容）；回复中不要贴出完整文件，只做摘要 + 路径提示。  
+- 生成 task.md 后，按 `/checkpoint` 规范在 `.codex/checkpoint.md` 追加一条记录（若不存在则创建）。  
+- 用简洁中文，优先列表/表格，避免大段落。  
+- 不要虚构不可验证的信息；若需外部决策，用明确占位符（如“待与产品确认 XXX”）。  
+- 在提出问题前必须先阅读项目相关文件/现有实现（通过文件阅读或必要的只读命令）以澄清上下文。  
+- 需求存在不明确处时，列出需向用户确认的关键问题，并先行确认；确认后再生成 task.md。  
+- 可列出建议执行的命令，但不要在输出中直接执行；执行留待后续开发阶段。  
+'''
+
+sdd_execute = '''你是资深代码执行代理。上一轮已用 SDD 计划生成器产出并确认了 `.codex/task.md`；请在此上下文下按计划执行开发，保持可见的进度与验证记录。
+
+核心原则
+- **分支隔离**：全程在独立分支开发，不改主分支，不合并。  
+- **逐项提交**：每完成 task.md 列表中的一项（或拆分子项）并通过验证后，立即提交 commit；提交信息写明已完成的功能。  
+- **最小可验证增量**：每个变更尽量小且可验证，完成后立即验证。  
+- **TDD 优先**：若缺少测试，先补测试再实现；实现后确保相关测试通过。  
+- **透明汇报**：关键节点向用户汇报进度、测试结果、阻塞。  
+- **安全操作**：优先使用 `apply_patch` 修改文件；命令前说明目的与期望结果。  
+
+执行步骤（顺序）
+1. **环境确认**：确保当前目录为项目根；若缺少 `.codex/task.md` 立即停止并提示。  
+2. **分支管理**：分支已由系统工具创建并切换，无需手动执行 git 命令。  
+3. **读取计划**：阅读 `.codex/task.md`，列出将要执行的任务 ID、实施要点、验证方式。  
+4. **建立进度跟踪**：以 `.codex/task.md` 为准维护“完成状态”勾选；如需可视化，再使用内置 Plan/TODO 工具同步（可选），必要时将任务拆成更小的子项（实现与验证分开）。  
+5. **任务执行循环**（对每个任务/子项）：  
+   - **阅读/定位**：查看相关代码/文档，确认现状。  
+   - **测试先行**：若无覆盖，先编写或补充测试；记录计划运行的命令。  
+   - **实现改动**：用 `apply_patch` 进行最小变更。  
+   - **验证**：运行对应命令（如 `just fmt`，`cargo test -p <crate>`，必要时 `cargo insta test`），收集结果/日志要点。  
+   - **提交变更**：每完成一个任务/子项并验证通过后立刻提交 commit，提交信息以“完成 <功能/子项>”等描述已完成内容。  
+   - **勾选进度**：先在 `.codex/task.md` 中勾选完成状态（`[ ]`→`[x]`），可选同步到 Plan/TODO，并在回复中同步结果与测试状态。  
+6. **收尾检查**：按计划的测试/格式化要求执行：  
+   - 代码格式：运行项目约定的格式化命令（如 `just fmt`、`npm run fmt`、`pnpm lint --fix` 等）。  
+   - 测试：根据任务/测试计划运行对应命令（如 `cargo test -p <crate>`、`cargo insta test`、`npm test -- <pattern>`、`pnpm test --filter <name>` 等），并记录结果。  
+7. **阶段总结**：整理分支名、已完成/剩余任务、测试结果、已知问题或阻塞，向用户汇报。  
+
+汇报节奏（对话中执行）
+- **开始前**：报告分支名、将执行的任务 ID/顺序、预期运行的主要命令，并提醒用户开发在独立分支上完成，完成后请再次运行 `/sdd-develop` 选择合并更新。  
+- **每完成 1–2 个任务**：说明改动与验证结果（通过/失败+日志要点）、Plan/TODO 勾选情况，并明确下一步要做的任务/子项与计划运行的命令。  
+- **阶段结束**：总结分支名、完成/剩余任务、整体测试状态、存在的阻塞或需确认事项，并提出下一阶段的优先级与预定动作。  
+
+额外注意
+- 若发现需求不明或与 `.codex/task.md` 冲突，暂停并向用户提问后再继续。  
+- 若需调整任务（新增/删除/重排），先提议并获得用户同意，再更新 Plan/TODO。  
+- 不要合并主分支或删除分支；等待用户后续选择合并或放弃。  
+'''
+
+sdd_merge = '''你是资深合并更新协助代理。用户选择通过 Pull Request 合并本次 SDD 分支更新。不要使用程序内置的 SDD Git 自动合并流程，请按仓库实际流程指导并执行合并与收尾。
+
+前提检查：
+- 确认当前分支为本次 SDD 开发分支（如 `sdd/...`），主分支保持干净。  
+- 确认最新测试已通过（参考 `.codex/task.md` 和执行记录）；如缺失测试结果，先补跑并汇报。  
+
+执行步骤：
+1. **准备 PR 信息**：整理 PR 标题与描述，包含变更摘要、测试结果、风险与回滚、关联任务（来自 `.codex/task.md`）。  
+2. **通过 PR 合并**：按平台/仓库流程创建或更新 PR，并以 **Merge commit** 方式合并。如需同步主分支，按团队流程处理并记录冲突要点。  
+3. **清理现场**：删除 `.codex/task.md` 及本次任务相关的临时记录/日志；合并后清理本地/远端分支（遵循团队流程）；检查是否残留调试代码、临时文件或配置。  
+4. **写入 checkpoint**：按 `/checkpoint` 规范在 `.codex/checkpoint.md` 追加一条阶段性记录，包含完成事项与后续待办。  
+5. **向用户汇报**：当前分支与目标分支、PR 结果（链接/编号或已合并说明）、最终测试结果、清理与 checkpoint 摘要、未决事项/风险。  
+
+注意：
+- 若遇到冲突、测试失败或流程阻塞，先说明原因并给出可选方案。  
+'''
+
+checkpoint = '''请根据当前会话与工作区的最新进展，在仓库的 checkpoint.md 中追加一条阶段性记录。
+
+执行要求：
+
+1. 先定位 checkpoint 文件：优先查找项目根目录下的 `.codex/checkpoint.md`；若不存在但其他位置已有 checkpoint.md，请沿用现有路径；若完全不存在，则在根目录创建 `.codex` 目录并新建该文件。
+2. 保留既有内容，仅在文件末尾追加新日志，并确保相邻日志块之间留出一个空行。
+3. 新日志需包含以下结构：
+   - 一行形如 `## YYYY-MM-DD HH:MM:SS CST` 的时间戳，使用北京时间（可通过 `date "+%Y-%m-%d %H:%M:%S CST"` 获取；若受限无法获取，请在时间戳后说明）。
+   - 一个无序列表，概述本阶段完成的关键操作。每条以动词开头，内容具体、客观。
+   - 一个无序列表，汇总尚未解决的问题、风险或下一步计划；若暂无待办，请写 `- 当前暂无待办`。
+4. 若文件中存在或用户要求保留 `## NO_AI_ASSIST` 标识，请保持在文件顶部；除非收到明确指示，不要新增或删除该标识。
+5. 优先使用中文撰写内容，可添加必要的补充短语帮助后续 Agent 快速理解上下文。
+6. 完成操作后，以 Markdown 摘要向用户汇报所做的变更，并展示新增日志片段以便确认。
+
+请立即开始执行上述步骤。
+'''
+
+[footer]
+token_usage = "↑ ${input_prior} + ${input_last} tokens（${cached_prior} + ${cached_last} tokens 缓存）↓ ${output_prior} + ${output_last} tokens（${reasoning_prior} + ${reasoning_last} 推理 tokens）"
+
+[footer.hint]
+shortcuts = " 查看快捷键"
+queue_message = " 排队发送"
+quit_again = " 再次退出"
+edit_previous_again = " 再次编辑上一条消息"
+edit_previous = " 编辑上一条消息"
+
+[footer.context]
+used = "上下文已用"
+used_suffix = "已用"
+
+[footer.shortcuts]
+commands = " 命令"
+shell_commands = " 运行 Shell 命令"
+insert_newline = " 换行"
+queue_message = " 排队发送"
+file_paths = " 文件路径"
+paste_image = " 粘贴图片"
+external_editor = " 用外部编辑器编辑"
+quit = " 退出"
+show_transcript = " 查看记录"
+
+[footer.copy]
+copied = "已复制"
+failed = "复制失败"
+
+[footer.transcript]
+scroll = " 滚动"
+jump = " 跳转"
+copy_selection = " 复制选区"
+
+[popup.hint]
+press = "按 "
+confirm_or = " 确认，或 "
+go_back = " 返回"
+
+[additional_dirs]
+read_only_warning = "由于当前沙箱模式为只读，--add-dir (${paths}) 将被忽略。请切换到 workspace-write 或 danger-full-access 以允许额外的可写根目录。"
+
+[clipboard.detail]
+invalid_rgba = "无效的 RGBA 缓冲区"
+android_paste_not_supported = "Android 上暂不支持粘贴剪贴板图像"
+
+[clipboard.error]
+clipboard_unavailable = "剪贴板不可用：${detail}"
+no_image = "剪贴板中没有图像：${detail}"
+encode_failed = "无法编码图像：${detail}"
+io_error = "I/O 错误：${detail}"
+
+[status]
+reasoning = "推理 ${effort}"
+summaries_off = "概述已关闭"
+summaries = "摘要 ${summary}"
+
+[status.agents]
+unknown_file = "未知"
+none = "无"
+
+[status.account]
+unknown = "未知"
+api_key_configured = "已配置 API 密钥（运行 codex login 以使用 ChatGPT）"
+
+[status.approval]
+unknown = "未知"
+
+[status.token_usage]
+total_label = " 总计 "
+paren_open = "（"
+input_label = " 输入"
+output_label = " 输出"
+paren_close = "）"
+
+[status.context_window]
+remaining = "剩余 ${percent}%"
+paren_open = "（"
+used_ratio = " 已用 / "
+paren_close = "）"
+
+[status.rate_limits]
+label = "限制"
+data_not_available = "暂无数据"
+warning_label = "警告"
+stale_warning = "限额数据可能已过期，请开始新的对话刷新。"
+reset_at = "（${resets_at} 重置）"
+default_primary_window = "5 小时"
+default_secondary_window = "每周"
+window_label = "${label} 限额"
+remaining_percent = "剩余 ${percent}%"
+credits_label = "额度"
+credits_unlimited = "无限额度"
+credits_balance = "${amount} 额度"
+
+[status.fields]
+model = "模型"
+directory = "目录"
+approval = "审批"
+sandbox = "沙箱"
+model_provider = "模型提供方"
+account = "帐号"
+session = "会话"
+token_usage = "Token 使用"
+context_window = "上下文窗口"
+
+[status.note]
+visit_prefix = "访问 "
+up_to_date_prefix = " 获取最新的"
+rate_limits_and_credits = "速率限制与额度信息"
+
+[model_migration.option]
+try_new_model = "试用新模型"
+use_existing_model = "继续使用当前模型"
+
+[model_migration]
+heading = "Codex 已升级，欢迎使用 ${target}。"
+description_default = "推荐使用 ${target}，以获得更好的性能与稳定性。"
+recommend_switch = "我们建议从 ${current} 切换到 ${target}。"
+learn_more = "${description} 了解更多 ${target}："
+keep_current = "如果你愿意，也可以继续使用 ${current}。"
+continue_hint = "按 Enter 继续"
+
+[status_indicator.elapsed]
+seconds_suffix = "秒"
+minutes_suffix = "分"
+hours_suffix = "小时"
+
+[status_indicator.header]
+working = "工作中"
+
+[status_indicator.interrupt]
+prefix = "（${elapsed} • 按 "
+suffix = " 以中断）"
+
+[status_indicator]
+idle = "（${elapsed}）"
+
+[oss_selection]
+title = "选择开源模型提供者"
+subtitle = "  请选择本地 AI 服务，之后可以记住该偏好。"
+status_legend = "  ● 运行中  ○ 未运行"
+hint_select_quit = "  按 Enter 选择 • Ctrl+C 退出"
+
+[oss_selection.option]
+lmstudio = "本地 LM Studio 服务（默认端口 1234）"
+ollama_responses = "本地 Ollama 服务（Responses API，默认端口 11434）"
+ollama_chat = "本地 Ollama 服务（Chat API，默认端口 11434）"
+
+[oss_selection.prompt]
+choose_provider = "选择提供者？"
+
+[oss_selection.error]
+save_preference = "保存 OSS 提供者偏好失败：${error}"
+
+[app.approvals]
+policy_failed = "设置审批策略失败：${error}"
+save_failed = "保存授权设置失败：${error}"
+
+[app.diff]
+no_changes = "未检测到任何更改。"
+title = "差异"
+
+[app.editor]
+open_failed = "无法打开编辑器："
+
+[app.external_editor]
+hint = "保存并关闭外部编辑器以继续。"
+
+[app.features]
+save_failed = "更新实验功能失败：${error}"
+
+[app.full_access]
+save_pref_failed = "保存完全访问模式确认偏好失败：${error}"
+
+[app.language]
+changed = "语言已切换为 ${label}"
+save_failed = "保存语言设置失败：${error}"
+
+[app.model]
+changed = "模型已切换为 ${model}"
+effort_separator = "，"
+profile_suffix = "（配置档：${profile}）"
+save_default_failed = "保存默认模型失败：${error}"
+save_profile_failed = "为配置档 `${profile}` 保存模型失败：${error}"
+
+[app.model_migration]
+save_pref_failed = "保存模型迁移提示偏好失败：${error}"
+
+[app.overlay]
+command_title = "命令"
+elicitation_title = "E L I C I T A T I O N"
+patch_title = "补丁"
+
+[app.rate_limit]
+save_pref_failed = "保存速率限制提醒偏好失败：${error}"
+
+[app.reasoning]
+default = "推理强度：默认"
+high = "推理强度：高"
+low = "推理强度：低"
+medium = "推理强度：中"
+minimal = "推理强度：极低"
+xhigh = "推理强度：极高"
+
+[app.sandbox]
+policy_failed = "设置沙盒策略失败：${error}"
+
+[app.session]
+fork_failed = "无法从 ${path} 分叉会话"
+fork_failed_detail = "从 ${path} 分叉会话失败：${error}"
+resume_failed = "无法从 ${path} 恢复会话"
+resume_failed_detail = "从 ${path} 恢复会话失败：${error}"
+resume_hint = "继续该会话请运行 "
+
+[app.skills]
+invalid = "由于 SKILL.md 无效，已跳过加载 ${error_count} 个技能。"
+
+[app.windows_sandbox]
+enable_failed = "启用 Windows 实验性沙盒失败：${error}"
+enabled_elevated = "已启用提升权限的代理沙盒。"
+enabled_non_elevated = "已启用非提升权限的代理沙盒。"
+
+[app.world_writable]
+save_pref_failed = "保存自动模式警告偏好失败：${error}"
+
+[chatwidget]
+context_compacted = "上下文已压缩"
+example_prompts = ["解释这个代码库"]
+
+[chatwidget.approvals]
+auto_non_elevated_label = "代理（非提升权限沙盒）"
+title = "选择授权模式"
+
+[chatwidget.approvals.auto]
+desc = "可读写文件并运行命令。"
+label = "代理"
+
+[chatwidget.approvals.footer_note]
+prefix = "非提升权限沙盒在大多数情况下可保护文件并阻止网络访问，但在提示注入时风险更高。要升级到提升权限沙盒，请运行 "
+suffix = "。"
+
+[chatwidget.approvals.full_access]
+desc = "Codex 可编辑工作区外的文件并运行含网络访问的命令。使用时请谨慎。"
+label = "代理（完全访问）"
+
+[chatwidget.approvals.read_only]
+desc = "编辑文件与运行命令需确认。"
+label = "只读"
+
+[chatwidget.clean]
+deleted = "已清理剪贴板图片缓存：删除 ${deleted} 个文件。"
+deleted_with_failures = "已清理剪贴板图片缓存：删除 ${deleted} 个文件，${failed} 个失败。"
+failed = "清理剪贴板缓存失败：${error}"
+no_codex_dir = "未找到 .codex 目录，无需清理剪贴板缓存。"
+no_image_cache = "无法计算 diff：{e}"
+
+[chatwidget.clipboard]
+image_paste_failed = "粘贴图像失败：${detail}。可尝试将图片保存为文件后粘贴路径。"
+
+[chatwidget.diff]
+failed = "无法计算 diff：${error}"
+not_git_repo = "`/diff` — _当前不在 Git 仓库_"
+
+[chatwidget.full_access]
+intro = "当 Codex 以完全访问运行时，无需你的批准即可编辑你电脑上的任何文件并运行带网络访问的命令。"
+title = "启用完全访问？"
+warning = "启用完全访问时请谨慎。这会显著增加数据丢失、泄露或意外行为的风险。"
+
+[chatwidget.full_access.option]
+cancel = "取消"
+cancel_desc = "返回且不启用完全访问"
+continue = "仍然继续"
+continue_desc = "仅此会话启用完全访问"
+continue_remember = "继续并不再询问"
+continue_remember_desc = "启用完全访问并记住该选择"
+
+[chatwidget.language_popup]
+chinese_desc = "界面与提示使用简体中文"
+english_desc = "界面与提示使用英语"
+title = "选择语言"
+
+[chatwidget.mcp]
+starting_server_single = "正在启动 MCP 服务器：${server}"
+starting_servers = "正在启动 MCP 服务器 (${completed}/${total}): ${servers}"
+startup_failed = "失败：${servers}"
+startup_incomplete = "MCP 启动未完成（${details}）"
+startup_interrupted = "MCP 启动被中断，以下服务器未初始化：${servers}"
+
+[chatwidget.model_popup]
+all_models = "全部模型"
+all_models_desc = "选择特定模型和推理强度（当前：${current_label}）"
+base_url_warning = "警告：OPENAI_BASE_URL 已设置为 ${base_url}。选择模型可能不受支持或无法正常工作。"
+disabled_until_ready = "启动尚未完成，暂时无法选择模型。"
+footer_hint = "按回车选择推理强度，或按 Esc 返回。"
+no_additional_models = "当前没有更多可用模型。"
+quick_subtitle = "选择自动模式或浏览全部模型。"
+quick_title = "选择模型"
+subtitle = "可通过运行 codex -m <model_name> 或在 config.toml 中访问旧版模型"
+title = "选择模型与推理强度"
+updating = "模型正在更新，请稍后再试 /model。"
+
+[chatwidget.notification]
+agent_turn_complete = "本轮任务完成"
+edit_approval = "Codex 想修改 ${target}"
+edit_approval_files = "${count} 个文件"
+elicitation = "由 ${server_name} 发起的授权请求"
+exec_approval = "请求授权：${command}"
+
+[chatwidget.rate_limit]
+warning = "提示：您的 ${limit_label} 限额剩余不足 ${percent}%。可运行 /status 查看详情。"
+
+[chatwidget.rate_limit.label]
+annual = "每年"
+hours = "${count} 小时"
+monthly = "每月"
+weekly = "每周"
+
+[chatwidget.rate_limit_prompt]
+keep_current = "保持当前模型"
+keep_current_never = "保持当前模型（不再提示）"
+keep_current_never_desc = "不再提示切换模型的额度提醒。"
+subtitle = "切换到 ${display_name} 以降低额度消耗？"
+switch_description = "后续对话消耗更少额度。"
+switch_to = "切换到 ${display_name}"
+title = "接近速率限制"
+
+[chatwidget.reasoning]
+default_suffix = "（默认）"
+select_title = "选择 ${model} 的推理强度"
+warning = "⚠ ${effort_label} 推理强度可能会快速消耗 Plus 计划的速率限制。"
+
+[chatwidget.review]
+base_branch = "基于基础分支进行审查"
+base_branch_title = "选择基础分支"
+commit = "审查某个提交"
+commit_title = "选择要审查的提交"
+custom = "自定义审查指令"
+custom_hint = "输入指令后按 Enter 提交"
+detached_head = "（分离 HEAD）"
+finished = "<< 代码审查结束 >>"
+no_response = "审查器未输出任何响应。"
+pr_style_desc = "（PR 风格）"
+search_branches = "输入以搜索分支"
+search_commits = "输入以搜索提交"
+started = ">> 代码审查开始：${hint} <<"
+title = "选择审查预设"
+uncommitted = "审查未提交的改动"
+
+[chatwidget.rollout]
+current_path = "当前 rollout 路径：${path}"
+not_available = "当前尚无 rollout 路径。"
+
+[chatwidget.sdd]
+branch_create_started = "已启动 SDD 分支创建，请等待工具完成。"
+branch_delete_started = "已启动删除分支流程，请等待工具完成。"
+branch_deleted = "已删除 SDD 分支，请继续正常对话。"
+branch_label = "分支名："
+branch_unknown = "无法确定 SDD 分支名称。"
+continue_prompt_details = "需要额外修改的细节："
+continue_prompt_hint = "提交后可再次输入 /sdd-develop 打开后续选项。"
+continue_prompt_intro = "请继续在当前分支上改进，需求背景："
+continue_prompt_ready = "已在输入框放入继续修改的模板，请补充具体修改点后提交。"
+dev_stage = "当前处于开发阶段，可合并、继续修改或放弃分支。"
+exec_sent = "已发送开发指令，请等待 AI 在独立分支完成实现。"
+exec_sent_hint = "完成后可通过 /sdd-develop 选择合并、继续修改或放弃。"
+git_failed = "SDD Git 操作失败，请检查输出后重试。"
+merge_completed = "已完成合并操作，请继续后续流程。"
+merge_guidance_hint = "如需继续修改，请再次运行 /sdd-develop 选择其它选项。"
+merge_guidance_sent = "已发送合并更新指引，请按提示通过 PR 完成合并与清理。"
+merge_started = "已启动合并流程（提交并合并到基线分支）。"
+no_active_branch_abandon = "没有活跃的 SDD 分支可放弃。"
+no_active_branch_changes = "没有活跃的 SDD 分支可继续修改。"
+no_active_branch_merge = "没有活跃的 SDD 分支可合并。"
+no_active_plan = "没有活跃的 SDD 计划可继续开发，请先运行 /sdd-develop <需求>。"
+no_active_plan_rework = "没有活跃的 SDD 计划可修改，请先运行 /sdd-develop <需求>。"
+no_dev_branch = "当前没有待处理的 SDD 开发分支。"
+no_plan_pending = "没有待确认的计划，请先使用 /sdd-develop <需求> 启动流程。"
+not_git_repo = "当前目录不是 Git 仓库，/sdd-develop 需要在 Git 仓库内运行。"
+not_in_dev_stage = "当前不在开发阶段，无法继续修改。"
+not_in_dev_stage_abandon = "当前不在开发阶段，无法放弃分支。"
+not_in_dev_stage_merge = "当前不在开发阶段，无法合并分支。"
+not_in_plan_stage = "当前不在计划阶段，无法修改计划。"
+plan_request_hint = "随时输入 /sdd-develop 可重新打开选项。"
+plan_request_sent = "已发送 SDD 计划生成请求，请查看 AI 输出的 task.md 后选择下一步。"
+plan_rework_hint = "提交后会重新弹出计划选项。"
+plan_rework_prompt = "我认为你提出的task.md不够完善，还有以下问题需要解决：\\n"
+plan_rework_ready = "已准备计划修改请求，请在输入框补充反馈后提交。"
+plan_stage = "当前处于计划阶段，可选择继续开发或修改计划。"
+plan_stage_required = "当前不在计划确认阶段，无法继续开发。"
+require_description = "请在 /sdd-develop 后提供要实现的需求描述。"
+requirement_label = "需求描述："
+use_popup_hint = "使用弹窗选择下一步。"
+
+[chatwidget.sdd.dev_options]
+title = "选择 SDD 开发后续操作"
+
+[chatwidget.sdd.option]
+abandon = "放弃修改（删除分支）"
+abandon_desc = "删除临时分支并退出流程"
+approve_plan = "同意计划，继续开发"
+approve_plan_desc = "创建分支并按 task.md 实施"
+continue_changes = "继续修改"
+continue_changes_desc = "在当前分支继续迭代"
+merge_pr = "使用 Pull Request 合并分支"
+merge_pr_desc = "按既定流程发起/合并 PR"
+request_changes = "不同意计划，修改计划"
+request_changes_desc = "反馈后让 AI 更新 task.md"
+
+[chatwidget.sdd.plan_options]
+title = "选择 SDD 计划操作"
+
+[chatwidget.shell_help]
+example = "示例：!ls"
+title = "使用 ! 前缀在本地运行命令"
+
+[chatwidget.slash]
+disabled_during_task = "任务进行中，无法使用 '/${command}'。"
+init_exists = "此处已存在 ${filename}，为避免覆盖已跳过 /init。"
+
+[chatwidget.status]
+running = "运行中"
+working = "工作中"
+
+[chatwidget.stream]
+interrupted = "对话已中断——请告诉模型需要做出哪些不同的处理。遇到问题？使用 `/feedback` 报告。"
+
+[chatwidget.task]
+replaced = "任务已中止：被新任务替换。"
+
+[chatwidget.undo]
+completed = "撤销已完成。"
+failed = "撤销失败。"
+in_progress = "正在撤销..."
+success = "撤销已完成。"
+
+[chatwidget.windows_sandbox]
+setup_input_disabled = "设置完成前已禁用输入。"
+setup_status = "正在设置代理沙盒，这可能需要一分钟。"
+
+[chatwidget.windows_sandbox.fallback]
+body = "提升权限失败。你也可以使用非提升权限沙盒，它在大多数情况下可保护文件并阻止网络访问，但在提示注入时风险更高。"
+learn_more = "了解更多：https://developers.openai.com/codex/windows"
+retry_elevated = "再次尝试设置提升权限的代理沙盒"
+title = "使用非提升权限沙盒？"
+use_non_elevated = "使用非提升权限的代理沙盒"
+
+[chatwidget.windows_sandbox.legacy]
+back = "返回"
+enable = "启用实验性沙盒"
+learn_more = "了解更多：https://developers.openai.com/codex/windows"
+title = "Windows 上的代理模式使用实验性沙盒来限制网络与文件系统访问。"
+
+[chatwidget.windows_sandbox.nux]
+header_body = "代理模式使用实验性的 Windows 沙盒，默认保护文件并阻止网络访问。"
+header_title = "设置代理沙盒"
+learn_more = "了解更多：https://developers.openai.com/codex/windows"
+setup_elevated = "设置代理沙盒（需要提升权限）"
+stay_full_access = "继续使用代理（完全访问）"
+stay_read_only = "继续使用只读"
+
+[chatwidget.world_writable]
+and_more = "以及另外 ${count} 项"
+apply_remember = "启用 ${mode_label} 并记住该选择"
+apply_session = "本次会话应用 ${mode_label}"
+continue = "本次会话应用 {mode_label}"
+continue_no_warn = "本次会话应用 {mode_label}"
+failed_scan = "代理模式"
+failed_scan_warning = "Windows 沙盒无法在 ${mode_label} 下保证保护。"
+remove_everyone = " 建议移除以下文件夹对 Everyone 的写权限："
+unprotected = "Windows 沙盒无法保护对 Everyone 可写文件夹的写入。"
+
+[chatwidget.world_writable.policy]
+agent = "代理模式"
+read_only = "代理模式"
+
+[command_popup]
+send_saved_prompt = "发送已保存的提示词"
+
+[diff_render.noun]
+files = "个文件"
+
+[diff_render.verb]
+add = "新增"
+changed = "已修改"
+delete = "删除"
+update = "修改"
+
+[exec_cell.command]
+list = "列出"
+ran = "已运行"
+read = "读取"
+run = "运行"
+running = "执行中"
+search = "搜索"
+search_in = " 于 "
+you_ran = "您运行的"
+
+[exec_cell.exploring]
+done = "已完成"
+running = "正在执行"
+
+[exec_cell.interaction]
+sent = "与 `${command}` 交互，发送 `${preview}`"
+waited = "等待 `${command}`"
+
+[exec_cell.output]
+no_output = "（无输出）"
+omitted = "… +${count} 行"
+
+[exec_cell.transcript]
+unknown_duration = "未知"
+
+[git_diff]
+failed_status = "git ${args} 执行失败，状态码 ${status}"
+
+[history]
+patch_apply_failed = "✘ 应用补丁失败"
+view_image = "查看图像"
+
+[history.approval.abort]
+action = "已取消"
+middle = "运行 "
+prefix = "您"
+suffix = " 的请求"
+
+[history.approval.approved]
+action = "已允许"
+middle = " Codex 运行 "
+prefix = "您"
+suffix = "（仅此一次）"
+
+[history.approval.denied]
+action = "拒绝了"
+middle = " Codex 运行 "
+prefix = "您"
+suffix = ""
+
+[history.approval.execpolicy]
+action = "已允许"
+middle = " Codex 运行 "
+prefix = "您"
+suffix = " 并应用了 execpolicy 修订"
+
+[history.approval.session]
+action = "已允许"
+middle = " Codex 运行 "
+prefix = "您"
+suffix = "（本会话内均无需再次确认）"
+
+[history.final]
+worked_for = "─ 已运行 ${elapsed} ─"
+
+[history.mcp]
+audio_content = "<音频内容>"
+auth_label = "    • 认证："
+called = "已调用"
+calling = "正在调用"
+command_label = "    • 命令："
+cwd_label = "    • 工作目录："
+disabled = "    • 状态："
+docs_link = "\\u{1b}]8;;https://github.com/openai/codex/blob/main/docs/config.md#mcp_servers\\u{7}MCP 文档\\u{1b}]8;;\\u{7}"
+docs_prefix = "    请参阅 "
+docs_suffix = " 了解配置方法。"
+embedded_resource = "嵌入的资源：${uri}"
+empty_servers = "  • 尚未配置 MCP 服务器。"
+empty_tools = "  • 尚无可用的 MCP 工具。"
+env_http_headers_label = "    • Env HTTP 头："
+env_label = "    • 环境变量："
+error_prefix = "错误："
+http_headers_label = "    • HTTP 头："
+image_content = "<图像内容>"
+image_result = "工具结果（图像输出）"
+interrupted = "已中断"
+link = "链接：${uri}"
+resources_label = "    • 资源："
+resources_none = "    • 资源：无"
+status_enabled = "已启用"
+status_label = "    • 状态："
+templates_label = "    • 资源模板："
+templates_none = "    • 资源模板：无"
+tools_label = "    • 工具："
+tools_none = "    • 工具：无"
+tools_title = "MCP 工具"
+url_label = "    • URL："
+
+[history.model_change]
+requested = "请求值：${model}"
+title = "模型已更新："
+used = "实际使用：${model}"
+
+[history.plan]
+no_steps = "（未提供步骤）"
+updated = "计划已更新"
+
+[history.session_header]
+change_model_hint = " 切换模型"
+directory_label = "目录："
+model_label = "模型："
+
+[history.session_help]
+approvals = " - 配置 Codex 的免审批操作"
+checkpoint = " - 阶段性记录 AI 的操作与待办"
+init = " - 创建包含 Codex 指南的 AGENTS.md"
+intro = "  开始之前，可以描述任务或试试这些指令："
+model = " - 选择模型与推理强度"
+review = " - 审查改动并查找问题"
+status = " - 查看当前会话配置"
+
+[history.unified_exec]
+header = "与后台终端交互"
+processes_empty = "  • 暂无后台终端运行。"
+processes_more = "… 还有 ${count} 项正在运行"
+processes_title = "后台终端"
+waited = "（等待）"
+
+[history.update]
+available = "发现新版本！"
+download_suffix = " 下载适用于 Windows / macOS / Linux 的最新版本。"
+release_notes = "查看发布详情："
+visit_prefix = "访问 "
+
+[history.web_search]
+searched = "已搜索"
+
+[language.name]
+en = "英语"
+zh_cn = "简体中文"
+
+[model_migration.hint]
+confirm = " 确认"
+to_move = " 切换，按 "
+use = "使用 "
+
+[model_migration.prompt]
+choose = "请选择 Codex 接下来的处理方式。"
+
+[onboarding.auth]
+api_key_disabled = "已禁用 API 密钥登录。"
+chatgpt_disabled = "已禁用 ChatGPT 登录"
+chatgpt_headless = "检测到无头环境，使用设备码登录"
+chatgpt_included_usage = "Plus、Pro、Team 与 Enterprise 计划已包含用量"
+press_enter_continue = "  按 Enter 继续"
+press_esc_cancel = "  按 Esc 取消"
+
+[onboarding.auth.api_key_configured]
+detail = "  Codex 将使用您的 API 密钥按量计费。"
+title = "✓ API 密钥已配置"
+
+[onboarding.auth.api_key_entry]
+back_hint = "  按 Esc 返回"
+block_title = "API 密钥"
+detected_env = "  检测到 OPENAI_API_KEY 环境变量。"
+empty_error = "API 密钥不能为空"
+instructions = "  请在下方粘贴或输入 API 密钥。密钥会本地存储在 auth.json 中。"
+placeholder = "粘贴或输入您的 API 密钥"
+save_failed = "保存 API 密钥失败：${err}"
+save_hint = "  按 Enter 保存"
+title = "使用您自己的 OpenAI API 密钥以按量计费"
+use_different_key = "  如想使用其他帐号，请粘贴不同的密钥。"
+
+[onboarding.auth.continue_in_browser]
+manual_link = "  若链接未自动打开，请手动访问下列链接完成认证："
+remote_prefix = "  远程或无头环境请使用 "
+remote_suffix = " 登录"
+title = "请在浏览器中完成登录"
+
+[onboarding.auth.device_code]
+phishing_warning = "  设备码常被用于钓鱼攻击，请勿分享此验证码。"
+requesting = "  正在请求一次性验证码..."
+step1 = "  1. 在浏览器中打开此链接并登录"
+step2 = "  2. 登录后输入此一次性验证码（15 分钟内有效）"
+
+[onboarding.auth.device_code.banner]
+finish = "请在浏览器中完成登录"
+preparing = "正在准备设备码登录"
+
+[onboarding.auth.link]
+codex_docs = "\\u{1b}]8;;https://github.com/openai/codex\\u{7}Codex 文档\\u{1b}]8;;\\u{7}"
+training_prefs = "\\u{1b}]8;;https://chatgpt.com/#settings\\u{7}训练数据偏好设置\\u{1b}]8;;\\u{7}"
+
+[onboarding.auth.option]
+api_key = "使用自有 API 密钥"
+api_key_description = "按实际使用量付费"
+chatgpt = "使用 ChatGPT 登录"
+
+[onboarding.auth.pick]
+api_key_disabled_workspace = "  此工作区已禁用 API 密钥登录。请使用 ChatGPT 登录以继续。"
+chatgpt_line1 = "使用 ChatGPT 登录，在您的付费计划中使用 Codex"
+chatgpt_line2 = "或连接 API 密钥以按量计费"
+
+[onboarding.auth.success]
+before_you_start = "  开始之前："
+decide_autonomy = "  决定希望授予 Codex 多少自主权"
+mistakes_detail = "  请审查它编写的代码和执行的命令"
+mistakes_title = "  Codex 也可能犯错"
+more_details_prefix = "  详情请参阅 "
+powered_by_account = "  由您的 ChatGPT 帐号提供支持"
+rate_limits_prefix = "  将使用您计划中的速率限制与 "
+title = "✓ 已使用您的 ChatGPT 帐号登录"
+
+[onboarding.trust_directory]
+continue_prefix = "按下 "
+continue_suffix = " 继续"
+intro_prefix = "您正在以下目录中运行 Codex："
+
+[onboarding.trust_directory.error]
+set_trust_failed = "为 ${path} 设置信任状态失败：${err}"
+set_untrust_failed = "为 ${path} 设置为不受信任失败：${err}"
+
+[onboarding.trust_directory.guidance]
+git = "由于该文件夹受版本控制，您可以允许 Codex 在此目录下执行操作而无需逐次审批。"
+no_git = "由于该文件夹没有版本控制，推荐您对所有编辑与命令都进行审批。"
+
+[onboarding.trust_directory.option]
+dont_trust_git = "不，所有修改与命令都需我审批"
+dont_trust_no_git = "所有修改与命令都需审批"
+trust_git = "是的，允许 Codex 在此目录中执行操作且无需审批"
+trust_no_git = "允许 Codex 在此目录中执行操作且无需审批"
+
+[onboarding.welcome]
+prefix = "欢迎使用 "
+suffix = "，OpenAI 的命令行编程助手"
+
+[oss_selection.hint]
+select_quit = "  按 Enter 选择 • Ctrl+C 退出"
+
+[pager_overlay.hint]
+edit_message = "编辑消息"
+edit_prev = "编辑上一条"
+jump = "跳转"
+page = "翻页"
+quit = "退出"
+scroll = "滚动"
+
+[pager_overlay.title]
+transcript = "会话记录"
+
+[reasoning_effort]
+high = "高"
+low = "低"
+medium = "中"
+minimal = "极低"
+none = "关闭"
+xhigh = "极高"
+
+[reasoning_effort.menu]
+high = "高"
+low = "低"
+medium = "中"
+minimal = "极低"
+none = "关闭"
+xhigh = "极高"
+
+[resume_picker]
+loading_more = "正在加载更早的会话…"
+searching = "正在搜索…"
+
+[resume_picker.action]
+fork = " 分叉会话"
+resume = " 恢复会话"
+
+[resume_picker.columns]
+branch = "分支"
+cwd = "工作目录"
+session = "会话内容"
+updated = "更新时间"
+
+[resume_picker.empty]
+no_sessions = "尚无会话记录"
+
+[resume_picker.hint]
+browse = " 浏览列表"
+quit = " 退出"
+start_new = " 开启新会话"
+
+[resume_picker.preview]
+empty = "（暂无消息）"
+
+[resume_picker.search]
+label = "搜索："
+no_results = "未找到匹配的搜索结果"
+placeholder = "输入以搜索"
+scan_cap = "搜索仅扫描了前 ${count} 个会话，可能还有更多结果"
+
+[resume_picker.time]
+days_ago = "${count} 天前"
+hours_ago = "${count} 小时前"
+minutes_ago = "${count} 分钟前"
+seconds_ago = "${count} 秒前"
+
+[resume_picker.title]
+fork = "分叉之前的会话"
+resume = "恢复之前的会话"
+
+[review]
+interrupted = "审查已中断。请重新运行 /review 并等待完成。"
+
+[review.error]
+empty_prompt = "审查指令不能为空"
+
+[review.hint]
+base_branch = "与 '${branch}' 对比的改动"
+commit = "提交 ${sha}"
+commit_with_title = "提交 ${sha}：${title}"
+uncommitted = "当前改动"
+
+[review.prompt]
+base_branch = "请针对基础分支 '${baseBranch}' 审查代码改动。本次比较的合并基线为 ${mergeBaseSha}。请运行 `git diff ${mergeBaseSha}` 查看相对于 ${baseBranch} 的改动，并给出按优先级排序、可执行的建议。"
+base_branch_backup = "请针对基础分支 '${branch}' 审查代码改动。请先找到当前分支与 ${branch} 上游的合并基线，例如运行 `git merge-base HEAD \"$(git rev-parse --abbrev-ref \"${branch}@{upstream}\")\"`，然后针对该 SHA 运行 `git diff` 查看将合并到 ${branch} 的改动，并给出按优先级排序、可执行的建议。"
+commit = "请审查提交 ${sha} 引入的代码改动，并给出按优先级排序、可执行的建议。"
+commit_with_title = "请审查提交 ${sha}（\"${title}\"）引入的代码改动，并给出按优先级排序、可执行的建议。"
+uncommitted = "请审查当前代码改动（已暂存、未暂存及未跟踪文件），并给出按优先级排序的问题与建议。"
+
+[sdd_git.error]
+branch_name_invalid = "分支名无效：`${name}`。"
+branch_name_invalid_segment = "分支名包含非法片段：`${name}`。"
+branch_name_whitespace = "分支名包含空白字符：`${name}`。"
+command_cancelled = "SDD Git 命令已取消。"
+command_failed = "SDD Git 命令执行失败。"
+command_failed_detail = "SDD Git 命令执行失败：${error}"
+dirty_not_on_branch = "工作区有未提交修改，且当前不在 SDD 分支，无法继续合并。"
+dirty_workspace = "工作区有未提交修改，且当前不在 SDD 分支，无法继续合并。"
+git_command_failed = "工作区有未提交修改，且当前不在 SDD 分支，无法继续合并。"
+git_exec_failed = "执行 git 失败：${error}"
+invalid_base_branch = "仅允许使用基线分支 `${expected}`，收到 `${base}`。"
+invalid_prefix = "仅允许操作 `${prefix}` 前缀分支，收到 `${name}`。"
+not_git_repo = "工作区有未提交修改，且当前不在 SDD 分支，无法继续合并。"
+unknown_branch = "工作区有未提交修改，且当前不在 SDD 分支，无法继续合并。"
+
+[sdd_git.exec]
+aborted = "命令已被用户中止"
+
+[sdd_git.warning]
+no_changes_skip_commit = "工作区有未提交修改，且当前不在 SDD 分支，无法继续合并。"
+
+[terminal.error]
+show_cursor = "无法显示光标：${error}"
+stdin_not_terminal = "stdin 不是终端"
+stdout_not_terminal = "stdout 不是终端"
+winapi_disable_alt_scroll = "尝试通过 WinAPI 执行 DisableAlternateScroll；请改用 ANSI 序列"
+winapi_enable_alt_scroll = "尝试通过 WinAPI 执行 EnableAlternateScroll；请改用 ANSI 序列"
+
+[transcript_copy]
+copy = "复制"
+
+[update_prompt]
+install_note = "页面包含 Windows / macOS / Linux 的安装说明。"
+release_prefix = "请打开发布页面下载最新版："
+title = "发现新版本！"
+
+[update_prompt.hint]
+continue = " 继续"
+press = "按 "
+
+[update_prompt.option]
+open_now = "立即打开发布页（默认浏览器）"
+skip = "暂时跳过"
+skip_until_next = "本版本内不再提醒"

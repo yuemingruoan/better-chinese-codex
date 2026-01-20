@@ -29,6 +29,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::diff_render::display_path_for;
 use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::key_hint;
 use crate::text_formatting::truncate_text;
 use crate::tui::FrameRequester;
@@ -58,17 +59,15 @@ pub enum SessionPickerAction {
 impl SessionPickerAction {
     fn title(self, language: Language) -> &'static str {
         match self {
-            SessionPickerAction::Resume => {
-                tr(language, "恢复之前的会话", "Resume a previous session")
-            }
-            SessionPickerAction::Fork => tr(language, "分叉之前的会话", "Fork a previous session"),
+            SessionPickerAction::Resume => tr(language, "resume_picker.title.resume"),
+            SessionPickerAction::Fork => tr(language, "resume_picker.title.fork"),
         }
     }
 
     fn action_label(self, language: Language) -> &'static str {
         match self {
-            SessionPickerAction::Resume => tr(language, " 恢复会话", " Resume session"),
-            SessionPickerAction::Fork => tr(language, " 分叉会话", " Fork session"),
+            SessionPickerAction::Resume => tr(language, "resume_picker.action.resume"),
+            SessionPickerAction::Fork => tr(language, "resume_picker.action.fork"),
         }
     }
 
@@ -730,13 +729,7 @@ fn head_to_row(item: &ThreadItem, language: Language) -> Row {
     let preview = preview_from_head(&item.head)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            match language {
-                Language::ZhCn => "（暂无消息）",
-                Language::En => "(no message)",
-            }
-            .to_string()
-        });
+        .unwrap_or_else(|| tr(language, "resume_picker.preview.empty").to_string());
 
     Row {
         path: item.path.clone(),
@@ -814,13 +807,13 @@ fn draw_picker(tui: &mut Tui, state: &PickerState) -> std::io::Result<()> {
 
         // Search line
         let q = if state.query.is_empty() {
-            tr(state.language, "输入以搜索", "Type to search")
+            tr(state.language, "resume_picker.search.placeholder")
                 .dim()
                 .to_string()
         } else {
             format!(
                 "{}{}",
-                tr(state.language, "搜索：", "Search: "),
+                tr(state.language, "resume_picker.search.label"),
                 state.query
             )
         };
@@ -840,15 +833,15 @@ fn draw_picker(tui: &mut Tui, state: &PickerState) -> std::io::Result<()> {
             action_label.dim(),
             "    ".dim(),
             key_hint::plain(KeyCode::Esc).into(),
-            tr(state.language, " 开启新会话", " Start new session").dim(),
+            tr(state.language, "resume_picker.hint.start_new").dim(),
             "    ".dim(),
             key_hint::ctrl(KeyCode::Char('c')).into(),
-            tr(state.language, " 退出", " Quit").dim(),
+            tr(state.language, "resume_picker.hint.quit").dim(),
             "    ".dim(),
             key_hint::plain(KeyCode::Up).into(),
             "/".dim(),
             key_hint::plain(KeyCode::Down).into(),
-            tr(state.language, " 浏览列表", " Browse list").dim(),
+            tr(state.language, "resume_picker.hint.browse").dim(),
         ]
         .into();
         frame.render_widget_ref(hint_line, hint);
@@ -967,13 +960,9 @@ fn render_list(
     if state.pagination.loading.is_pending() && y < area.y.saturating_add(area.height) {
         let loading_line: Line = vec![
             "  ".into(),
-            tr(
-                state.language,
-                "正在加载更早的会话…",
-                "Loading earlier sessions…",
-            )
-            .italic()
-            .dim(),
+            tr(state.language, "resume_picker.loading_more")
+                .italic()
+                .dim(),
         ]
         .into();
         let rect = Rect::new(area.x, y, area.width, 1);
@@ -986,39 +975,27 @@ fn render_empty_state_line(state: &PickerState) -> Line<'static> {
         if state.search_state.is_active()
             || (state.pagination.loading.is_pending() && state.pagination.next_cursor.is_some())
         {
-            return vec![tr(state.language, "正在搜索…", "Searching…").italic().dim()].into();
+            return vec![tr(state.language, "resume_picker.searching").italic().dim()].into();
         }
         if state.pagination.reached_scan_cap {
-            let msg = format!(
-                "{}{}",
-                tr(
-                    state.language,
-                    "搜索仅扫描了前 ",
-                    "Search scanned only the first ",
-                ),
-                state.pagination.num_scanned_files
+            let msg = tr_args(
+                state.language,
+                "resume_picker.search.scan_cap",
+                &[("count", &state.pagination.num_scanned_files.to_string())],
             );
-            let msg = match state.language {
-                Language::ZhCn => format!("{msg} 个会话，可能还有更多结果"),
-                Language::En => format!("{msg} sessions; more results may exist"),
-            };
             return vec![Span::from(msg).italic().dim()].into();
         }
         return vec![
-            tr(
-                state.language,
-                "未找到匹配的搜索结果",
-                "No matching search results",
-            )
-            .italic()
-            .dim(),
+            tr(state.language, "resume_picker.search.no_results")
+                .italic()
+                .dim(),
         ]
         .into();
     }
 
     if state.all_rows.is_empty() && state.pagination.num_scanned_files == 0 {
         return vec![
-            tr(state.language, "尚无会话记录", "No sessions yet")
+            tr(state.language, "resume_picker.empty.no_sessions")
                 .italic()
                 .dim(),
         ]
@@ -1027,19 +1004,15 @@ fn render_empty_state_line(state: &PickerState) -> Line<'static> {
 
     if state.pagination.loading.is_pending() {
         return vec![
-            tr(
-                state.language,
-                "正在加载更早的会话…",
-                "Loading earlier sessions…",
-            )
-            .italic()
-            .dim(),
+            tr(state.language, "resume_picker.loading_more")
+                .italic()
+                .dim(),
         ]
         .into();
     }
 
     vec![
-        tr(state.language, "尚无会话记录", "No sessions yet")
+        tr(state.language, "resume_picker.empty.no_sessions")
             .italic()
             .dim(),
     ]
@@ -1052,28 +1025,32 @@ fn human_time_ago(ts: DateTime<Utc>, language: Language) -> String {
     let secs = delta.num_seconds();
     if secs < 60 {
         let n = secs.max(0);
-        match language {
-            Language::ZhCn => format!("{n} 秒前"),
-            Language::En => format!("{n}s ago"),
-        }
+        tr_args(
+            language,
+            "resume_picker.time.seconds_ago",
+            &[("count", &n.to_string())],
+        )
     } else if secs < 60 * 60 {
         let m = secs / 60;
-        match language {
-            Language::ZhCn => format!("{m} 分钟前"),
-            Language::En => format!("{m}m ago"),
-        }
+        tr_args(
+            language,
+            "resume_picker.time.minutes_ago",
+            &[("count", &m.to_string())],
+        )
     } else if secs < 60 * 60 * 24 {
         let h = secs / 3600;
-        match language {
-            Language::ZhCn => format!("{h} 小时前"),
-            Language::En => format!("{h}h ago"),
-        }
+        tr_args(
+            language,
+            "resume_picker.time.hours_ago",
+            &[("count", &h.to_string())],
+        )
     } else {
         let d = secs / (60 * 60 * 24);
-        match language {
-            Language::ZhCn => format!("{d} 天前"),
-            Language::En => format!("{d}d ago"),
-        }
+        tr_args(
+            language,
+            "resume_picker.time.days_ago",
+            &[("count", &d.to_string())],
+        )
     }
 }
 
@@ -1099,10 +1076,7 @@ fn render_column_headers(
     if metrics.max_updated_width > 0 {
         let label = format!(
             "{text:<width$}",
-            text = match language {
-                Language::ZhCn => "更新时间",
-                Language::En => "Updated",
-            },
+            text = tr(language, "resume_picker.columns.updated"),
             width = metrics.max_updated_width
         );
         spans.push(Span::from(label).bold());
@@ -1111,10 +1085,7 @@ fn render_column_headers(
     if metrics.max_branch_width > 0 {
         let label = format!(
             "{text:<width$}",
-            text = match language {
-                Language::ZhCn => "分支",
-                Language::En => "Branch",
-            },
+            text = tr(language, "resume_picker.columns.branch"),
             width = metrics.max_branch_width
         );
         spans.push(Span::from(label).bold());
@@ -1123,16 +1094,13 @@ fn render_column_headers(
     if metrics.max_cwd_width > 0 {
         let label = format!(
             "{text:<width$}",
-            text = match language {
-                Language::ZhCn => "工作目录",
-                Language::En => "Working dir",
-            },
+            text = tr(language, "resume_picker.columns.cwd"),
             width = metrics.max_cwd_width
         );
         spans.push(Span::from(label).bold());
         spans.push("  ".into());
     }
-    spans.push(tr(language, "会话内容", "Session content").bold());
+    spans.push(tr(language, "resume_picker.columns.session").bold());
     frame.render_widget_ref(Line::from(spans), area);
 }
 
@@ -1164,19 +1132,11 @@ fn calculate_column_metrics(rows: &[Row], include_cwd: bool, language: Language)
     }
 
     let mut labels: Vec<(String, String, String)> = Vec::with_capacity(rows.len());
-    let mut max_updated_width = UnicodeWidthStr::width(match language {
-        Language::ZhCn => "更新时间",
-        Language::En => "Updated",
-    });
-    let mut max_branch_width = UnicodeWidthStr::width(match language {
-        Language::ZhCn => "分支",
-        Language::En => "Branch",
-    });
+    let mut max_updated_width =
+        UnicodeWidthStr::width(tr(language, "resume_picker.columns.updated"));
+    let mut max_branch_width = UnicodeWidthStr::width(tr(language, "resume_picker.columns.branch"));
     let mut max_cwd_width = if include_cwd {
-        UnicodeWidthStr::width(match language {
-            Language::ZhCn => "工作目录",
-            Language::En => "Working dir",
-        })
+        UnicodeWidthStr::width(tr(language, "resume_picker.columns.cwd"))
     } else {
         0
     };

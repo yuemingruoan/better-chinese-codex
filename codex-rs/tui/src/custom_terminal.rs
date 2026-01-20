@@ -24,6 +24,7 @@
 use std::io;
 use std::io::Write;
 
+use codex_protocol::config_types::Language;
 use crossterm::cursor::MoveTo;
 use crossterm::queue;
 use crossterm::style::Colors;
@@ -43,6 +44,8 @@ use ratatui::layout::Size;
 use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::widgets::WidgetRef;
+
+use crate::i18n::tr_args;
 
 #[derive(Debug, Hash)]
 pub struct Frame<'a> {
@@ -134,7 +137,14 @@ where
         if self.hidden_cursor
             && let Err(err) = self.show_cursor()
         {
-            eprintln!("无法显示光标：{err}");
+            eprintln!(
+                "{}",
+                tr_args(
+                    Language::En,
+                    "terminal.error.show_cursor",
+                    &[("error", &err.to_string())],
+                )
+            );
         }
     }
 }

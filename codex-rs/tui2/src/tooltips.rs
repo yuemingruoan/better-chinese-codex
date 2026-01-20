@@ -1,3 +1,4 @@
+use crate::i18n::tr_list;
 use codex_core::features::FEATURES;
 use codex_protocol::config_types::Language;
 use lazy_static::lazy_static;
@@ -5,30 +6,20 @@ use rand::Rng;
 
 const ANNOUNCEMENT_TIP_URL: &str =
     "https://raw.githubusercontent.com/openai/codex/main/announcement_tip.toml";
-const RAW_TOOLTIPS_EN: &str = include_str!("../tooltips.txt");
-const RAW_TOOLTIPS_ZH: &str = include_str!("../tooltips_zh.txt");
 
 lazy_static! {
-    static ref TOOLTIPS_EN: Vec<&'static str> = RAW_TOOLTIPS_EN
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .collect();
-    static ref TOOLTIPS_ZH: Vec<&'static str> = RAW_TOOLTIPS_ZH
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .collect();
-    static ref ALL_TOOLTIPS_EN: Vec<&'static str> = {
+    static ref TOOLTIPS_EN: Vec<String> = tr_list(Language::En, "tooltips.items").to_vec();
+    static ref TOOLTIPS_ZH: Vec<String> = tr_list(Language::ZhCn, "tooltips.items").to_vec();
+    static ref ALL_TOOLTIPS_EN: Vec<String> = {
         let mut tips = Vec::new();
-        tips.extend(TOOLTIPS_EN.iter().copied());
-        tips.extend(beta_tooltips());
+        tips.extend(TOOLTIPS_EN.iter().cloned());
+        tips.extend(beta_tooltips().into_iter().map(str::to_string));
         tips
     };
-    static ref ALL_TOOLTIPS_ZH: Vec<&'static str> = {
+    static ref ALL_TOOLTIPS_ZH: Vec<String> = {
         let mut tips = Vec::new();
-        tips.extend(TOOLTIPS_ZH.iter().copied());
-        tips.extend(beta_tooltips());
+        tips.extend(TOOLTIPS_ZH.iter().cloned());
+        tips.extend(beta_tooltips().into_iter().map(str::to_string));
         tips
     };
 }
@@ -57,7 +48,9 @@ fn pick_tooltip<R: Rng + ?Sized>(rng: &mut R, language: Language) -> Option<&'st
     if tooltips.is_empty() {
         None
     } else {
-        tooltips.get(rng.random_range(0..tooltips.len())).copied()
+        tooltips
+            .get(rng.random_range(0..tooltips.len()))
+            .map(String::as_str)
     }
 }
 

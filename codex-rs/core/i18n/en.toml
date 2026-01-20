@@ -1,0 +1,1066 @@
+# English translations
+
+[slash_command.description]
+approvals = "choose what Codex can do without approval"
+checkpoint = "record a checkpoint of the AI's actions"
+clean = "clear clipboard image cache"
+compact = "summarize conversation to prevent hitting the context limit"
+diff = "show git diff (including untracked files)"
+elevate_sandbox = "set up elevated agent sandbox"
+exit = "exit Codex"
+experimental = "toggle beta features"
+feedback = "send logs to maintainers"
+fork = "fork a saved chat"
+init = "create an AGENTS.md file with instructions for Codex"
+lang = "change UI language"
+logout = "log out of Codex"
+mcp = "list configured MCP tools"
+mention = "mention a file"
+model = "choose what model and reasoning effort to use"
+new = "start a new chat during a conversation"
+ps = "list background terminals"
+resume = "resume a saved chat"
+review = "review my current changes and find issues"
+rollout = "print the rollout file path"
+sdd_develop = "start the SDD development workflow"
+skills = "use skills to improve how Codex performs specific tasks"
+status = "show current session configuration and token usage"
+test_approval = "test approval request"
+
+[tooltips]
+items = [
+    "Use /compact when the conversation gets long to summarize history and free up context.",
+    "Start a fresh idea with /new; the previous session stays in history.",
+    "Use /feedback to send logs to the maintainers when something looks off.",
+    "Switch models or reasoning effort quickly with /model.",
+    "Use /approvals to control when Codex asks for confirmation.",
+    "Run /review to get a code review of your current changes.",
+    "Use /skills to list available skills or ask Codex to use one.",
+    "Use /status to see the current model, approvals, and token usage.",
+    "Use /fork to branch a saved chat into a new thread.",
+    "Use /init to create an AGENTS.md with project-specific guidance.",
+    "Use /mcp to list configured MCP tools.",
+    "You can run any shell command from Codex using `!` (e.g. `!ls`)",
+    "Type / to open the command popup; Tab autocompletes slash commands and saved prompts.",
+    "You can define your own `/` commands with custom prompts. More info: https://developers.openai.com/codex/guides/slash-commands#create-your-own-slash-commands-with-custom-prompts",
+    "When the composer is empty, press Esc to step back and edit your last message; Enter confirms.",
+    "Press Tab to queue a message instead of sending it immediately; Enter always sends immediately.",
+    "Paste an image with Ctrl+V to attach it to your next message.",
+    "You can resume a previous conversation by running `codex resume`",
+]
+
+[prompt]
+init = '''Generate a file named AGENTS.md that serves as a contributor guide for this repository.
+Your goal is to produce a clear, concise, and well-structured document with descriptive headings and actionable explanations for each section.
+Follow the outline below, but adapt as needed — add sections if relevant, and omit those that do not apply to this project.
+
+Document Requirements
+
+- Title the document "Repository Guidelines".
+- Use Markdown headings (#, ##, etc.) for structure.
+- Keep the document concise. 200-400 words is optimal.
+- Keep explanations short, direct, and specific to this repository.
+- Provide examples where helpful (commands, directory paths, naming patterns).
+- Maintain a professional, instructional tone.
+
+Recommended Sections
+
+Project Structure & Module Organization
+
+- Outline the project structure, including where the source code, tests, and assets are located.
+
+Build, Test, and Development Commands
+
+- List key commands for building, testing, and running locally (e.g., npm test, make build).
+- Briefly explain what each command does.
+
+Coding Style & Naming Conventions
+
+- Specify indentation rules, language-specific style preferences, and naming patterns.
+- Include any formatting or linting tools used.
+
+Testing Guidelines
+
+- Identify testing frameworks and coverage requirements.
+- State test naming conventions and how to run tests.
+
+Commit & Pull Request Guidelines
+
+- Summarize commit message conventions found in the project’s Git history.
+- Outline pull request requirements (descriptions, linked issues, screenshots, etc.).
+
+(Optional) Add other sections if relevant, such as Security & Configuration Tips, Architecture Overview, or Agent-Specific Instructions.
+'''
+
+sdd_plan = '''You are a senior development planner. Based on the "Requirement description", first determine whether the information is sufficient:
+- Before asking the user, **you must read relevant project code/docs** to clarify context; only ask when the code cannot confirm it or there are multiple plausible interpretations.
+- If anything is unclear and **cannot be confirmed in code/docs or has multiple plausible interpretations**, list the questions you need the user to answer and ask for clarification. Do not generate task.md in this case.
+- Once requirements are clear, generate task.md (write it to `.codex/task.md` under the project root; create `.codex` if needed). Do not inline the entire file in the reply; only provide a summary and ask the user for objections.
+
+## Requirement description
+(Paste the user's original feature/problem statement here)
+
+## task.md should include sections
+1) **Title & Goal**: one sentence summarizing the problem and the definition of done.
+2) **Deliverables**: list the final outputs (code, docs, scripts, etc.).
+3) **Scope / Non-scope**: 3–6 items each, clearly stating what is in and out for this iteration.
+4) **Work item list**: table columns `ID`, `Content`, `Completion`, `Owner`, `Implementation Notes`, `Verification`; completion uses `[ ]` / `[x]` checkboxes and starts as `[ ]`, IDs are short tags T1/T2…
+   - Implementation Notes: actionable steps, suggested internal tools/commands (e.g., apply_patch, just fmt, cargo test -p <crate>), and key code/config changes.
+   - Verification: tests/checks (TDD preferred: add tests before implementation if missing), include commands and expected results or log signals.
+5) **Milestones & Order**: split into milestones (at least 2, can be more than 4), list dependent task IDs in order. Break large work into smaller phases suitable for a single commit/PR with verifiable output.
+6) **Risks & Mitigations**: 3–5 risks with mitigations.
+7) **Acceptance & Testing**: required checks (unit/integration/manual/observability) and data/log validation points.
+8) **Rollback & Cleanup**: rollback steps and resources/branches to clean up.
+9) **Tools & Commands**: main tools/commands to use, when to use them, outputs, and cautions.
+10) **Test Plan**: for each task/module, list test types and commands (e.g., `cargo test -p <crate> <filter>`, `cargo insta test`, `npm test -- <pattern>`), expected pass criteria and log signals.
+11) **Reporting Checklist**: checkpoints to report to the user (at least: plan confirmation points, branch name, completed/remaining tasks, test/verification results, blockers or pending items).
+
+## Tool usage guidance (to be included in "Tools & Commands")
+- **File edits**: prefer `apply_patch` (or equivalent patch) to make changes; avoid long inline code blocks.
+- **Run commands**: use the shell tool for git ops, `just fmt`, `cargo test -p <crate>`, `cargo insta`, etc., and briefly state purpose and success signal.
+- **Branch management**: use git to create/switch/delete branches; avoid committing directly on the main branch.
+- **Progress sync**: treat `.codex/task.md` as the source of truth; update the completion checkbox after finishing each step.
+- **Reporting**: during execution, follow the "Reporting Checklist": plan confirmation, current branch, progress vs remaining, test results, blockers/pending items.
+
+## Other rules
+- If requirements are unclear, only output the list of questions and wait for user response.
+- If requirements are clear, write `.codex/task.md` via `apply_patch` or equivalent (overwrite existing); do not paste the full file in the reply, only a summary + file path.
+- After writing task.md, append a checkpoint entry per `/checkpoint` rules in `.codex/checkpoint.md` (create if missing).
+- Use concise English, prefer lists/tables, avoid long paragraphs.
+- Do not fabricate unverifiable information; if an external decision is needed, use an explicit placeholder (e.g., "TBD with product on XXX").
+- Before asking questions, you must read project files/implementation to clarify context.
+- If requirements are unclear, list key questions and confirm first; after confirmation, generate task.md.
+- You may suggest commands, but do not execute them in the response; execution is for the development phase.
+'''
+
+sdd_execute = '''You are a senior execution agent. The previous round already used the SDD planner to produce and confirm `.codex/task.md`; execute the plan in this context and keep visible progress and verification logs.
+
+Core principles
+- **Branch isolation**: Work on a dedicated branch; do not modify or merge into main.
+- **Commit per item**: After each task.md item (or sub-item) is completed and verified, commit immediately; the commit message should describe the completed functionality.
+- **Small, verifiable increments**: Keep each change small and verifiable; validate immediately after completing it.
+- **TDD first**: If tests are missing, add tests before implementation; ensure relevant tests pass after implementation.
+- **Transparent reporting**: Report progress, test results, and blockers at key checkpoints.
+- **Safe operations**: Prefer `apply_patch` for file edits; explain the purpose and expected outcome before running commands.
+
+Execution steps (in order)
+1. **Environment check**: Ensure current directory is the project root; if `.codex/task.md` is missing, stop and notify.
+2. **Branch management**: Branch was already created and checked out by the system tool; no manual git commands needed.
+3. **Read the plan**: Read `.codex/task.md`, list the task IDs, implementation notes, and verification methods you will execute.
+4. **Track progress**: Treat `.codex/task.md` as the source of truth and update the completion checkbox there; optionally sync into the Plan/TODO tool for visibility and split into smaller sub-items if needed (implementation vs verification).
+5. **Task execution loop** (for each task/subtask):
+   - **Read/locate**: Inspect relevant code/docs to confirm current state.
+   - **Test first**: If coverage is missing, add/adjust tests first; record planned commands.
+   - **Implement**: Use `apply_patch` for minimal changes.
+   - **Verify**: Run relevant commands (e.g., `just fmt`, `cargo test -p <crate>`, `cargo insta test`), capture results/log highlights.
+   - **Commit changes**: After each task/subtask is completed and verified, commit immediately; use a message like “Complete <feature/sub-item>” to describe the finished work.
+   - **Mark progress**: Check off completion status in `.codex/task.md` first (`[ ]`→`[x]`), optionally sync to Plan/TODO, and report status + test results in the reply.
+6. **End-of-phase checks**: Run required formatting/tests per plan:
+   - Formatting: run project formatting commands (`just fmt`, `npm run fmt`, `pnpm lint --fix`, etc.).
+   - Tests: run planned commands (`cargo test -p <crate>`, `cargo insta test`, `npm test -- <pattern>`, `pnpm test --filter <name>`, etc.) and record results.
+7. **Phase summary**: Summarize branch name, completed/remaining tasks, test results, and blockers; report next priorities.
+
+Reporting cadence (in conversation)
+- **Before starting**: Report branch name, task IDs/order, and major commands you expect to run; remind the user that work happens on a separate branch and to run `/sdd-develop` again to choose merge updates when done.
+- **Every 1–2 tasks**: Summarize changes, verification results (pass/fail + key logs), Plan/TODO updates, and next steps with planned commands.
+- **Phase end**: Summarize branch name, completed/remaining tasks, overall test status, blockers/decisions needed, and next actions.
+
+Additional notes
+- If requirements are unclear or conflict with `.codex/task.md`, pause and ask for clarification before proceeding.
+- If the task list needs changes (add/remove/reorder), propose and get user approval, then update Plan/TODO.
+- Do not merge into main or delete branches; wait for user direction.
+'''
+
+sdd_merge = '''You are a senior merge-update assistant. The user chose to merge the SDD branch updates via Pull Request. Do not rely on the built-in SDD Git auto-merge flow; follow the repo workflow and execute the merge and cleanup.
+
+Pre-checks:
+- Confirm the current branch is the SDD dev branch (e.g., `sdd/...`) and the main branch is clean.  
+- Ensure the latest tests passed (see `.codex/task.md` and execution logs); if results are missing, run them and report first.  
+
+Execution steps:
+1. **Prepare PR info**: Draft the PR title/body including change summary, test results, risks/rollback, and related tasks (from `.codex/task.md`).  
+2. **Merge via PR**: Create or update the PR per platform/workflow and merge using **Merge commit**. If main needs syncing, follow team workflow and record conflict resolutions.  
+3. **Cleanup**: Delete `.codex/task.md` and task-related temporary records/logs; delete local/remote branches after merge (per workflow); ensure no debug code, temp files, or configs remain.  
+4. **Write checkpoint**: Append a checkpoint entry to `.codex/checkpoint.md` per `/checkpoint` rules, including completed work and next steps.  
+5. **Report to the user**: Branch/target, PR outcome (link/ID or merged note), final test results, cleanup and checkpoint summary, and remaining risks/issues.  
+
+Notes:
+- If conflicts, test failures, or blockers occur, explain and provide options.  
+'''
+
+checkpoint = '''Append a checkpoint entry to checkpoint.md based on the latest progress in the current session and workspace.
+
+Requirements:
+
+1. Locate the checkpoint file: prefer `.codex/checkpoint.md` in the repo root; if it doesn't exist but another checkpoint.md exists elsewhere, reuse that path; if none exist, create `.codex` in the root and create the file.
+2. Preserve existing content and append the new log at the end, leaving a blank line between entries.
+3. The new log must include:
+   - A timestamp line like `## YYYY-MM-DD HH:MM:SS CST` using China Standard Time (you can run `date "+%Y-%m-%d %H:%M:%S CST"`; if you can't access it, note that in the timestamp).
+   - An unordered list summarizing key actions completed in this phase. Each item starts with a verb and is specific and objective.
+   - An unordered list summarizing unresolved issues, risks, or next steps; if there are none, write `- No pending items`.
+4. If the file contains or the user asks to keep the `## NO_AI_ASSIST` marker, keep it at the top; do not add or remove it unless explicitly instructed.
+5. Prefer English when writing the content; add brief clarifying phrases if needed to help the next agent quickly understand context.
+6. After finishing, report changes to the user in a Markdown summary and show the newly added log snippet for confirmation.
+
+Start now.
+'''
+
+[footer]
+token_usage = "↑ ${input_prior} + ${input_last} tokens (${cached_prior} + ${cached_last} tokens cache) ↓ ${output_prior} + ${output_last} tokens (${reasoning_prior} + ${reasoning_last} reasoning tokens)"
+
+[footer.hint]
+edit_previous = " to edit previous message"
+edit_previous_again = " again to edit previous message"
+queue_message = " to queue message"
+quit_again = " again to quit"
+shortcuts = " for shortcuts"
+
+[footer.context]
+used = "context used"
+used_suffix = "used"
+
+[footer.shortcuts]
+commands = " for commands"
+external_editor = " to edit in external editor"
+file_paths = " for file paths"
+insert_newline = " for newline"
+paste_image = " to paste images"
+queue_message = " to queue message"
+quit = " to exit"
+shell_commands = " for shell commands"
+show_transcript = " to view transcript"
+
+[footer.copy]
+copied = "Copied"
+failed = "Copy failed"
+
+[footer.transcript]
+copy_selection = " copy selection"
+jump = " jump"
+scroll = " scroll"
+
+[popup.hint]
+confirm_or = " to confirm or "
+go_back = " to go back"
+press = "Press "
+
+[additional_dirs]
+read_only_warning = "Since the sandbox is read-only, --add-dir (${paths}) will be ignored. Switch to workspace-write or danger-full-access to allow additional writable roots."
+
+[clipboard.detail]
+android_paste_not_supported = "Clipboard image paste is not supported on Android"
+invalid_rgba = "Invalid RGBA buffer"
+
+[clipboard.error]
+clipboard_unavailable = "Clipboard unavailable: ${detail}"
+encode_failed = "Failed to encode image: ${detail}"
+io_error = "I/O error: ${detail}"
+no_image = "No image in clipboard: ${detail}"
+
+[status]
+reasoning = "reasoning ${effort}"
+summaries = "summaries ${summary}"
+summaries_off = "summaries off"
+
+[status.agents]
+none = "<none>"
+unknown_file = "<unknown>"
+
+[status.account]
+api_key_configured = "API key configured (run codex login to use ChatGPT)"
+unknown = "Unknown"
+
+[status.approval]
+unknown = "<unknown>"
+
+[status.token_usage]
+input_label = " input"
+output_label = " output"
+paren_close = ")"
+paren_open = " ("
+total_label = " total "
+
+[status.context_window]
+paren_close = ")"
+paren_open = " ("
+remaining = "${percent}% left"
+used_ratio = " used / "
+
+[status.rate_limits]
+data_not_available = "data not available yet"
+label = "Limits"
+reset_at = "(${resets_at} reset)"
+stale_warning = "Limit data may be stale; start a new chat to refresh."
+warning_label = "Warning"
+credits_balance = "${amount} credits"
+credits_label = "Credits"
+credits_unlimited = "Unlimited"
+default_primary_window = "5 hours"
+default_secondary_window = "weekly"
+remaining_percent = "${percent}% left"
+window_label = "${label} limit"
+
+[status.fields]
+account = "Account"
+approval = "Approval"
+context_window = "Context window"
+directory = "Directory"
+model = "Model"
+model_provider = "Model provider"
+sandbox = "Sandbox"
+session = "Session"
+token_usage = "Token usage"
+
+[status.note]
+rate_limits_and_credits = "information on rate limits and credits"
+up_to_date_prefix = " for up-to-date"
+visit_prefix = "Visit "
+
+[model_migration.option]
+try_new_model = "Try new model"
+use_existing_model = "Use existing model"
+
+[model_migration]
+continue_hint = "Press enter to continue"
+description_default = "${target} is recommended for better performance and reliability."
+heading = "Codex just got an upgrade. Introducing ${target}."
+keep_current = "You can continue using ${current} if you prefer."
+learn_more = "${description} Learn more about ${target} at "
+recommend_switch = "We recommend switching from ${current} to ${target}."
+
+[status_indicator.elapsed]
+hours_suffix = "h"
+minutes_suffix = "m"
+seconds_suffix = "s"
+
+[status_indicator.header]
+working = "Working"
+
+[status_indicator.interrupt]
+prefix = "(${elapsed} • Press "
+suffix = " to interrupt)"
+
+[status_indicator]
+idle = "(${elapsed})"
+
+[oss_selection]
+hint_select_quit = "  Press Enter to select • Ctrl+C to quit"
+status_legend = "  ● Running  ○ Not running"
+subtitle = "  Choose a local AI service; your preference can be saved."
+title = "Choose an open-source provider"
+
+[oss_selection.option]
+lmstudio = "Local LM Studio service (default port 1234)"
+ollama_chat = "Local Ollama service (Chat API, default port 11434)"
+ollama_responses = "Local Ollama service (Responses API, default port 11434)"
+
+[oss_selection.prompt]
+choose_provider = "Choose a provider?"
+
+[oss_selection.error]
+save_preference = "Failed to save OSS provider preference: ${error}"
+
+[app.approvals]
+policy_failed = "Failed to set approval policy: ${error}"
+save_failed = "Failed to save approval settings: ${error}"
+
+[app.diff]
+no_changes = "No changes detected."
+title = "D I F F"
+
+[app.editor]
+open_failed = "Failed to open editor: "
+
+[app.external_editor]
+hint = "Save and close external editor to continue."
+
+[app.features]
+save_failed = "Failed to update experimental features: ${error}"
+
+[app.full_access]
+save_pref_failed = "Failed to save full access warning preference: ${error}"
+
+[app.language]
+changed = "Language changed to ${label}"
+save_failed = "Failed to save language: ${error}"
+
+[app.model]
+changed = "Model changed to ${model}"
+effort_separator = " "
+profile_suffix = " for ${profile} profile"
+save_default_failed = "Failed to save default model: ${error}"
+save_profile_failed = "Failed to save model for profile `${profile}`: ${error}"
+
+[app.model_migration]
+save_pref_failed = "Failed to save model migration prompt preference: ${error}"
+
+[app.overlay]
+command_title = "P A T C H"
+elicitation_title = "E L I C I T A T I O N"
+patch_title = "P A T C H"
+
+[app.rate_limit]
+save_pref_failed = "Failed to save rate limit reminder preference: ${error}"
+
+[app.reasoning]
+default = "default"
+high = "high"
+low = "low"
+medium = "medium"
+minimal = "minimal"
+xhigh = "xhigh"
+
+[app.sandbox]
+policy_failed = "Failed to set sandbox policy: ${error}"
+
+[app.session]
+fork_failed = "Failed to fork session from ${path}"
+fork_failed_detail = "Failed to fork session from ${path}: ${error}"
+resume_failed = "Failed to resume session from ${path}"
+resume_failed_detail = "Failed to resume session from ${path}: ${error}"
+resume_hint = "To continue this session, run "
+
+[app.skills]
+invalid = "Skipped loading ${error_count} skill(s) due to invalid SKILL.md files."
+
+[app.windows_sandbox]
+enable_failed = "Failed to enable the Windows sandbox feature: ${error}"
+enabled_elevated = "Enabled elevated agent sandbox."
+enabled_non_elevated = "Enabled non-elevated agent sandbox."
+
+[app.world_writable]
+save_pref_failed = "Failed to save world-writable warning preference: ${error}"
+
+[chatwidget]
+context_compacted = "Context compacted"
+example_prompts = ["Explain this codebase"]
+
+[chatwidget.approvals]
+auto_non_elevated_label = "Agent (non-elevated sandbox)"
+title = "Select Approval Mode"
+
+[chatwidget.approvals.auto]
+desc = "Agent (non-elevated sandbox)"
+label = "Agent (non-elevated sandbox)"
+
+[chatwidget.approvals.footer_note]
+prefix = "The non-elevated sandbox protects your files and prevents network access under most circumstances. However, it carries greater risk if prompt injected. To upgrade to the elevated sandbox, run "
+suffix = "."
+
+[chatwidget.approvals.full_access]
+desc = "Codex can edit files outside this workspace and run commands with network access. Exercise caution when using."
+label = "Agent (full access)"
+
+[chatwidget.approvals.read_only]
+desc = "Agent (non-elevated sandbox)"
+label = "Agent (non-elevated sandbox)"
+
+[chatwidget.clean]
+deleted = "Clipboard image cache cleaned: deleted ${deleted} file(s)."
+deleted_with_failures = "Clipboard image cache cleaned: deleted ${deleted} file(s), ${failed} failed."
+failed = "Failed to clean clipboard cache: ${error}"
+no_codex_dir = "No .codex directory found; no clipboard cache to clean."
+no_image_cache = "Failed to compute diff: {e}"
+
+[chatwidget.clipboard]
+image_paste_failed = "Failed to paste image: ${detail}. Try saving the image to a file and pasting the file path instead."
+
+[chatwidget.diff]
+failed = "Failed to compute diff: ${error}"
+not_git_repo = "`/diff` — _not inside a git repository_"
+
+[chatwidget.full_access]
+intro = "When Codex runs with full access, it can edit any file on your computer and run commands with network, without your approval. "
+title = "Enable full access?"
+warning = "Exercise caution when enabling full access. This significantly increases the risk of data loss, leaks, or unexpected behavior."
+
+[chatwidget.full_access.option]
+cancel = "Cancel"
+cancel_desc = "Go back without enabling full access"
+continue = "Yes, continue anyway"
+continue_desc = "Apply full access for this session"
+continue_remember = "Yes, and don't ask again"
+continue_remember_desc = "Enable full access and remember this choice"
+
+[chatwidget.language_popup]
+chinese_desc = "Use Simplified Chinese for UI and prompts"
+english_desc = "Use English for UI and prompts"
+title = "Select language"
+
+[chatwidget.mcp]
+starting_server_single = "Booting MCP server: ${server}"
+starting_servers = "Starting MCP servers (${completed}/${total}): ${servers}"
+startup_failed = "failed: ${servers}"
+startup_incomplete = "MCP startup incomplete (${details})"
+startup_interrupted = "MCP startup interrupted. The following servers were not initialized: ${servers}"
+
+[chatwidget.model_popup]
+all_models = "All models"
+all_models_desc = "Choose a specific model and reasoning level (current: ${current_label})"
+base_url_warning = "Warning: OPENAI_BASE_URL is set to ${base_url}. Selecting models may not be supported or work properly."
+disabled_until_ready = "Model selection is disabled until startup completes."
+footer_hint = "Press enter to select reasoning effort, or esc to dismiss."
+no_additional_models = "No additional models are available right now."
+quick_subtitle = "Pick a quick auto mode or browse all models."
+quick_title = "Select Model"
+subtitle = "Access legacy models by running codex -m <model_name> or in your config.toml"
+title = "Select Model and Effort"
+updating = "Models are being updated; please try /model again in a moment."
+
+[chatwidget.notification]
+agent_turn_complete = "Agent turn complete"
+edit_approval = "Codex wants to edit ${target}"
+edit_approval_files = "${count} files"
+elicitation = "Approval requested by ${server_name}"
+exec_approval = "Approval requested: ${command}"
+
+[chatwidget.rate_limit]
+warning = "Heads up, you have less than ${percent}% of your ${limit_label} limit left. Run /status for a breakdown."
+
+[chatwidget.rate_limit.label]
+annual = "annual"
+hours = "${count}h"
+monthly = "monthly"
+weekly = "weekly"
+
+[chatwidget.rate_limit_prompt]
+keep_current = "Keep current model"
+keep_current_never = "Keep current model (never show again)"
+keep_current_never_desc = "Hide future rate limit reminders about switching models."
+subtitle = "Switch to ${display_name} for lower credit usage?"
+switch_description = "Uses fewer credits for upcoming turns."
+switch_to = "Switch to ${display_name}"
+title = "Approaching rate limits"
+
+[chatwidget.reasoning]
+default_suffix = " (default)"
+select_title = "Select Reasoning Level for ${model}"
+warning = "⚠ ${effort_label} reasoning effort can quickly consume Plus plan rate limits."
+
+[chatwidget.review]
+base_branch = "Review against a base branch"
+base_branch_title = "Select a base branch"
+commit = "Review a commit"
+commit_title = "Select a commit to review"
+custom = "Custom review instructions"
+custom_hint = "Type instructions and press Enter"
+detached_head = "(detached HEAD)"
+finished = "<< Code review finished >>"
+no_response = "Reviewer failed to output a response."
+pr_style_desc = "(PR Style)"
+search_branches = "Type to search branches"
+search_commits = "Type to search commits"
+started = ">> Code review started: ${hint} <<"
+title = "Select a review preset"
+uncommitted = "Review uncommitted changes"
+
+[chatwidget.rollout]
+current_path = "Current rollout path: ${path}"
+not_available = "Rollout path is not available yet."
+
+[chatwidget.sdd]
+branch_create_started = "Started creating the SDD branch. Please wait for the tool to finish."
+branch_delete_started = "Branch deletion started. Please wait for the tool to finish."
+branch_deleted = "SDD branch deleted. You can continue the conversation."
+branch_label = "Branch:"
+branch_unknown = "Unable to determine the SDD branch name."
+continue_prompt_details = "Additional changes needed:"
+continue_prompt_hint = "After submitting, you can run /sdd-develop again to open next options."
+continue_prompt_intro = "Continue improving on the current branch. Context:"
+continue_prompt_ready = "A continuation template was inserted. Add specific changes and submit."
+dev_stage = "You are in the development stage; you can merge, continue changes, or abandon the branch."
+exec_sent = "Development instructions sent. Please wait for the AI to finish on the separate branch."
+exec_sent_hint = "When it's done, use /sdd-develop to merge, continue changes, or abandon."
+git_failed = "SDD git action failed. Please review the output and try again."
+merge_completed = "Merge finished. Please continue with the next steps."
+merge_guidance_hint = "If you need more changes, run /sdd-develop again to choose another option."
+merge_guidance_sent = "Merge guidance sent. Please follow the instructions to merge via PR and clean up."
+merge_started = "Merge started (commit and merge into the base branch)."
+no_active_branch_abandon = "No active SDD branch to abandon."
+no_active_branch_changes = "No active SDD branch to continue editing."
+no_active_branch_merge = "No active SDD branch to merge."
+no_active_plan = "No active SDD plan to continue. Run /sdd-develop <requirement> first."
+no_active_plan_rework = "No active SDD plan to revise. Run /sdd-develop <requirement> first."
+no_dev_branch = "No active SDD development branch to handle."
+no_plan_pending = "No plan to confirm. Start with /sdd-develop <requirement> first."
+not_git_repo = "Current directory is not a Git repo; /sdd-develop must be run inside a Git repo."
+not_in_dev_stage = "You are not in the development stage, so you can't continue changes."
+not_in_dev_stage_abandon = "You are not in the development stage, so the branch cannot be abandoned."
+not_in_dev_stage_merge = "You are not in the development stage, so the branch cannot be merged."
+not_in_plan_stage = "You are not in the planning stage, so the plan cannot be revised."
+plan_request_hint = "You can type /sdd-develop at any time to reopen the options."
+plan_request_sent = "SDD plan request sent. Please review the AI-generated task.md and choose the next step."
+plan_rework_hint = "After submission, the plan options will appear again."
+plan_rework_prompt = "I think the task.md you proposed is incomplete. Please address the following issues:\\n"
+plan_rework_ready = "Plan revision request prepared. Add feedback in the input and submit."
+plan_stage = "You are in the planning stage; you can continue development or revise the plan."
+plan_stage_required = "You are not in the plan confirmation stage, so you can't continue."
+require_description = "Provide the requirement description after /sdd-develop."
+requirement_label = "Requirement description:"
+use_popup_hint = "Use the popup to choose the next step."
+
+[chatwidget.sdd.dev_options]
+title = "Choose next SDD development action"
+
+[chatwidget.sdd.option]
+abandon = "Abandon changes (delete branch)"
+abandon_desc = "Delete the temp branch and exit the flow"
+approve_plan = "Approve plan and continue"
+approve_plan_desc = "Create a branch and follow task.md"
+continue_changes = "Continue changes"
+continue_changes_desc = "Keep iterating on the current branch"
+merge_pr = "Merge branch via Pull Request"
+merge_pr_desc = "Open/merge a PR per the workflow"
+request_changes = "Request plan changes"
+request_changes_desc = "Provide feedback and let AI update task.md"
+
+[chatwidget.sdd.plan_options]
+title = "Choose SDD plan action"
+
+[chatwidget.shell_help]
+example = "Example: !ls"
+title = "Prefix a command with ! to run it locally"
+
+[chatwidget.slash]
+disabled_during_task = "'/${command}' is disabled while a task is in progress."
+init_exists = "${filename} already exists here. Skipping /init to avoid overwriting it."
+
+[chatwidget.status]
+running = "Working"
+working = "Working"
+
+[chatwidget.stream]
+interrupted = "Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/feedback` to report the issue."
+
+[chatwidget.task]
+replaced = "Turn aborted: replaced by a new task"
+
+[chatwidget.undo]
+completed = "Undo completed successfully."
+failed = "Undo failed."
+in_progress = "Undo in progress..."
+success = "Undo completed successfully."
+
+[chatwidget.windows_sandbox]
+setup_input_disabled = "Input disabled until setup completes."
+setup_status = "Setting up agent sandbox. This can take a minute."
+
+[chatwidget.windows_sandbox.fallback]
+body = "Elevation failed. You can also use a non-elevated sandbox, which protects your files and prevents network access under most circumstances. However, it carries greater risk if prompt injected."
+learn_more = "Learn more: https://developers.openai.com/codex/windows"
+retry_elevated = "Try elevated agent sandbox setup again"
+title = "Use Non-Elevated Sandbox?"
+use_non_elevated = "Use non-elevated agent sandbox"
+
+[chatwidget.windows_sandbox.legacy]
+back = "Go back"
+enable = "Enable experimental sandbox"
+learn_more = "Learn more: https://developers.openai.com/codex/windows"
+title = "Agent mode on Windows uses an experimental sandbox to limit network and filesystem access."
+
+[chatwidget.windows_sandbox.nux]
+header_body = "Stay in Agent Full Access"
+header_title = "Stay in Agent Full Access"
+learn_more = "Stay in Agent Full Access"
+setup_elevated = "Set up agent sandbox (requires elevation)"
+stay_full_access = "Stay in Agent Full Access"
+stay_read_only = "Stay in Read-Only"
+
+[chatwidget.world_writable]
+and_more = "and ${count} more"
+apply_remember = "Enable ${mode_label} and remember this choice"
+apply_session = "Apply ${mode_label} for this session"
+continue = "Apply {mode_label} for this session"
+continue_no_warn = "Apply {mode_label} for this session"
+failed_scan = "Agent mode"
+failed_scan_warning = "The Windows sandbox cannot guarantee protection in ${mode_label}."
+remove_everyone = " Consider removing write access for Everyone from the following folders:"
+unprotected = "The Windows sandbox cannot protect writes to folders that are writable by Everyone."
+
+[chatwidget.world_writable.policy]
+agent = "Agent mode"
+read_only = "Agent mode"
+
+[command_popup]
+send_saved_prompt = "Send saved prompt"
+
+[diff_render.noun]
+files = "files"
+
+[diff_render.verb]
+add = "Added"
+changed = "Changed"
+delete = "Deleted"
+update = "Updated"
+
+[exec_cell.command]
+list = "List"
+ran = "Ran"
+read = "Read"
+run = "Run"
+running = "Running"
+search = "Search"
+search_in = " in "
+you_ran = "You ran"
+
+[exec_cell.exploring]
+done = "Explored"
+running = "Exploring"
+
+[exec_cell.interaction]
+sent = "Interacted with `${command}`, sent `${preview}`"
+waited = "Waited for `${command}`"
+
+[exec_cell.output]
+no_output = "(no output)"
+omitted = "… +${count} lines"
+
+[exec_cell.transcript]
+unknown_duration = "unknown"
+
+[git_diff]
+failed_status = "git ${args} failed with status ${status}"
+
+[history]
+patch_apply_failed = "✘ Failed to apply patch"
+view_image = "Viewed Image"
+
+[history.approval.abort]
+action = "canceled"
+middle = " the request to run "
+prefix = "You "
+suffix = ""
+
+[history.approval.approved]
+action = "approved"
+middle = " codex to run "
+prefix = "You "
+suffix = " this time"
+
+[history.approval.denied]
+action = "did not approve"
+middle = " codex to run "
+prefix = "You "
+suffix = ""
+
+[history.approval.execpolicy]
+action = "approved"
+middle = " codex to run "
+prefix = "You "
+suffix = " and applied the execpolicy amendment"
+
+[history.approval.session]
+action = "approved"
+middle = " codex to run "
+prefix = "You "
+suffix = " every time this session"
+
+[history.final]
+worked_for = "─ Worked for ${elapsed} ─"
+
+[history.mcp]
+audio_content = "<audio content>"
+auth_label = "    • Auth: "
+called = "Called"
+calling = "Calling"
+command_label = "    • Command: "
+cwd_label = "    • Cwd: "
+disabled = "(disabled)"
+docs_link = "\\u{1b}]8;;https://github.com/openai/codex/blob/main/docs/config.md#mcp_servers\\u{7}MCP docs\\u{1b}]8;;\\u{7}"
+docs_prefix = "    See the "
+docs_suffix = " to configure them."
+embedded_resource = "embedded resource: ${uri}"
+empty_servers = "  • No MCP servers configured."
+empty_tools = "  • No MCP tools available."
+env_http_headers_label = "    • Env HTTP headers: "
+env_label = "    • Env: "
+error_prefix = "{}{err}"
+http_headers_label = "    • HTTP headers: "
+image_content = "<image content>"
+image_result = "tool result (image output)"
+interrupted = "interrupted"
+link = "link: ${uri}"
+resources_label = "    • Resources: "
+resources_none = "    • Resources: (none)"
+status_enabled = "enabled"
+status_label = "    • Status: "
+templates_label = "    • Resource templates: "
+templates_none = "    • Resource templates: (none)"
+tools_label = "    • Tools: "
+tools_none = "    • Tools: (none)"
+tools_title = "\\u{1b}]8;;https://github.com/openai/codex/blob/main/docs/config.md#mcp_servers\\u{7}MCP docs\\u{1b}]8;;\\u{7}"
+url_label = "    • URL: "
+
+[history.model_change]
+requested = "requested: ${model}"
+title = "model changed:"
+used = "used: ${model}"
+
+[history.plan]
+no_steps = "(no steps provided)"
+updated = "Updated Plan"
+
+[history.session_header]
+change_model_hint = " to change"
+directory_label = "directory:"
+model_label = "model:"
+
+[history.session_help]
+approvals = " - choose what Codex can do without approval"
+checkpoint = " - record a checkpoint of the AI's actions"
+init = " - create an AGENTS.md file with instructions for Codex"
+intro = "  To get started, describe a task or try one of these commands:"
+model = " - choose what model and reasoning effort to use"
+review = " - review any changes and find issues"
+status = " - show current session configuration"
+
+[history.unified_exec]
+header = "Interacted with background terminal"
+processes_empty = "  • No background terminals running."
+processes_more = "... and ${count} more running"
+processes_title = "Background terminals"
+waited = "(waited)"
+
+[history.update]
+available = "Update available!"
+download_suffix = " to download the latest release for Windows / macOS / Linux."
+release_notes = "Release notes:"
+visit_prefix = "Visit "
+
+[history.web_search]
+searched = "Searched"
+
+[language.name]
+en = "English"
+zh_cn = "Simplified Chinese"
+
+[model_migration.hint]
+confirm = " to confirm"
+to_move = " to move, press "
+use = "Use "
+
+[model_migration.prompt]
+choose = "Choose how you'd like Codex to proceed."
+
+[onboarding.auth]
+api_key_disabled = "API key login is disabled."
+chatgpt_disabled = "ChatGPT login is disabled"
+chatgpt_headless = "Uses device code login (headless environment detected)"
+chatgpt_included_usage = "Usage included with Plus, Pro, Team, and Enterprise plans"
+press_enter_continue = "  Press Enter to continue"
+press_esc_cancel = "  Press Esc to cancel"
+
+[onboarding.auth.api_key_configured]
+detail = "  Codex will use usage-based billing with your API key."
+title = "✓ API key configured"
+
+[onboarding.auth.api_key_entry]
+back_hint = "  Press Esc to go back"
+block_title = "API key"
+detected_env = "  Detected OPENAI_API_KEY environment variable."
+empty_error = "API key cannot be empty"
+instructions = "  Paste or type your API key below. It will be stored locally in auth.json."
+placeholder = "Paste or type your API key"
+save_failed = "Failed to save API key: ${err}"
+save_hint = "  Press Enter to save"
+title = "Use your own OpenAI API key for usage-based billing"
+use_different_key = "  Paste a different key if you prefer to use another account."
+
+[onboarding.auth.continue_in_browser]
+manual_link = "  If the link doesn't open automatically, open the following link to authenticate:"
+remote_prefix = "  On a remote or headless machine? Use "
+remote_suffix = " instead"
+title = "Finish signing in via your browser"
+
+[onboarding.auth.device_code]
+phishing_warning = "  Device codes are a common phishing target. Never share this code."
+requesting = "  Requesting a one-time code..."
+step1 = "  1. Open this link in your browser and sign in"
+step2 = "  2. Enter this one-time code after you are signed in (expires in 15 minutes)"
+
+[onboarding.auth.device_code.banner]
+finish = "Finish signing in via your browser"
+preparing = "Preparing device code login"
+
+[onboarding.auth.link]
+codex_docs = "\\u{1b}]8;;https://github.com/openai/codex\\u{7}Codex docs\\u{1b}]8;;\\u{7}"
+training_prefs = "\\u{1b}]8;;https://chatgpt.com/#settings\\u{7}training data preferences\\u{1b}]8;;\\u{7}"
+
+[onboarding.auth.option]
+api_key = "Provide your own API key"
+api_key_description = "Pay for what you use"
+chatgpt = "Sign in with ChatGPT"
+
+[onboarding.auth.pick]
+api_key_disabled_workspace = "  API key login is disabled by this workspace. Sign in with ChatGPT to continue."
+chatgpt_line1 = "Sign in with ChatGPT to use Codex as part of your paid plan"
+chatgpt_line2 = "or connect an API key for usage-based billing"
+
+[onboarding.auth.success]
+before_you_start = "  Before you start:"
+decide_autonomy = "  Decide how much autonomy you want to grant Codex"
+mistakes_detail = "  Review the code it writes and commands it runs"
+mistakes_title = "  Codex can make mistakes"
+more_details_prefix = "  For more details see the "
+powered_by_account = "  Powered by your ChatGPT account"
+rate_limits_prefix = "  Uses your plan's rate limits and "
+title = "✓ Signed in with your ChatGPT account"
+
+[onboarding.trust_directory]
+continue_prefix = "Press "
+continue_suffix = " to continue"
+intro_prefix = "You are running Codex in "
+
+[onboarding.trust_directory.error]
+set_trust_failed = "Failed to set trust level for ${path}: ${err}"
+set_untrust_failed = "Failed to set untrusted for ${path}: ${err}"
+
+[onboarding.trust_directory.guidance]
+git = "Since this folder is version controlled, you may wish to allow Codex to work in this folder without asking for approval."
+no_git = "Since this folder is not version controlled, we recommend requiring approval of all edits and commands."
+
+[onboarding.trust_directory.option]
+dont_trust_git = "No, ask me to approve edits and commands"
+dont_trust_no_git = "Require approval of edits and commands"
+trust_git = "Yes, allow Codex to work in this folder without asking for approval"
+trust_no_git = "Allow Codex to work in this folder without asking for approval"
+
+[onboarding.welcome]
+prefix = "Welcome to "
+suffix = ", OpenAI's command-line coding agent"
+
+[oss_selection.hint]
+select_quit = "  Press Enter to select • Ctrl+C to quit"
+
+[pager_overlay.hint]
+edit_message = "Edit message"
+edit_prev = "Edit previous"
+jump = "Jump"
+page = "Page"
+quit = "Quit"
+scroll = "Scroll"
+
+[pager_overlay.title]
+transcript = "T R A N S C R I P T"
+
+[reasoning_effort]
+high = "high"
+low = "low"
+medium = "medium"
+minimal = "minimal"
+none = "none"
+xhigh = "xhigh"
+
+[reasoning_effort.menu]
+high = "High"
+low = "Low"
+medium = "Medium"
+minimal = "Minimal"
+none = "None"
+xhigh = "Extra high"
+
+[resume_picker]
+loading_more = "Loading earlier sessions…"
+searching = "Searching…"
+
+[resume_picker.action]
+fork = " Fork session"
+resume = " Resume session"
+
+[resume_picker.columns]
+branch = "Branch"
+cwd = "Working dir"
+session = "Session content"
+updated = "Updated"
+
+[resume_picker.empty]
+no_sessions = "No sessions yet"
+
+[resume_picker.hint]
+browse = " Browse list"
+quit = " Quit"
+start_new = " Start new session"
+
+[resume_picker.preview]
+empty = "(no message)"
+
+[resume_picker.search]
+label = "Search: "
+no_results = "No matching search results"
+placeholder = "Type to search"
+scan_cap = "Search scanned only the first ${count} sessions; more results may exist"
+
+[resume_picker.time]
+days_ago = "${count}d ago"
+hours_ago = "${count}h ago"
+minutes_ago = "${count}m ago"
+seconds_ago = "${count}s ago"
+
+[resume_picker.title]
+fork = "Fork a previous session"
+resume = "Resume a previous session"
+
+[review]
+interrupted = "Review was interrupted. Please re-run /review and wait for it to complete."
+
+[review.error]
+empty_prompt = "Review prompt cannot be empty"
+
+[review.hint]
+base_branch = "changes against '${branch}'"
+commit = "commit ${sha}"
+commit_with_title = "commit ${sha}: ${title}"
+uncommitted = "current changes"
+
+[review.prompt]
+base_branch = "Review the code changes against the base branch '${baseBranch}'. The merge base commit for this comparison is ${mergeBaseSha}. Run `git diff ${mergeBaseSha}` to inspect the changes relative to ${baseBranch}. Provide prioritized, actionable findings."
+base_branch_backup = "Review the code changes against the base branch '${branch}'. Start by finding the merge diff between the current branch and ${branch}'s upstream e.g. (`git merge-base HEAD \"$(git rev-parse --abbrev-ref \"${branch}@{upstream}\")\"`), then run `git diff` against that SHA to see what changes we would merge into the ${branch} branch. Provide prioritized, actionable findings."
+commit = "Review the code changes introduced by commit ${sha}. Provide prioritized, actionable findings."
+commit_with_title = "Review the code changes introduced by commit ${sha} (\"${title}\"). Provide prioritized, actionable findings."
+uncommitted = "Review the current code changes (staged, unstaged, and untracked files) and provide prioritized findings."
+
+[sdd_git.error]
+branch_name_invalid = "Invalid branch name: `${name}`."
+branch_name_invalid_segment = "Branch name contains an invalid segment: `${name}`."
+branch_name_whitespace = "Branch name contains whitespace: `${name}`."
+command_cancelled = "SDD Git command cancelled."
+command_failed = "SDD Git command failed."
+command_failed_detail = "SDD Git command failed: ${error}"
+dirty_not_on_branch = "add"
+dirty_workspace = "add"
+git_command_failed = "add"
+git_exec_failed = "Failed to execute git: ${error}"
+invalid_base_branch = "Only base branch `${expected}` is allowed, got `${base}`."
+invalid_prefix = "Only branches with the `${prefix}` prefix are allowed, got `${name}`."
+not_git_repo = "add"
+unknown_branch = "add"
+
+[sdd_git.exec]
+aborted = "command aborted by user"
+
+[sdd_git.warning]
+no_changes_skip_commit = "add"
+
+[terminal.error]
+show_cursor = "Failed to show cursor: ${error}"
+stdin_not_terminal = "stdin is not a terminal"
+stdout_not_terminal = "stdout is not a terminal"
+winapi_disable_alt_scroll = "Attempted to run DisableAlternateScroll via WinAPI; please use ANSI sequences instead."
+winapi_enable_alt_scroll = "Attempted to run EnableAlternateScroll via WinAPI; please use ANSI sequences instead."
+
+[transcript_copy]
+copy = "copy"
+
+[update_prompt]
+install_note = "The page includes Windows / macOS / Linux installation instructions."
+release_prefix = "Release notes: "
+title = "Update available!"
+
+[update_prompt.hint]
+continue = " to continue"
+press = "Press "
+
+[update_prompt.option]
+open_now = "Open release page now (default browser)"
+skip = "Skip"
+skip_until_next = "Skip until next version"

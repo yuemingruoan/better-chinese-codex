@@ -1,4 +1,6 @@
 use crate::exec_command::relativize_to_home;
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::text_formatting;
 use chrono::DateTime;
 use chrono::Local;
@@ -25,24 +27,23 @@ pub(crate) fn compose_model_display(
     let mut details: Vec<String> = Vec::new();
     if let Some((_, effort)) = entries.iter().find(|(k, _)| *k == "reasoning effort") {
         let effort = effort.to_ascii_lowercase();
-        details.push(match language {
-            Language::ZhCn => format!("推理 {effort}"),
-            Language::En => format!("reasoning {effort}"),
-        });
+        details.push(tr_args(
+            language,
+            "status.reasoning",
+            &[("effort", effort.as_str())],
+        ));
     }
     if let Some((_, summary)) = entries.iter().find(|(k, _)| *k == "reasoning summaries") {
         let summary = summary.trim();
         if summary.eq_ignore_ascii_case("none") || summary.eq_ignore_ascii_case("off") {
-            details.push(match language {
-                Language::ZhCn => "概述已关闭".to_string(),
-                Language::En => "summaries off".to_string(),
-            });
+            details.push(tr(language, "status.summaries_off").to_string());
         } else if !summary.is_empty() {
             let summary = summary.to_ascii_lowercase();
-            details.push(match language {
-                Language::ZhCn => format!("摘要 {summary}"),
-                Language::En => format!("summaries {summary}"),
-            });
+            details.push(tr_args(
+                language,
+                "status.summaries",
+                &[("summary", summary.as_str())],
+            ));
         }
     }
 
@@ -57,10 +58,7 @@ pub(crate) fn compose_agents_summary(config: &Config, language: Language) -> Str
                 let file_name = p
                     .file_name()
                     .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| match language {
-                        Language::ZhCn => "未知".to_string(),
-                        Language::En => "<unknown>".to_string(),
-                    });
+                    .unwrap_or_else(|| tr(language, "status.agents.unknown_file").to_string());
                 let display = if let Some(parent) = p.parent() {
                     if parent == config.cwd {
                         file_name.clone()
@@ -91,18 +89,12 @@ pub(crate) fn compose_agents_summary(config: &Config, language: Language) -> Str
                 rels.push(display);
             }
             if rels.is_empty() {
-                match language {
-                    Language::ZhCn => "无".to_string(),
-                    Language::En => "<none>".to_string(),
-                }
+                tr(language, "status.agents.none").to_string()
             } else {
                 rels.join(", ")
             }
         }
-        Err(_) => match language {
-            Language::ZhCn => "无".to_string(),
-            Language::En => "<none>".to_string(),
-        },
+        Err(_) => tr(language, "status.agents.none").to_string(),
     }
 }
 
@@ -118,12 +110,7 @@ pub(crate) fn compose_account_display(
             let email = auth.get_account_email();
             let plan = plan
                 .map(|plan_type| title_case(format!("{plan_type:?}").as_str()))
-                .or_else(|| {
-                    Some(match language {
-                        Language::ZhCn => "未知".to_string(),
-                        Language::En => "Unknown".to_string(),
-                    })
-                });
+                .or_else(|| Some(tr(language, "status.account.unknown").to_string()));
             Some(StatusAccountDisplay::ChatGpt { email, plan })
         }
         AuthMode::ApiKey => Some(StatusAccountDisplay::ApiKey),

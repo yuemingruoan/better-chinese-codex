@@ -5,6 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use codex_async_utils::CancelErr;
 use codex_async_utils::OrCancelExt;
+use codex_protocol::config_types::Language;
 use codex_protocol::user_input::UserInput;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
@@ -16,6 +17,8 @@ use crate::exec::SandboxType;
 use crate::exec::StreamOutput;
 use crate::exec::execute_exec_env;
 use crate::exec_env::create_env;
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::parse_command::parse_command;
 use crate::protocol::ErrorEvent;
 use crate::protocol::EventMsg;
@@ -92,21 +95,23 @@ async fn run_sdd_git_action(
     action: &SddGitAction,
     cancellation_token: &CancellationToken,
 ) -> Result<(), String> {
-    ensure_git_repository(&turn_context.cwd)?;
+    let language = turn_context.client.config().language;
+    ensure_git_repository(&turn_context.cwd, language)?;
 
     match action {
         SddGitAction::CreateBranch { name, base } => {
-            ensure_base_branch(base)?;
-            ensure_sdd_branch(name)?;
-            ensure_clean_repo(&turn_context.cwd)?;
+            ensure_base_branch(base, language)?;
+            ensure_sdd_branch(name, language)?;
+            ensure_clean_repo(&turn_context.cwd, language)?;
 
-            let current = current_branch(&turn_context.cwd)?;
+            let current = current_branch(&turn_context.cwd, language)?;
             if current != *base {
                 run_git_logged(
                     session,
                     turn_context,
                     vec!["checkout", base],
                     cancellation_token,
+                    language,
                 )
                 .await?;
             }
@@ -116,19 +121,21 @@ async fn run_sdd_git_action(
                 turn_context,
                 vec!["checkout", "-b", name],
                 cancellation_token,
+                language,
             )
             .await?;
         }
         SddGitAction::SwitchBranch { name } => {
-            ensure_sdd_branch(name)?;
+            ensure_sdd_branch(name, language)?;
 
-            let current = current_branch(&turn_context.cwd)?;
+            let current = current_branch(&turn_context.cwd, language)?;
             if current != *name {
                 run_git_logged(
                     session,
                     turn_context,
                     vec!["checkout", name],
                     cancellation_token,
+                    language,
                 )
                 .await?;
             }
@@ -138,13 +145,13 @@ async fn run_sdd_git_action(
             base,
             commit_message,
         } => {
-            ensure_base_branch(base)?;
-            ensure_sdd_branch(name)?;
+            ensure_base_branch(base, language)?;
+            ensure_sdd_branch(name, language)?;
 
-            let current = current_branch(&turn_context.cwd)?;
-            let dirty = is_repo_dirty(&turn_context.cwd)?;
+            let current = current_branch(&turn_context.cwd, language)?;
+            let dirty = is_repo_dirty(&turn_context.cwd, language)?;
             if dirty && current != *name {
-                return Err("工作区有未提交修改，且当前不在 SDD 分支，无法继续合并。".to_string());
+                return Err(tr(language, "sdd_git.error.dirty_not_on_branch").to_string());
             }
             if current != *name {
                 run_git_logged(
@@ -152,19 +159,27 @@ async fn run_sdd_git_action(
                     turn_context,
                     vec!["checkout", name],
                     cancellation_token,
+                    language,
                 )
                 .await?;
             }
 
-            let dirty = is_repo_dirty(&turn_context.cwd)?;
+            let dirty = is_repo_dirty(&turn_context.cwd, language)?;
             if dirty {
-                run_git_logged(session, turn_context, vec!["add", "-A"], cancellation_token)
-                    .await?;
+                run_git_logged(
+                    session,
+                    turn_context,
+                    vec!["add", "-A"],
+                    cancellation_token,
+                    language,
+                )
+                .await?;
                 run_git_logged(
                     session,
                     turn_context,
                     vec!["commit", "-m", commit_message],
                     cancellation_token,
+                    language,
                 )
                 .await?;
             } else {
@@ -172,19 +187,21 @@ async fn run_sdd_git_action(
                     .send_event(
                         turn_context.as_ref(),
                         EventMsg::Warning(WarningEvent {
-                            message: "工作区无变更，跳过提交。".to_string(),
+                            message: tr(language, "sdd_git.warning.no_changes_skip_commit")
+                                .to_string(),
                         }),
                     )
                     .await;
             }
 
-            let current = current_branch(&turn_context.cwd)?;
+            let current = current_branch(&turn_context.cwd, language)?;
             if current != *base {
                 run_git_logged(
                     session,
                     turn_context,
                     vec!["checkout", base],
                     cancellation_token,
+                    language,
                 )
                 .await?;
             }
@@ -194,21 +211,23 @@ async fn run_sdd_git_action(
                 turn_context,
                 vec!["merge", "--no-ff", name],
                 cancellation_token,
+                language,
             )
             .await?;
         }
         SddGitAction::AbandonBranch { name, base } => {
-            ensure_base_branch(base)?;
-            ensure_sdd_branch(name)?;
-            ensure_clean_repo(&turn_context.cwd)?;
+            ensure_base_branch(base, language)?;
+            ensure_sdd_branch(name, language)?;
+            ensure_clean_repo(&turn_context.cwd, language)?;
 
-            let current = current_branch(&turn_context.cwd)?;
+            let current = current_branch(&turn_context.cwd, language)?;
             if current != *base {
                 run_git_logged(
                     session,
                     turn_context,
                     vec!["checkout", base],
                     cancellation_token,
+                    language,
                 )
                 .await?;
             }
@@ -218,6 +237,7 @@ async fn run_sdd_git_action(
                 turn_context,
                 vec!["branch", "-D", name],
                 cancellation_token,
+                language,
             )
             .await?;
         }
@@ -226,71 +246,95 @@ async fn run_sdd_git_action(
     Ok(())
 }
 
-fn ensure_base_branch(base: &str) -> Result<(), String> {
+fn ensure_base_branch(base: &str, language: Language) -> Result<(), String> {
     if base != SDD_BASE_BRANCH {
-        return Err(format!(
-            "仅允许使用基线分支 `{SDD_BASE_BRANCH}`，收到 `{base}`。"
+        let expected = SDD_BASE_BRANCH;
+        return Err(tr_args(
+            language,
+            "sdd_git.error.invalid_base_branch",
+            &[("expected", expected), ("base", base)],
         ));
     }
     Ok(())
 }
 
-fn ensure_sdd_branch(name: &str) -> Result<(), String> {
+fn ensure_sdd_branch(name: &str, language: Language) -> Result<(), String> {
     if !name.starts_with(SDD_BRANCH_PREFIX) {
-        return Err(format!(
-            "仅允许操作 `{SDD_BRANCH_PREFIX}` 前缀分支，收到 `{name}`。"
+        let prefix = SDD_BRANCH_PREFIX;
+        return Err(tr_args(
+            language,
+            "sdd_git.error.invalid_prefix",
+            &[("prefix", prefix), ("name", name)],
         ));
     }
     if name.len() <= SDD_BRANCH_PREFIX.len() {
-        return Err(format!("分支名无效：`{name}`。"));
+        return Err(tr_args(
+            language,
+            "sdd_git.error.branch_name_invalid",
+            &[("name", name)],
+        ));
     }
     if name.chars().any(char::is_whitespace) {
-        return Err(format!("分支名包含空白字符：`{name}`。"));
+        return Err(tr_args(
+            language,
+            "sdd_git.error.branch_name_whitespace",
+            &[("name", name)],
+        ));
     }
     if name.contains("..") {
-        return Err(format!("分支名包含非法片段：`{name}`。"));
+        return Err(tr_args(
+            language,
+            "sdd_git.error.branch_name_invalid_segment",
+            &[("name", name)],
+        ));
     }
     Ok(())
 }
 
-fn ensure_git_repository(repo: &Path) -> Result<(), String> {
-    let output = run_git_silent(repo, &["rev-parse", "--is-inside-work-tree"])?;
+fn ensure_git_repository(repo: &Path, language: Language) -> Result<(), String> {
+    let output = run_git_silent(repo, &["rev-parse", "--is-inside-work-tree"], language)?;
     if output.trim() != "true" {
-        return Err("当前目录不是 Git 仓库，无法执行 SDD Git 操作。".to_string());
+        return Err(tr(language, "sdd_git.error.not_git_repo").to_string());
     }
     Ok(())
 }
 
-fn current_branch(repo: &Path) -> Result<String, String> {
-    let name = run_git_silent(repo, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+fn current_branch(repo: &Path, language: Language) -> Result<String, String> {
+    let name = run_git_silent(repo, &["rev-parse", "--abbrev-ref", "HEAD"], language)?;
     if name.is_empty() {
-        return Err("无法确定当前分支。".to_string());
+        return Err(tr(language, "sdd_git.error.unknown_branch").to_string());
     }
     Ok(name)
 }
 
-fn is_repo_dirty(repo: &Path) -> Result<bool, String> {
-    let status = run_git_silent(repo, &["status", "--porcelain"])?;
+fn is_repo_dirty(repo: &Path, language: Language) -> Result<bool, String> {
+    let status = run_git_silent(repo, &["status", "--porcelain"], language)?;
     Ok(!status.trim().is_empty())
 }
 
-fn ensure_clean_repo(repo: &Path) -> Result<(), String> {
-    if is_repo_dirty(repo)? {
-        return Err("工作区存在未提交修改，请先清理后再操作。".to_string());
+fn ensure_clean_repo(repo: &Path, language: Language) -> Result<(), String> {
+    if is_repo_dirty(repo, language)? {
+        return Err(tr(language, "sdd_git.error.dirty_workspace").to_string());
     }
     Ok(())
 }
 
-fn run_git_silent(repo: &Path, args: &[&str]) -> Result<String, String> {
+fn run_git_silent(repo: &Path, args: &[&str], language: Language) -> Result<String, String> {
     let output = std::process::Command::new("git")
         .current_dir(repo)
         .args(args)
         .output()
-        .map_err(|err| format!("执行 git 失败: {err}"))?;
+        .map_err(|err| {
+            tr_args(
+                language,
+                "sdd_git.error.git_exec_failed",
+                &[("error", &err.to_string())],
+            )
+        })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         if stderr.is_empty() {
-            return Err("git 命令执行失败。".to_string());
+            return Err(tr(language, "sdd_git.error.git_command_failed").to_string());
         }
         return Err(stderr);
     }
@@ -302,6 +346,7 @@ async fn run_git_logged(
     turn_context: &Arc<TurnContext>,
     args: Vec<&str>,
     cancellation_token: &CancellationToken,
+    language: Language,
 ) -> Result<(), String> {
     let mut command = Vec::with_capacity(args.len() + 1);
     command.push("git".to_string());
@@ -345,7 +390,7 @@ async fn run_git_logged(
 
     match exec_result {
         Err(CancelErr::Cancelled) => {
-            let aborted_message = "command aborted by user".to_string();
+            let aborted_message = tr(language, "sdd_git.exec.aborted").to_string();
             session
                 .send_event(
                     turn_context.as_ref(),
@@ -367,7 +412,7 @@ async fn run_git_logged(
                     }),
                 )
                 .await;
-            Err("SDD Git 命令已取消。".to_string())
+            Err(tr(language, "sdd_git.error.command_cancelled").to_string())
         }
         Ok(Ok(output)) => {
             session
@@ -398,7 +443,7 @@ async fn run_git_logged(
                 Ok(())
             } else {
                 let message = if output.aggregated_output.text.trim().is_empty() {
-                    "SDD Git 命令执行失败。".to_string()
+                    tr(language, "sdd_git.error.command_failed").to_string()
                 } else {
                     output.aggregated_output.text.clone()
                 };
@@ -407,7 +452,11 @@ async fn run_git_logged(
         }
         Ok(Err(err)) => {
             error!("sdd git command failed: {err:?}");
-            let message = format!("SDD Git 执行失败: {err:?}");
+            let message = tr_args(
+                language,
+                "sdd_git.error.command_failed_detail",
+                &[("error", &format!("{err:?}"))],
+            );
             let exec_output = ExecToolCallOutput {
                 exit_code: -1,
                 stdout: StreamOutput::new(String::new()),

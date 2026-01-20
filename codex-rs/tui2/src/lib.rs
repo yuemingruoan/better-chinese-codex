@@ -387,7 +387,7 @@ async fn run_ratatui_app(
         tracing::error!("panic: {info}");
         prev_hook(info);
     }));
-    let mut terminal = tui::init()?;
+    let mut terminal = tui::init(initial_config.language)?;
     terminal.clear()?;
 
     let mut tui = Tui::new(terminal);

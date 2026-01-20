@@ -2376,7 +2376,11 @@ mod handlers {
     ) {
         let turn_context = sess.new_default_turn_with_sub_id(sub_id.clone()).await;
         sess.refresh_mcp_servers_if_requested(&turn_context).await;
-        match resolve_review_request(review_request, turn_context.cwd.as_path()) {
+        match resolve_review_request(
+            review_request,
+            turn_context.cwd.as_path(),
+            turn_context.client.config().language,
+        ) {
             Ok(resolved) => {
                 spawn_review_thread(
                     Arc::clone(sess),
