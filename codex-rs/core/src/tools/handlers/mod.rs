@@ -1,4 +1,5 @@
 pub mod apply_patch;
+mod batches_read_file;
 pub(crate) mod collab;
 mod grep_files;
 mod list_dir;

@@ -48,6 +48,7 @@ encoding_rs = { workspace = true }
 env-flags = { workspace = true }
 eventsource-stream = { workspace = true }
 futures = { workspace = true }
+glob = { workspace = true }
 http = { workspace = true }
 include_dir = { workspace = true }
 indexmap = { workspace = true }
