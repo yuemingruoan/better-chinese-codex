@@ -38,7 +38,6 @@ use super::SessionTaskContext;
 
 const SDD_GIT_TIMEOUT_MS: u64 = 5 * 60 * 1000;
 const SDD_BRANCH_PREFIX: &str = "sdd/";
-const SDD_BASE_BRANCH: &str = "develop-main";
 
 #[derive(Clone)]
 pub(crate) struct SddGitTask {
@@ -100,7 +99,6 @@ async fn run_sdd_git_action(
 
     match action {
         SddGitAction::CreateBranch { name, base } => {
-            ensure_base_branch(base, language)?;
             ensure_sdd_branch(name, language)?;
             ensure_clean_repo(&turn_context.cwd, language)?;
 
@@ -145,7 +143,6 @@ async fn run_sdd_git_action(
             base,
             commit_message,
         } => {
-            ensure_base_branch(base, language)?;
             ensure_sdd_branch(name, language)?;
 
             let current = current_branch(&turn_context.cwd, language)?;
@@ -216,7 +213,6 @@ async fn run_sdd_git_action(
             .await?;
         }
         SddGitAction::AbandonBranch { name, base } => {
-            ensure_base_branch(base, language)?;
             ensure_sdd_branch(name, language)?;
             ensure_clean_repo(&turn_context.cwd, language)?;
 
@@ -243,18 +239,6 @@ async fn run_sdd_git_action(
         }
     }
 
-    Ok(())
-}
-
-fn ensure_base_branch(base: &str, language: Language) -> Result<(), String> {
-    if base != SDD_BASE_BRANCH {
-        let expected = SDD_BASE_BRANCH;
-        return Err(tr_args(
-            language,
-            "sdd_git.error.invalid_base_branch",
-            &[("expected", expected), ("base", base)],
-        ));
-    }
     Ok(())
 }
 

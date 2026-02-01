@@ -564,6 +564,7 @@ branch_delete_started = "Branch deletion started. Please wait for the tool to fi
 branch_deleted = "SDD branch deleted. You can continue the conversation."
 branch_label = "Branch:"
 branch_unknown = "Unable to determine the SDD branch name."
+base_branch_unknown = "Unable to determine the base branch. Please switch to a branch and try again."
 continue_prompt_details = "Additional changes needed:"
 continue_prompt_hint = "After submitting, you can run /sdd-develop again to open next options."
 continue_prompt_intro = "Continue improving on the current branch. Context:"
