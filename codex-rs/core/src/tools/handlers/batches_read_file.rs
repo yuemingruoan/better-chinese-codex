@@ -55,15 +55,11 @@ pub(crate) struct PathSpec {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub(crate) enum ReadMode {
+    #[default]
     Slice,
     Indentation,
-}
-
-impl Default for ReadMode {
-    fn default() -> Self {
-        Self::Slice
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
