@@ -564,6 +564,7 @@ branch_delete_started = "Branch deletion started. Please wait for the tool to fi
 branch_deleted = "SDD branch deleted. You can continue the conversation."
 branch_label = "Branch:"
 branch_unknown = "Unable to determine the SDD branch name."
+base_branch_unknown = "Unable to determine the base branch. Please switch to a branch and try again."
 continue_prompt_details = "Additional changes needed:"
 continue_prompt_hint = "After submitting, you can run /sdd-develop again to open next options."
 continue_prompt_intro = "Continue improving on the current branch. Context:"
@@ -1018,6 +1019,21 @@ base_branch_backup = "Review the code changes against the base branch '${branch}
 commit = "Review the code changes introduced by commit ${sha}. Provide prioritized, actionable findings."
 commit_with_title = "Review the code changes introduced by commit ${sha} (\"${title}\"). Provide prioritized, actionable findings."
 uncommitted = "Review the current code changes (staged, unstaged, and untracked files) and provide prioritized findings."
+
+[batches_read_file.error]
+unsupported_payload = "batches_read_file handler received unsupported payload"
+empty_paths = "paths must not be empty"
+invalid_offset = "offset must be a 1-indexed line number"
+invalid_limit = "limit must be greater than zero"
+serialize_failed = "failed to serialize batches_read_file output: ${error}"
+file_not_found = "file not found: ${path}"
+not_file = "path is not a file: ${path}"
+no_matches = "no matches for pattern: ${pattern}"
+invalid_pattern = "invalid glob pattern: ${pattern}"
+file_invalid_offset = "offset must be >= 1 for ${path}"
+file_invalid_limit = "limit must be >= 1 for ${path}"
+file_limit_exceeded = "file limit exceeded; skipped ${path}"
+total_line_limit = "total line limit reached; output truncated for ${path}"
 
 [sdd_git.error]
 branch_name_invalid = "Invalid branch name: `${name}`."
