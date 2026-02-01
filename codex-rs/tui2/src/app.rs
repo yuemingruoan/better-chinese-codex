@@ -1736,7 +1736,7 @@ impl App {
                 self.chat_widget.open_sdd_plan_options();
             }
             AppEvent::SddPlanApproved => {
-                self.chat_widget.on_sdd_plan_approved();
+                self.chat_widget.on_sdd_plan_approved().await;
             }
             AppEvent::SddPlanRework => {
                 self.chat_widget.on_sdd_plan_rework();

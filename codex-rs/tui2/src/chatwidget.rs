@@ -196,7 +196,6 @@ fn user_shell_command_help_hint(language: Language) -> &'static str {
     tr(language, "chatwidget.shell_help.example")
 }
 const SDD_BRANCH_PREFIX: &str = "sdd/";
-const SDD_BASE_BRANCH: &str = "develop-main";
 
 fn init_prompt(language: Language) -> &'static str {
     tr(language, "prompt.init")
@@ -393,6 +392,7 @@ enum SddDevelopStage {
 struct SddDevelopState {
     description: String,
     branch_name: String,
+    base_branch: Option<String>,
     stage: SddDevelopStage,
 }
 
@@ -2284,6 +2284,7 @@ impl ChatWidget {
             self.sdd_state = Some(SddDevelopState {
                 description: desc.clone(),
                 branch_name,
+                base_branch: None,
                 stage: SddDevelopStage::AwaitPlanDecision,
             });
             let prompt = self.build_sdd_plan_prompt(&desc);
@@ -2421,7 +2422,7 @@ impl ChatWidget {
         self.request_redraw();
     }
 
-    pub(crate) fn on_sdd_plan_approved(&mut self) {
+    pub(crate) async fn on_sdd_plan_approved(&mut self) {
         let language = self.config.language;
         let description = match self.sdd_state.as_ref() {
             Some(state) if state.stage == SddDevelopStage::AwaitPlanDecision => {
@@ -2453,13 +2454,25 @@ impl ChatWidget {
                 return;
             }
         };
+        let base_branch = match current_branch_name(&self.config.cwd).await {
+            Some(branch) => branch,
+            None => {
+                self.add_error_message(
+                    tr(language, "chatwidget.sdd.base_branch_unknown").to_string(),
+                );
+                return;
+            }
+        };
+        if let Some(state) = self.sdd_state.as_mut() {
+            state.base_branch = Some(base_branch.clone());
+        }
 
         self.sdd_pending_git_action = Some(SddGitPendingAction::CreateBranch { description });
         self.sdd_git_action_failed = false;
         self.submit_op(Op::SddGitAction {
             action: SddGitAction::CreateBranch {
                 name: branch_name,
-                base: SDD_BASE_BRANCH.to_string(),
+                base: base_branch,
             },
         });
         self.add_info_message(
@@ -2545,13 +2558,23 @@ impl ChatWidget {
         }
         let commit_message = self.sdd_commit_message(&state.description);
         let branch_name = state.branch_name.clone();
+        let base_branch = match state.base_branch.clone() {
+            Some(base_branch) => base_branch,
+            None => {
+                self.sdd_state = Some(state);
+                self.add_error_message(
+                    tr(language, "chatwidget.sdd.base_branch_unknown").to_string(),
+                );
+                return;
+            }
+        };
         self.sdd_state = Some(state);
         self.sdd_pending_git_action = Some(SddGitPendingAction::FinalizeMerge);
         self.sdd_git_action_failed = false;
         self.submit_op(Op::SddGitAction {
             action: SddGitAction::FinalizeMerge {
                 name: branch_name,
-                base: SDD_BASE_BRANCH.to_string(),
+                base: base_branch,
                 commit_message,
             },
         });
@@ -2579,13 +2602,23 @@ impl ChatWidget {
             return;
         }
         let branch_name = state.branch_name.clone();
+        let base_branch = match state.base_branch.clone() {
+            Some(base_branch) => base_branch,
+            None => {
+                self.sdd_state = Some(state);
+                self.add_error_message(
+                    tr(language, "chatwidget.sdd.base_branch_unknown").to_string(),
+                );
+                return;
+            }
+        };
         self.sdd_state = Some(state);
         self.sdd_pending_git_action = Some(SddGitPendingAction::AbandonBranch);
         self.sdd_git_action_failed = false;
         self.submit_op(Op::SddGitAction {
             action: SddGitAction::AbandonBranch {
                 name: branch_name,
-                base: SDD_BASE_BRANCH.to_string(),
+                base: base_branch,
             },
         });
         self.add_info_message(
