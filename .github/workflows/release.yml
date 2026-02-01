@@ -27,7 +27,76 @@ on:
         default: "false"
 
 jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+    defaults:
+      run:
+        working-directory: codex-rs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: codex-linux
+          - os: macos-14
+            artifact: codex-macos
+          - os: windows-latest
+            artifact: codex-windows
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ github.workspace }}/codex-rs/target/
+          # Use a simple key to avoid hashFiles failures on runners with path issues.
+          key: cargo-${{ matrix.os }}-${{ github.sha }}
+          restore-keys: |
+            cargo-${{ matrix.os }}-
+
+      - name: Build codex binary
+        run: cargo build --release --bin codex
+
+      - name: Package artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          src="target/release/codex"
+          dest="dist/${{ matrix.artifact }}"
+          cp "$src" "$dest"
+          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}"
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target\\release\\codex.exe" "dist\\${{ matrix.artifact }}.exe" -Force
+          Compress-Archive -Path "dist\\${{ matrix.artifact }}.exe" -DestinationPath "${{ matrix.artifact }}.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            codex-rs/${{ matrix.artifact }}.tar.gz
+            codex-rs/${{ matrix.artifact }}.zip
+          if-no-files-found: error
+
   release:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -50,12 +119,22 @@ jobs:
             exit 1
           fi
 
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          mapfile -t assets < <(find dist -type f \( -name '*.tar.gz' -o -name '*.zip' \))
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "No release assets found under dist/"
+            exit 1
+          fi
           args=(release create "${{ inputs.tag }}" --target "${{ inputs.target }}")
           if [[ -n "${{ inputs.title }}" ]]; then
             args+=(--title "${{ inputs.title }}")
@@ -67,4 +146,5 @@ jobs:
             args+=(--prerelease)
           fi
           args+=(--notes-file "${{ inputs.notes_file }}")
+          args+=("${assets[@]}")
           gh "${args[@]}"
