@@ -1265,6 +1265,7 @@ pub(crate) fn build_specs(
     mcp_tools: Option<HashMap<String, mcp_types::Tool>>,
 ) -> ToolRegistryBuilder {
     use crate::tools::handlers::ApplyPatchHandler;
+    use crate::tools::handlers::BatchesReadFileHandler;
     use crate::tools::handlers::CollabHandler;
     use crate::tools::handlers::GrepFilesHandler;
     use crate::tools::handlers::ListDirHandler;
@@ -1289,6 +1290,7 @@ pub(crate) fn build_specs(
     let mcp_handler = Arc::new(McpHandler);
     let mcp_resource_handler = Arc::new(McpResourceHandler);
     let shell_command_handler = Arc::new(ShellCommandHandler);
+    let batches_read_file_handler = Arc::new(BatchesReadFileHandler);
 
     match &config.shell_type {
         ConfigShellToolType::Default => {
@@ -1340,6 +1342,9 @@ pub(crate) fn build_specs(
         }
         builder.register_handler("apply_patch", apply_patch_handler);
     }
+
+    builder.push_spec_with_parallel_support(create_batches_read_file_tool(), true);
+    builder.register_handler("batches_read_file", batches_read_file_handler);
 
     if config
         .experimental_supported_tools
@@ -1614,6 +1619,7 @@ mod tests {
             create_read_mcp_resource_tool(),
             PLAN_TOOL.clone(),
             create_apply_patch_freeform_tool(),
+            create_batches_read_file_tool(),
             ToolSpec::WebSearch {
                 external_web_access: Some(true),
             },
@@ -1730,6 +1736,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1749,6 +1756,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1769,6 +1777,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1789,6 +1798,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1807,6 +1817,7 @@ mod tests {
                 "list_mcp_resource_templates",
                 "read_mcp_resource",
                 "update_plan",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1826,6 +1837,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1844,6 +1856,7 @@ mod tests {
                 "list_mcp_resource_templates",
                 "read_mcp_resource",
                 "update_plan",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1863,6 +1876,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1883,6 +1897,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1902,6 +1917,7 @@ mod tests {
                 "list_mcp_resource_templates",
                 "read_mcp_resource",
                 "update_plan",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1945,6 +1961,7 @@ mod tests {
 
         assert!(!find_tool(&tools, "exec_command").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "write_stdin").supports_parallel_tool_calls);
+        assert!(find_tool(&tools, "batches_read_file").supports_parallel_tool_calls);
         assert!(find_tool(&tools, "grep_files").supports_parallel_tool_calls);
         assert!(find_tool(&tools, "list_dir").supports_parallel_tool_calls);
         assert!(find_tool(&tools, "read_file").supports_parallel_tool_calls);
@@ -1971,6 +1988,11 @@ mod tests {
             tools
                 .iter()
                 .any(|tool| tool_name(&tool.spec) == "read_file")
+        );
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool_name(&tool.spec) == "batches_read_file")
         );
         assert!(
             tools
