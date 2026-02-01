@@ -1017,6 +1017,21 @@ commit = "请审查提交 ${sha} 引入的代码改动，并给出按优先级�
 commit_with_title = "请审查提交 ${sha}（\"${title}\"）引入的代码改动，并给出按优先级排序、可执行的建议。"
 uncommitted = "请审查当前代码改动（已暂存、未暂存及未跟踪文件），并给出按优先级排序的问题与建议。"
 
+[batches_read_file.error]
+unsupported_payload = "batches_read_file 收到不支持的 payload"
+empty_paths = "paths 不能为空"
+invalid_offset = "offset 必须为从 1 开始的行号"
+invalid_limit = "limit 必须大于 0"
+serialize_failed = "序列化 batches_read_file 输出失败：${error}"
+file_not_found = "未找到文件：${path}"
+not_file = "路径不是文件：${path}"
+no_matches = "通配符无匹配项：${pattern}"
+invalid_pattern = "无效的通配符模式：${pattern}"
+file_invalid_offset = "offset 必须 >= 1：${path}"
+file_invalid_limit = "limit 必须 >= 1：${path}"
+file_limit_exceeded = "超过文件数量上限，已跳过：${path}"
+total_line_limit = "达到总行数上限，已截断：${path}"
+
 [sdd_git.error]
 branch_name_invalid = "分支名无效：`${name}`。"
 branch_name_invalid_segment = "分支名包含非法片段：`${name}`。"
