@@ -113,3 +113,12 @@
 
 - 当前待办：
   - 等待用户确认计划或补充需求。
+
+## 2026-02-01 15:09:37 CST
+- 通过 merge commit 将 `sdd/sdd-develop-sdd-develop` 合并到 `develop-main`。
+- 清理本次 SDD 任务文件 `.codex/task.md`，删除本地开发分支。
+- 更新 SDD 基线分支逻辑与 i18n，并同步 TUI/TUI2 状态快照。
+- 运行 `cargo test -p codex-core`、`cargo test -p codex-tui`、`cargo test -p codex-tui2`；全量 `cargo test --all-features` 因用户说明 `rg` 问题未再重跑。
+
+- 当前待办：
+  - 如需远端清理，删除远端分支 `sdd/sdd-develop-sdd-develop`（按团队流程）。
