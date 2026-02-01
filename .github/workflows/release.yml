@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag name (e.g. v1.6.7) / 标签名（例如 v1.6.7）
+        required: true
+      target:
+        description: Target commit/branch/sha / 目标提交/分支/哈希
+        required: false
+        default: main
+      title:
+        description: Release title (optional) / 发布标题（可选）
+        required: false
+      notes_file:
+        description: Path to release notes file / 发布说明文件路径
+        required: false
+        default: docs/release/notes.md
+      draft:
+        description: Create as draft (true/false) / 作为草稿发布（true/false）
+        required: false
+        default: "false"
+      prerelease:
+        description: Mark as prerelease (true/false) / 标记为预发布（true/false）
+        required: false
+        default: "false"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${{ inputs.notes_file }}" ]]; then
+            echo "notes_file is required."
+            exit 1
+          fi
+          if [[ ! -f "${{ inputs.notes_file }}" ]]; then
+            echo "notes_file does not exist: ${{ inputs.notes_file }}"
+            exit 1
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(release create "${{ inputs.tag }}" --target "${{ inputs.target }}")
+          if [[ -n "${{ inputs.title }}" ]]; then
+            args+=(--title "${{ inputs.title }}")
+          fi
+          if [[ "${{ inputs.draft }}" == "true" ]]; then
+            args+=(--draft)
+          fi
+          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+          args+=(--notes-file "${{ inputs.notes_file }}")
+          gh "${args[@]}"
