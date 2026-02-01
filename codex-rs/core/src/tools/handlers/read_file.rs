@@ -49,8 +49,8 @@ enum ReadMode {
     Indentation,
 }
 /// Additional configuration for indentation-aware reads.
-#[derive(Deserialize, Clone)]
-struct IndentationArgs {
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub(crate) struct IndentationArgs {
     /// Optional explicit anchor line; defaults to `offset` when omitted.
     #[serde(default)]
     anchor_line: Option<usize>,
@@ -162,7 +162,7 @@ mod slice {
     use tokio::io::AsyncBufReadExt;
     use tokio::io::BufReader;
 
-    pub async fn read(
+    pub(crate) async fn read(
         path: &Path,
         offset: usize,
         limit: usize,
@@ -234,7 +234,7 @@ mod indentation {
     use tokio::io::AsyncBufReadExt;
     use tokio::io::BufReader;
 
-    pub async fn read_block(
+    pub(crate) async fn read_block(
         path: &Path,
         offset: usize,
         limit: usize,
@@ -429,6 +429,9 @@ mod indentation {
             .sum()
     }
 }
+
+pub(crate) use indentation::read_block as read_indentation_block;
+pub(crate) use slice::read as read_slice;
 
 fn format_line(bytes: &[u8]) -> String {
     let decoded = String::from_utf8_lossy(bytes);

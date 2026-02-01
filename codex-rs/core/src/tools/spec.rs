@@ -752,6 +752,160 @@ fn create_read_file_tool() -> ToolSpec {
     })
 }
 
+fn create_batches_read_file_tool() -> ToolSpec {
+    let indentation_properties = BTreeMap::from([
+        (
+            "anchor_line".to_string(),
+            JsonSchema::Number {
+                description: Some(
+                    "Anchor line to center the indentation lookup on (defaults to offset)."
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "max_levels".to_string(),
+            JsonSchema::Number {
+                description: Some(
+                    "How many parent indentation levels (smaller indents) to include.".to_string(),
+                ),
+            },
+        ),
+        (
+            "include_siblings".to_string(),
+            JsonSchema::Boolean {
+                description: Some(
+                    "When true, include additional blocks that share the anchor indentation."
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "include_header".to_string(),
+            JsonSchema::Boolean {
+                description: Some(
+                    "Include doc comments or attributes directly above the selected block."
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "max_lines".to_string(),
+            JsonSchema::Number {
+                description: Some(
+                    "Hard cap on the number of lines returned when using indentation mode."
+                        .to_string(),
+                ),
+            },
+        ),
+    ]);
+
+    let file_properties = BTreeMap::from([
+        (
+            "path".to_string(),
+            JsonSchema::String {
+                description: Some("File path (absolute or relative to the session cwd).".to_string()),
+            },
+        ),
+        (
+            "offset".to_string(),
+            JsonSchema::Number {
+                description: Some(
+                    "The line number to start reading from. Must be 1 or greater.".to_string(),
+                ),
+            },
+        ),
+        (
+            "limit".to_string(),
+            JsonSchema::Number {
+                description: Some("The maximum number of lines to return.".to_string()),
+            },
+        ),
+        (
+            "mode".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "Optional mode selector: \"slice\" for simple ranges (default) or \"indentation\" \
+                     to expand around an anchor line."
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "indentation".to_string(),
+            JsonSchema::Object {
+                properties: indentation_properties.clone(),
+                required: None,
+                additional_properties: Some(false.into()),
+            },
+        ),
+    ]);
+
+    let properties = BTreeMap::from([
+        (
+            "paths".to_string(),
+            JsonSchema::Array {
+                items: Box::new(JsonSchema::Object {
+                    properties: file_properties,
+                    required: Some(vec!["path".to_string()]),
+                    additional_properties: Some(false.into()),
+                }),
+                description: Some(
+                    "Files to read; each entry can override the default read options.".to_string(),
+                ),
+            },
+        ),
+        (
+            "offset".to_string(),
+            JsonSchema::Number {
+                description: Some(
+                    "Default line number to start reading from when per-file offset is omitted."
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "limit".to_string(),
+            JsonSchema::Number {
+                description: Some(
+                    "Default maximum number of lines to return when per-file limit is omitted."
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "mode".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "Default mode selector: \"slice\" for simple ranges (default) or \"indentation\" \
+                     to expand around an anchor line."
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "indentation".to_string(),
+            JsonSchema::Object {
+                properties: indentation_properties,
+                required: None,
+                additional_properties: Some(false.into()),
+            },
+        ),
+    ]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "batches_read_file".to_string(),
+        description: "Reads multiple local files with 1-indexed line numbers and returns a structured JSON payload."
+            .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["paths".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
 fn create_list_dir_tool() -> ToolSpec {
     let properties = BTreeMap::from([
         (
@@ -1111,6 +1265,7 @@ pub(crate) fn build_specs(
     mcp_tools: Option<HashMap<String, mcp_types::Tool>>,
 ) -> ToolRegistryBuilder {
     use crate::tools::handlers::ApplyPatchHandler;
+    use crate::tools::handlers::BatchesReadFileHandler;
     use crate::tools::handlers::CollabHandler;
     use crate::tools::handlers::GrepFilesHandler;
     use crate::tools::handlers::ListDirHandler;
@@ -1135,6 +1290,7 @@ pub(crate) fn build_specs(
     let mcp_handler = Arc::new(McpHandler);
     let mcp_resource_handler = Arc::new(McpResourceHandler);
     let shell_command_handler = Arc::new(ShellCommandHandler);
+    let batches_read_file_handler = Arc::new(BatchesReadFileHandler);
 
     match &config.shell_type {
         ConfigShellToolType::Default => {
@@ -1186,6 +1342,9 @@ pub(crate) fn build_specs(
         }
         builder.register_handler("apply_patch", apply_patch_handler);
     }
+
+    builder.push_spec_with_parallel_support(create_batches_read_file_tool(), true);
+    builder.register_handler("batches_read_file", batches_read_file_handler);
 
     if config
         .experimental_supported_tools
@@ -1371,6 +1530,57 @@ mod tests {
     }
 
     #[test]
+    fn test_batches_read_file_tool_schema() {
+        let mut tool = create_batches_read_file_tool();
+        strip_descriptions_tool(&mut tool);
+        let ToolSpec::Function(ResponsesApiTool {
+            name, parameters, ..
+        }) = tool
+        else {
+            panic!("expected batches_read_file to be a function tool");
+        };
+        assert_eq!(name, "batches_read_file");
+        let JsonSchema::Object {
+            properties,
+            required,
+            additional_properties,
+        } = parameters
+        else {
+            panic!("expected object schema for batches_read_file");
+        };
+        assert_eq!(required, Some(vec!["paths".to_string()]));
+        assert_eq!(additional_properties, Some(false.into()));
+        let paths_schema = properties
+            .get("paths")
+            .expect("paths property should exist");
+        let JsonSchema::Array { items, .. } = paths_schema else {
+            panic!("paths should be an array schema");
+        };
+        let JsonSchema::Object {
+            properties: file_properties,
+            required: file_required,
+            additional_properties: file_additional_properties,
+        } = items.as_ref()
+        else {
+            panic!("paths items should be object schemas");
+        };
+        assert_eq!(file_required, &Some(vec!["path".to_string()]));
+        assert_eq!(file_additional_properties, &Some(false.into()));
+        for key in ["path", "offset", "limit", "mode", "indentation"] {
+            assert!(
+                file_properties.contains_key(key),
+                "paths items should define {key}"
+            );
+        }
+        for key in ["offset", "limit", "mode", "indentation"] {
+            assert!(
+                properties.contains_key(key),
+                "top-level schema should define {key}"
+            );
+        }
+    }
+
+    #[test]
     fn test_full_toolset_specs_for_gpt5_codex_unified_exec_web_search() {
         let config = test_config();
         let model_info = ModelsManager::construct_model_info_offline("gpt-5-codex", &config);
@@ -1409,6 +1619,7 @@ mod tests {
             create_read_mcp_resource_tool(),
             PLAN_TOOL.clone(),
             create_apply_patch_freeform_tool(),
+            create_batches_read_file_tool(),
             ToolSpec::WebSearch {
                 external_web_access: Some(true),
             },
@@ -1525,6 +1736,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1544,6 +1756,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1564,6 +1777,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1584,6 +1798,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1602,6 +1817,7 @@ mod tests {
                 "list_mcp_resource_templates",
                 "read_mcp_resource",
                 "update_plan",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1621,6 +1837,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1639,6 +1856,7 @@ mod tests {
                 "list_mcp_resource_templates",
                 "read_mcp_resource",
                 "update_plan",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1658,6 +1876,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1678,6 +1897,7 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1697,6 +1917,7 @@ mod tests {
                 "list_mcp_resource_templates",
                 "read_mcp_resource",
                 "update_plan",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -1740,6 +1961,7 @@ mod tests {
 
         assert!(!find_tool(&tools, "exec_command").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "write_stdin").supports_parallel_tool_calls);
+        assert!(find_tool(&tools, "batches_read_file").supports_parallel_tool_calls);
         assert!(find_tool(&tools, "grep_files").supports_parallel_tool_calls);
         assert!(find_tool(&tools, "list_dir").supports_parallel_tool_calls);
         assert!(find_tool(&tools, "read_file").supports_parallel_tool_calls);
@@ -1766,6 +1988,11 @@ mod tests {
             tools
                 .iter()
                 .any(|tool| tool_name(&tool.spec) == "read_file")
+        );
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool_name(&tool.spec) == "batches_read_file")
         );
         assert!(
             tools

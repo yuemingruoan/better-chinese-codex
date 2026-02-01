@@ -1,4 +1,5 @@
 pub mod apply_patch;
+mod batches_read_file;
 pub(crate) mod collab;
 mod grep_files;
 mod list_dir;
@@ -16,6 +17,7 @@ use serde::Deserialize;
 
 use crate::function_tool::FunctionCallError;
 pub use apply_patch::ApplyPatchHandler;
+pub use batches_read_file::BatchesReadFileHandler;
 pub use collab::CollabHandler;
 pub use grep_files::GrepFilesHandler;
 pub use list_dir::ListDirHandler;
