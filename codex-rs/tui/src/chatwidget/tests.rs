@@ -96,6 +96,7 @@ use tempfile::tempdir;
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::unbounded_channel;
 use toml::Value as TomlValue;
+use unicode_width::UnicodeWidthStr;
 
 async fn test_config() -> Config {
     // Use base defaults to avoid depending on host state.
@@ -1521,8 +1522,9 @@ async fn plan_implementation_popup_skips_when_rate_limit_prompt_pending() {
     chat.on_task_complete(None, false);
 
     let popup = render_bottom_popup(&chat, 80);
+    let expected = tr(chat.config.language, "chatwidget.rate_limit_prompt.title");
     assert!(
-        popup.contains("Approaching rate limits"),
+        popup.contains(expected),
         "expected rate limit popup, got {popup:?}"
     );
     assert!(
@@ -3272,13 +3274,13 @@ fn render_bottom_popup(chat: &ChatWidget, width: u16) -> String {
     let mut lines: Vec<String> = (0..area.height)
         .map(|row| {
             let mut line = String::new();
+            let mut skip = 0usize;
             for col in 0..area.width {
                 let symbol = buf[(area.x + col, area.y + row)].symbol();
-                if symbol.is_empty() {
-                    line.push(' ');
-                } else {
+                if skip == 0 {
                     line.push_str(symbol);
                 }
+                skip = skip.max(symbol.width()).saturating_sub(1);
             }
             line.trim_end().to_string()
         })

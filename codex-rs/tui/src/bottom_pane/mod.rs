@@ -20,6 +20,7 @@ use crate::app_event::ConnectorsSnapshot;
 use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::queued_user_messages::QueuedUserMessages;
 use crate::bottom_pane::unified_exec_footer::UnifiedExecFooter;
+use crate::i18n::tr;
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
 use crate::render::renderable::FlexRenderable;
@@ -766,11 +767,12 @@ impl BottomPane {
             self.has_input_focus,
             self.enhanced_keys_supported,
             self.disable_paste_burst,
+            self.language,
         );
         self.pause_status_timer_for_modal();
         self.set_composer_input_enabled(
             false,
-            Some("Answer the questions to continue.".to_string()),
+            Some(tr(self.language, "request_user_input.hint.answer_questions").to_string()),
         );
         self.push_view(Box::new(modal));
     }
@@ -1163,6 +1165,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         pane.set_task_running(true);
@@ -1186,6 +1189,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         pane.set_task_running(true);
@@ -1282,6 +1286,7 @@ mod tests {
                 path: PathBuf::from("test-skill"),
                 scope: SkillScope::User,
             }]),
+            language: Language::En,
         });
 
         pane.set_task_running(true);
@@ -1320,6 +1325,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         pane.set_task_running(true);
@@ -1355,6 +1361,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         pane.set_task_running(true);
@@ -1411,6 +1418,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         let on_ctrl_c_calls = Rc::new(Cell::new(0));

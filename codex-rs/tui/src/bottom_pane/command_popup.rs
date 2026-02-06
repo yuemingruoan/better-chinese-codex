@@ -11,7 +11,6 @@ use crate::i18n::tr;
 use crate::render::Insets;
 use crate::render::RectExt;
 use crate::slash_command::SlashCommand;
-use codex_common::fuzzy_match::fuzzy_match;
 use codex_protocol::config_types::Language;
 use codex_protocol::custom_prompts::CustomPrompt;
 use codex_protocol::custom_prompts::PROMPTS_CMD_PREFIX;
@@ -54,7 +53,7 @@ impl CommandPopup {
         language: Language,
     ) -> Self {
         // Keep built-in availability in sync with the composer.
-        let builtins = slash_commands::builtins_for_input(
+        let builtins: Vec<(&'static str, SlashCommand)> = slash_commands::builtins_for_input(
             flags.collaboration_modes_enabled,
             flags.connectors_enabled,
             flags.personality_command_enabled,

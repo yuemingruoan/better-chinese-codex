@@ -121,8 +121,6 @@ impl SlashCommand {
             | SlashCommand::Model
             | SlashCommand::Lang
             | SlashCommand::Personality
-            | SlashCommand::Lang
-            | SlashCommand::Personality
             | SlashCommand::Approvals
             | SlashCommand::Permissions
             | SlashCommand::ElevateSandbox

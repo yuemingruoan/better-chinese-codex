@@ -819,7 +819,7 @@ impl App {
         self.chat_widget.show_selection_view(SelectionViewParams {
             title: Some("Agents".to_string()),
             subtitle: Some("Select a thread to focus".to_string()),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             initial_selected_idx,
             ..Default::default()

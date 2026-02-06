@@ -271,8 +271,6 @@ struct PickerState {
     action: SessionPickerAction,
     language: Language,
     thread_name_cache: HashMap<ThreadId, Option<String>>,
-    language: Language,
-    thread_name_cache: HashMap<ThreadId, Option<String>>,
 }
 
 struct PaginationState {
@@ -389,8 +387,6 @@ impl PickerState {
             show_all,
             filter_cwd,
             action,
-            language,
-            thread_name_cache: HashMap::new(),
             language,
             thread_name_cache: HashMap::new(),
         }
@@ -1682,6 +1678,7 @@ mod tests {
             true,
             None,
             SessionPickerAction::Resume,
+            Language::En,
         );
 
         let now = Utc::now();
@@ -1716,7 +1713,8 @@ mod tests {
 
         state.update_thread_names().await;
 
-        let metrics = calculate_column_metrics(&state.filtered_rows, state.show_all);
+        let metrics =
+            calculate_column_metrics(&state.filtered_rows, state.show_all, state.language);
 
         let width: u16 = 80;
         let height: u16 = 5;
@@ -1729,7 +1727,7 @@ mod tests {
             let area = frame.area();
             let segments =
                 Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(area);
-            render_column_headers(&mut frame, segments[0], &metrics);
+            render_column_headers(&mut frame, segments[0], &metrics, state.language);
             render_list(&mut frame, segments[1], &state, &metrics);
         }
         terminal.flush().expect("flush");

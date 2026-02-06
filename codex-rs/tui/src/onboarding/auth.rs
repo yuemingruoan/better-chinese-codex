@@ -5,6 +5,7 @@ use codex_core::auth::AuthCredentialsStoreMode;
 use codex_core::auth::CLIENT_ID;
 use codex_core::auth::login_with_api_key;
 use codex_core::auth::read_openai_api_key_from_env;
+use codex_core::env::is_headless_environment;
 use codex_login::DeviceCode;
 use codex_login::ServerOptions;
 use codex_login::ShutdownHandle;
@@ -392,9 +393,17 @@ impl AuthModeWidget {
             ]));
             lines.push("".into());
             lines.push(Line::from(vec![
-                tr(language, "onboarding.auth.continue_in_browser.remote_prefix").into(),
+                tr(
+                    language,
+                    "onboarding.auth.continue_in_browser.remote_prefix",
+                )
+                .into(),
                 tr(language, "onboarding.auth.option.device_code").cyan(),
-                tr(language, "onboarding.auth.continue_in_browser.remote_suffix").into(),
+                tr(
+                    language,
+                    "onboarding.auth.continue_in_browser.remote_suffix",
+                )
+                .into(),
             ]));
             lines.push("".into());
         }

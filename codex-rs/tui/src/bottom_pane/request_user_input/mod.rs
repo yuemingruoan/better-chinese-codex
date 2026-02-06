@@ -28,30 +28,22 @@ use crate::bottom_pane::scroll_state::ScrollState;
 use crate::bottom_pane::selection_popup_common::GenericDisplayRow;
 use crate::bottom_pane::selection_popup_common::measure_rows_height;
 use crate::history_cell;
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::render::renderable::Renderable;
 
 use codex_core::protocol::Op;
+use codex_protocol::config_types::Language;
 use codex_protocol::request_user_input::RequestUserInputAnswer;
 use codex_protocol::request_user_input::RequestUserInputEvent;
 use codex_protocol::request_user_input::RequestUserInputResponse;
 use codex_protocol::user_input::TextElement;
 use unicode_width::UnicodeWidthStr;
 
-const NOTES_PLACEHOLDER: &str = "Add notes";
-const ANSWER_PLACEHOLDER: &str = "Type your answer (optional)";
 // Keep in sync with ChatComposer's minimum composer height.
 const MIN_COMPOSER_HEIGHT: u16 = 3;
-const SELECT_OPTION_PLACEHOLDER: &str = "Select an option to add notes";
 pub(super) const TIP_SEPARATOR: &str = " | ";
 pub(super) const DESIRED_SPACERS_BETWEEN_SECTIONS: u16 = 2;
-const OTHER_OPTION_LABEL: &str = "None of the above";
-const OTHER_OPTION_DESCRIPTION: &str = "Optionally, add details in notes (tab).";
-const UNANSWERED_CONFIRM_TITLE: &str = "Submit with unanswered questions?";
-const UNANSWERED_CONFIRM_GO_BACK: &str = "Go back";
-const UNANSWERED_CONFIRM_GO_BACK_DESC: &str = "Return to the first unanswered question.";
-const UNANSWERED_CONFIRM_SUBMIT: &str = "Proceed";
-const UNANSWERED_CONFIRM_SUBMIT_DESC_SINGULAR: &str = "question";
-const UNANSWERED_CONFIRM_SUBMIT_DESC_PLURAL: &str = "questions";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Focus {
@@ -120,6 +112,7 @@ impl FooterTip {
 
 pub(crate) struct RequestUserInputOverlay {
     app_event_tx: AppEventSender,
+    language: Language,
     request: RequestUserInputEvent,
     // Queue of incoming requests to process after the current one.
     queue: VecDeque<RequestUserInputEvent>,
@@ -142,6 +135,7 @@ impl RequestUserInputOverlay {
         has_input_focus: bool,
         enhanced_keys_supported: bool,
         disable_paste_burst: bool,
+        language: Language,
     ) -> Self {
         // Use the same composer widget, but disable popups/slash-commands and
         // image-path attachment so it behaves like a focused notes field.
@@ -149,14 +143,16 @@ impl RequestUserInputOverlay {
             has_input_focus,
             app_event_tx.clone(),
             enhanced_keys_supported,
-            ANSWER_PLACEHOLDER.to_string(),
+            tr(language, "request_user_input.placeholder.answer").to_string(),
             disable_paste_burst,
             ChatComposerConfig::plain_text(),
         );
+        composer.set_language(language);
         // The overlay renders its own footer hints, so keep the composer footer empty.
         composer.set_footer_hint_override(Some(Vec::new()));
         let mut overlay = Self {
             app_event_tx,
+            language,
             request,
             queue: VecDeque::new(),
             composer,
@@ -293,9 +289,12 @@ impl RequestUserInputOverlay {
                     let selected = selected_idx.is_some_and(|sel| sel == idx);
                     let prefix = if selected { '›' } else { ' ' };
                     let number = idx + 1;
+                    let other_label = tr(self.language, "request_user_input.other_option.label");
+                    let other_description =
+                        tr(self.language, "request_user_input.other_option.description");
                     rows.push(GenericDisplayRow {
-                        name: format!("{prefix} {number}. {OTHER_OPTION_LABEL}"),
-                        description: Some(OTHER_OPTION_DESCRIPTION.to_string()),
+                        name: format!("{prefix} {number}. {other_label}"),
+                        description: Some(other_description.to_string()),
                         ..Default::default()
                     });
                 }
@@ -394,11 +393,14 @@ impl RequestUserInputOverlay {
 
     fn notes_placeholder(&self) -> &'static str {
         if self.has_options() && self.selected_option_index().is_none() {
-            SELECT_OPTION_PLACEHOLDER
+            tr(
+                self.language,
+                "request_user_input.placeholder.select_option",
+            )
         } else if self.has_options() {
-            NOTES_PLACEHOLDER
+            tr(self.language, "request_user_input.placeholder.notes")
         } else {
-            ANSWER_PLACEHOLDER
+            tr(self.language, "request_user_input.placeholder.answer")
         }
     }
 
@@ -425,32 +427,56 @@ impl RequestUserInputOverlay {
         let notes_visible = self.notes_ui_visible();
         if self.has_options() {
             if self.selected_option_index().is_some() && !notes_visible {
-                tips.push(FooterTip::highlighted("tab to add notes"));
+                tips.push(FooterTip::highlighted(tr(
+                    self.language,
+                    "request_user_input.footer.tab_add_notes",
+                )));
             }
             if self.selected_option_index().is_some() && notes_visible {
-                tips.push(FooterTip::new("tab or esc to clear notes"));
+                tips.push(FooterTip::new(tr(
+                    self.language,
+                    "request_user_input.footer.tab_or_esc_clear_notes",
+                )));
             }
         }
 
         let question_count = self.question_count();
         let is_last_question = self.current_index().saturating_add(1) >= question_count;
         let enter_tip = if question_count == 1 {
-            FooterTip::highlighted("enter to submit answer")
+            FooterTip::highlighted(tr(
+                self.language,
+                "request_user_input.footer.enter_submit_answer",
+            ))
         } else if is_last_question {
-            FooterTip::highlighted("enter to submit all")
+            FooterTip::highlighted(tr(
+                self.language,
+                "request_user_input.footer.enter_submit_all",
+            ))
         } else {
-            FooterTip::new("enter to submit answer")
+            FooterTip::new(tr(
+                self.language,
+                "request_user_input.footer.enter_submit_answer",
+            ))
         };
         tips.push(enter_tip);
         if question_count > 1 {
             if is_last_question {
-                tips.push(FooterTip::new("ctrl + n first question"));
+                tips.push(FooterTip::new(tr(
+                    self.language,
+                    "request_user_input.footer.ctrl_n_first_question",
+                )));
             } else {
-                tips.push(FooterTip::new("ctrl + n next question"));
+                tips.push(FooterTip::new(tr(
+                    self.language,
+                    "request_user_input.footer.ctrl_n_next_question",
+                )));
             }
         }
         if !(self.has_options() && notes_visible) {
-            tips.push(FooterTip::new("esc to interrupt"));
+            tips.push(FooterTip::new(tr(
+                self.language,
+                "request_user_input.footer.esc_interrupt",
+            )));
         }
         tips
     }
@@ -595,13 +621,14 @@ impl RequestUserInputOverlay {
     fn option_label_for_index(
         question: &codex_protocol::request_user_input::RequestUserInputQuestion,
         idx: usize,
+        language: Language,
     ) -> Option<String> {
         let options = question.options.as_ref()?;
         if idx < options.len() {
             return options.get(idx).map(|opt| opt.label.clone());
         }
         if idx == options.len() && Self::other_option_enabled_for_question(question) {
-            return Some(OTHER_OPTION_LABEL.to_string());
+            return Some(tr(language, "request_user_input.other_option.label").to_string());
         }
         None
     }
@@ -726,8 +753,9 @@ impl RequestUserInputOverlay {
             } else {
                 String::new()
             };
-            let selected_label = selected_idx
-                .and_then(|selected_idx| Self::option_label_for_index(question, selected_idx));
+            let selected_label = selected_idx.and_then(|selected_idx| {
+                Self::option_label_for_index(question, selected_idx, self.language)
+            });
             let mut answer_list = selected_label.into_iter().collect::<Vec<_>>();
             if !notes.is_empty() {
                 answer_list.push(format!("user_note: {notes}"));
@@ -777,14 +805,40 @@ impl RequestUserInputOverlay {
         self.unanswered_count()
     }
 
+    fn unanswered_suffix(&self, count: usize) -> &'static str {
+        if count == 1 {
+            tr(
+                self.language,
+                "request_user_input.confirm_unanswered.submit_desc_singular",
+            )
+        } else {
+            tr(
+                self.language,
+                "request_user_input.confirm_unanswered.submit_desc_plural",
+            )
+        }
+    }
+
+    fn unanswered_confirmation_subtitle(&self) -> String {
+        let count = self.unanswered_question_count();
+        let count_str = count.to_string();
+        let suffix = self.unanswered_suffix(count);
+        tr_args(
+            self.language,
+            "request_user_input.confirm_unanswered.subtitle",
+            &[("count", count_str.as_str()), ("suffix", suffix)],
+        )
+    }
+
     fn unanswered_submit_description(&self) -> String {
         let count = self.unanswered_question_count();
-        let suffix = if count == 1 {
-            UNANSWERED_CONFIRM_SUBMIT_DESC_SINGULAR
-        } else {
-            UNANSWERED_CONFIRM_SUBMIT_DESC_PLURAL
-        };
-        format!("Submit with {count} unanswered {suffix}.")
+        let count_str = count.to_string();
+        let suffix = self.unanswered_suffix(count);
+        tr_args(
+            self.language,
+            "request_user_input.confirm_unanswered.submit_with_count",
+            &[("count", count_str.as_str()), ("suffix", suffix)],
+        )
     }
 
     fn first_unanswered_index(&self) -> Option<usize> {
@@ -805,12 +859,22 @@ impl RequestUserInputOverlay {
             .unwrap_or(0);
         let entries = [
             (
-                UNANSWERED_CONFIRM_SUBMIT,
+                tr(
+                    self.language,
+                    "request_user_input.confirm_unanswered.submit",
+                ),
                 self.unanswered_submit_description(),
             ),
             (
-                UNANSWERED_CONFIRM_GO_BACK,
-                UNANSWERED_CONFIRM_GO_BACK_DESC.to_string(),
+                tr(
+                    self.language,
+                    "request_user_input.confirm_unanswered.go_back",
+                ),
+                tr(
+                    self.language,
+                    "request_user_input.confirm_unanswered.go_back_desc",
+                )
+                .to_string(),
             ),
         ];
         entries
@@ -1415,6 +1479,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         overlay.try_consume_user_input_request(request_event(
             "turn-2",
@@ -1441,6 +1506,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         overlay.try_consume_user_input_request(RequestUserInputEvent {
             call_id: "call-2".to_string(),
@@ -1468,6 +1534,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay.submit_answers();
@@ -1490,6 +1557,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay.handle_key_event(KeyEvent::from(KeyCode::Enter));
@@ -1517,6 +1585,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay.handle_key_event(KeyEvent::from(KeyCode::Enter));
@@ -1559,6 +1628,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay.handle_key_event(KeyEvent::from(KeyCode::Char('2')));
@@ -1580,6 +1650,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let answer = overlay.current_answer().expect("answer missing");
         assert_eq!(answer.options_state.selected_idx, Some(0));
@@ -1608,6 +1679,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         assert_eq!(overlay.current_index(), 0);
@@ -1634,6 +1706,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         assert_eq!(overlay.current_index(), 0);
@@ -1652,6 +1725,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let answer = overlay.current_answer_mut().expect("answer missing");
         answer.options_state.selected_idx = Some(1);
@@ -1677,6 +1751,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         assert!(matches!(overlay.focus, Focus::Notes));
@@ -1701,6 +1776,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay
@@ -1741,6 +1817,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay.handle_key_event(KeyEvent::from(KeyCode::Esc));
@@ -1758,6 +1835,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay.handle_key_event(KeyEvent::from(KeyCode::Esc));
@@ -1775,6 +1853,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let answer = overlay.current_answer_mut().expect("answer missing");
         answer.options_state.selected_idx = Some(0);
@@ -1803,6 +1882,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let answer = overlay.current_answer_mut().expect("answer missing");
         answer.options_state.selected_idx = Some(0);
@@ -1838,6 +1918,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay.handle_key_event(KeyEvent::from(KeyCode::Enter));
@@ -1860,6 +1941,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let answer = overlay.current_answer_mut().expect("answer missing");
         answer.options_state.selected_idx = Some(1);
@@ -1881,6 +1963,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let answer = overlay.current_answer_mut().expect("answer missing");
         answer.options_state.selected_idx = Some(0);
@@ -1907,6 +1990,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let answer = overlay.current_answer_mut().expect("answer missing");
         answer.options_state.selected_idx = Some(0);
@@ -1936,6 +2020,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         assert_eq!(overlay.unanswered_count(), 1);
@@ -1950,6 +2035,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let answer = overlay.current_answer_mut().expect("answer missing");
         answer.options_state.selected_idx = Some(0);
@@ -1972,6 +2058,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay
@@ -2001,6 +2088,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay.handle_key_event(KeyEvent::from(KeyCode::Enter));
@@ -2018,6 +2106,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay.submit_answers();
@@ -2039,6 +2128,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         overlay
             .composer
@@ -2070,6 +2160,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay
@@ -2107,6 +2198,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         {
@@ -2155,6 +2247,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay.handle_key_event(KeyEvent::from(KeyCode::Down));
@@ -2184,6 +2277,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         let rows = overlay.option_rows();
@@ -2191,7 +2285,10 @@ mod tests {
         assert_eq!(other_row.name, "  4. None of the above");
         assert_eq!(
             other_row.description.as_deref(),
-            Some(OTHER_OPTION_DESCRIPTION)
+            Some(tr(
+                Language::En,
+                "request_user_input.other_option.description",
+            ))
         );
 
         let other_idx = overlay.options_len().saturating_sub(1);
@@ -2219,7 +2316,7 @@ mod tests {
         assert_eq!(
             answer.answers,
             vec![
-                OTHER_OPTION_LABEL.to_string(),
+                tr(Language::En, "request_user_input.other_option.label").to_string(),
                 "user_note: Custom answer".to_string(),
             ]
         );
@@ -2240,6 +2337,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         let large = "x".repeat(1_500);
@@ -2268,6 +2366,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         let large = "x".repeat(1_200);
@@ -2293,6 +2392,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let area = Rect::new(0, 0, 120, 16);
         insta::assert_snapshot!(
@@ -2310,6 +2410,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         {
             let answer = overlay.current_answer_mut().expect("answer missing");
@@ -2333,6 +2434,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let area = Rect::new(0, 0, 120, 10);
         insta::assert_snapshot!(
@@ -2353,6 +2455,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         let width = 48u16;
@@ -2381,6 +2484,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         let width = 110u16;
@@ -2413,6 +2517,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let answer = overlay.current_answer_mut().expect("answer missing");
         answer.options_state.selected_idx = Some(0);
@@ -2447,6 +2552,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         {
@@ -2483,6 +2589,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let answer = overlay.current_answer_mut().expect("answer missing");
         answer.options_state.selected_idx = Some(1);
@@ -2536,6 +2643,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         {
             let answer = overlay.current_answer_mut().expect("answer missing");
@@ -2588,6 +2696,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         {
             let answer = overlay.current_answer_mut().expect("answer missing");
@@ -2609,6 +2718,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let area = Rect::new(0, 0, 120, 10);
         insta::assert_snapshot!(
@@ -2632,6 +2742,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         let area = Rect::new(0, 0, 120, 15);
         insta::assert_snapshot!(
@@ -2655,6 +2766,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         overlay.move_question(true);
         let area = Rect::new(0, 0, 120, 12);
@@ -2679,6 +2791,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
 
         overlay.open_unanswered_confirmation();
@@ -2699,6 +2812,7 @@ mod tests {
             true,
             false,
             false,
+            Language::En,
         );
         overlay.select_current_option(false);
         overlay.focus = Focus::Notes;

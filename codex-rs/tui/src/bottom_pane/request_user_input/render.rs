@@ -17,6 +17,8 @@ use crate::bottom_pane::selection_popup_common::menu_surface_padding_height;
 use crate::bottom_pane::selection_popup_common::render_menu_surface;
 use crate::bottom_pane::selection_popup_common::render_rows;
 use crate::bottom_pane::selection_popup_common::wrap_styled_line;
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::render::renderable::Renderable;
 
 use super::DESIRED_SPACERS_BETWEEN_SECTIONS;
@@ -115,15 +117,13 @@ impl Renderable for RequestUserInputOverlay {
 
 impl RequestUserInputOverlay {
     fn unanswered_confirmation_data(&self) -> UnansweredConfirmationData {
-        let unanswered = self.unanswered_question_count();
-        let subtitle = format!(
-            "{unanswered} unanswered question{}",
-            if unanswered == 1 { "" } else { "s" }
-        );
+        let subtitle = self.unanswered_confirmation_subtitle();
         UnansweredConfirmationData {
-            title_line: Line::from(super::UNANSWERED_CONFIRM_TITLE.bold()),
+            title_line: Line::from(
+                tr(self.language, "request_user_input.confirm_unanswered.title").bold(),
+            ),
             subtitle_line: Line::from(subtitle.dim()),
-            hint_line: standard_popup_hint_line(),
+            hint_line: standard_popup_hint_line(self.language),
             rows: self.unanswered_confirmation_rows(),
             state: self.confirm_unanswered.unwrap_or_default(),
         }
@@ -220,7 +220,7 @@ impl RequestUserInputOverlay {
             &layout.rows,
             &layout.state,
             layout.rows.len().max(1),
-            "No choices",
+            tr(self.language, "request_user_input.empty.choices"),
         );
 
         cursor_y = cursor_y.saturating_add(rows_height);
@@ -265,16 +265,28 @@ impl RequestUserInputOverlay {
 
         // Progress header keeps the user oriented across multiple questions.
         let progress_line = if self.question_count() > 0 {
-            let idx = self.current_index() + 1;
+            let index = self.current_index() + 1;
             let total = self.question_count();
-            let base = format!("Question {idx}/{total}");
+            let index_str = index.to_string();
+            let total_str = total.to_string();
+            let base = tr_args(
+                self.language,
+                "request_user_input.progress.question",
+                &[("index", index_str.as_str()), ("total", total_str.as_str())],
+            );
             if unanswered > 0 {
-                Line::from(format!("{base} ({unanswered} unanswered)").dim())
+                let count_str = unanswered.to_string();
+                let suffix = tr_args(
+                    self.language,
+                    "request_user_input.progress.unanswered",
+                    &[("count", count_str.as_str())],
+                );
+                Line::from(format!("{base} {suffix}").dim())
             } else {
                 Line::from(base.dim())
             }
         } else {
-            Line::from("No questions".dim())
+            Line::from(tr(self.language, "request_user_input.progress.none").dim())
         };
         Paragraph::new(progress_line).render(sections.progress_area, buf);
 
@@ -322,7 +334,7 @@ impl RequestUserInputOverlay {
                     &option_rows,
                     &options_state,
                     option_rows.len().max(1),
-                    "No options",
+                    tr(self.language, "request_user_input.empty.options"),
                 );
             }
         }
@@ -350,7 +362,16 @@ impl RequestUserInputOverlay {
         let option_tip = if options_hidden {
             let selected = self.selected_option_index().unwrap_or(0).saturating_add(1);
             let total = self.options_len();
-            Some(super::FooterTip::new(format!("option {selected}/{total}")))
+            let selected_str = selected.to_string();
+            let total_str = total.to_string();
+            Some(super::FooterTip::new(tr_args(
+                self.language,
+                "request_user_input.footer.option_count",
+                &[
+                    ("selected", selected_str.as_str()),
+                    ("total", total_str.as_str()),
+                ],
+            )))
         } else {
             None
         };

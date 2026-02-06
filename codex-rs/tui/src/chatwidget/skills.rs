@@ -52,7 +52,7 @@ impl ChatWidget {
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some("Skills".to_string()),
             subtitle: Some("Choose an action".to_string()),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             ..Default::default()
         });

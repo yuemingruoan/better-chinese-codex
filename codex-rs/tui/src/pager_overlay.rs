@@ -840,6 +840,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::text::Text;
+    use unicode_width::UnicodeWidthStr;
 
     #[derive(Debug)]
     struct TestCell {
@@ -988,13 +989,13 @@ mod tests {
     fn buffer_to_text(buf: &Buffer, area: Rect) -> String {
         let mut out = String::new();
         for y in area.y..area.bottom() {
+            let mut skip = 0usize;
             for x in area.x..area.right() {
                 let symbol = buf[(x, y)].symbol();
-                if symbol.is_empty() {
-                    out.push(' ');
-                } else {
-                    out.push(symbol.chars().next().unwrap_or(' '));
+                if skip == 0 {
+                    out.push_str(symbol);
                 }
+                skip = skip.max(symbol.width()).saturating_sub(1);
             }
             // Trim trailing spaces for stability.
             while out.ends_with(' ') {

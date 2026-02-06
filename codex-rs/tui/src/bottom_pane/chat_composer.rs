@@ -400,6 +400,10 @@ impl ChatComposer {
         self.skills = skills;
     }
 
+    fn skills_enabled(&self) -> bool {
+        self.skills.is_some()
+    }
+
     pub fn set_language(&mut self, language: Language) {
         self.language = language;
         if let ActivePopup::Command(popup) = &mut self.active_popup {
@@ -3373,6 +3377,7 @@ mod tests {
     use crate::bottom_pane::InputResult;
     use crate::bottom_pane::chat_composer::AttachedImage;
     use crate::bottom_pane::chat_composer::LARGE_PASTE_CHAR_THRESHOLD;
+    use crate::bottom_pane::chat_composer_history::HistoryEntry;
     use crate::bottom_pane::prompt_args::PromptArg;
     use crate::bottom_pane::prompt_args::extract_positional_args_for_prompt_line;
     use crate::bottom_pane::textarea::TextArea;
@@ -7170,15 +7175,21 @@ mod tests {
             name: "codex-cli-release-notes".to_string(),
             description: "example".to_string(),
             short_description: None,
+            interface: None,
+            dependencies: None,
             path: PathBuf::from("skills/codex-cli-release-notes/SKILL.md"),
             scope: SkillScope::Repo,
         }]));
 
         // Seed local history; the newest entry triggers the skills popup.
-        composer.history.record_local_submission("older");
         composer
             .history
-            .record_local_submission("$codex-cli-release-notes");
+            .record_local_submission(HistoryEntry::from_text("older".to_string()));
+        composer
+            .history
+            .record_local_submission(HistoryEntry::from_text(
+                "$codex-cli-release-notes".to_string(),
+            ));
 
         // First Up recalls "$...", but we should not open the skills popup while browsing history.
         let (result, _redraw) =

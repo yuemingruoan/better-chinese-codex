@@ -140,12 +140,6 @@ impl OssSelectionWidget<'_> {
                 key: KeyCode::Char('o'),
                 provider_id: OLLAMA_OSS_PROVIDER_ID,
             },
-            SelectOption {
-                label: Line::from(vec!["Ollama (".into(), "c".underlined(), "hat)".into()]),
-                description: tr(language, "oss_selection.option.ollama_chat"),
-                key: KeyCode::Char('c'),
-                provider_id: OLLAMA_CHAT_PROVIDER_ID,
-            },
         ];
 
         Ok(Self {

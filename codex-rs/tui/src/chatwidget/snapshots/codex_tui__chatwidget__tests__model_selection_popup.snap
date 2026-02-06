@@ -2,8 +2,8 @@
 source: tui/src/chatwidget/tests.rs
 expression: popup
 ---
-  选 择 模 型 与 推 理 强 度
-  可 通 过 运 行  codex -m <model_name> 或 在  config.toml 中 访 问 旧 版 模 型
+  选择模型与推理强度
+  可通过运行 codex -m <model_name> 或在 config.toml 中访问旧版模型
 
 › 1. gpt-5.2-codex (default)  Latest frontier agentic coding model.
   2. gpt-5.2                  Latest frontier model with improvements across
@@ -13,4 +13,4 @@ expression: popup
   4. gpt-5.1-codex-mini       Optimized for codex. Cheaper, faster, but less
                               capable.
 
-  按 回 车 选 择 推 理 强 度 ， 或 按  Esc 返 回 。
+  按回车选择推理强度，或按 Esc 返回。

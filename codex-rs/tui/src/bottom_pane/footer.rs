@@ -98,7 +98,10 @@ impl CollaborationModeIndicator {
             CollaborationModeIndicator::Execute => tr(language, "footer.mode.execute"),
         };
         if show_cycle_hint {
-            format!("{base}{suffix}", suffix = tr(language, "footer.mode.cycle_hint"))
+            format!(
+                "{base}{suffix}",
+                suffix = tr(language, "footer.mode.cycle_hint")
+            )
         } else {
             base.to_string()
         }
@@ -429,9 +432,12 @@ pub(crate) fn single_line_footer_layout(
         };
         // Compute the width without going through `state_line` so we do not
         // depend on `default_state` (which may still be a queue variant).
-        let mode_only_width =
-            left_side_line(Some(collaboration_mode_indicator), mode_only_state, language)
-                .width() as u16;
+        let mode_only_width = left_side_line(
+            Some(collaboration_mode_indicator),
+            mode_only_state,
+            language,
+        )
+        .width() as u16;
         if !context_requires_cycle_hint
             && can_show_left_with_context(area, mode_only_width, context_width)
         {

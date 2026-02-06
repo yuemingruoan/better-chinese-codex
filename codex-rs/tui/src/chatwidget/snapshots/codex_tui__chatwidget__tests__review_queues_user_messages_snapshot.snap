@@ -12,11 +12,11 @@ expression: term.backend().vt100().screen().contents()
 
 
 
-• Working (0s • esc to interrupt)
+• 工作中 （0秒 • 按 esc 以中断）
 
   ↳ Queued while /review is running.
     ⌥ + ↑ edit
 
 › Ask Codex to do anything
 
-  ? for shortcuts                                            100% context left
+  ? 查看快捷键                                                   0% 上下文已用

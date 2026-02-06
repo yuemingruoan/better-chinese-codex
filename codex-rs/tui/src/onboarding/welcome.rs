@@ -61,8 +61,6 @@ impl WelcomeWidget {
             animations_enabled,
             language,
             layout_area: Cell::new(None),
-            language,
-            layout_area: Cell::new(None),
         }
     }
 
@@ -162,8 +160,6 @@ mod tests {
             is_logged_in: false,
             animation: AsciiAnimation::with_variants(FrameRequester::test_dummy(), &VARIANTS, 0),
             animations_enabled: true,
-            language: Language::En,
-            layout_area: Cell::new(None),
             language: Language::En,
             layout_area: Cell::new(None),
         };

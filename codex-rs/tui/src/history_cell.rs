@@ -1018,8 +1018,8 @@ pub(crate) fn new_session_info(
         parts.push(Box::new(PlainHistoryCell { lines: help_lines }));
     } else {
         if config.show_tooltips
-            && let Some(tooltips) = tooltips::get_tooltip(auth_plan, language)
-                .map(TooltipHistoryCell::new)
+            && let Some(tooltips) =
+                tooltips::get_tooltip(auth_plan, language).map(TooltipHistoryCell::new)
         {
             parts.push(Box::new(tooltips));
         }
@@ -2315,12 +2315,12 @@ impl FinalMessageSeparator {
 impl HistoryCell for FinalMessageSeparator {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         let mut label_parts = Vec::new();
-        if let Some(elapsed_seconds) = self
-            .elapsed_seconds
-            .filter(|seconds| *seconds > 60)
-            .map(|elapsed| {
-                super::status_indicator_widget::fmt_elapsed_compact(self.language, elapsed)
-            })
+        if let Some(elapsed_seconds) =
+            self.elapsed_seconds
+                .filter(|seconds| *seconds > 60)
+                .map(|elapsed| {
+                    super::status_indicator_widget::fmt_elapsed_compact(self.language, elapsed)
+                })
         {
             label_parts.push(tr_args(
                 self.language,
@@ -2573,7 +2573,7 @@ mod tests {
             responses_api_overhead_ms: 650,
             responses_api_inference_time_ms: 1_940,
         };
-        let cell = FinalMessageSeparator::new(Some(12), Some(summary));
+        let cell = FinalMessageSeparator::new(Some(12), Some(summary), Language::En);
         let rendered = render_lines(&cell.display_lines(300));
 
         assert_eq!(rendered.len(), 1);
@@ -2931,7 +2931,8 @@ mod tests {
             meta: None,
         };
 
-        let mut cell = new_active_mcp_tool_call("call-image".into(), invocation, true);
+        let mut cell =
+            new_active_mcp_tool_call("call-image".into(), invocation, true, Language::En);
         let extra_cell = cell
             .complete(Duration::from_millis(25), Ok(result))
             .expect("expected image cell");
@@ -2958,7 +2959,8 @@ mod tests {
             meta: None,
         };
 
-        let mut cell = new_active_mcp_tool_call("call-image-data-url".into(), invocation, true);
+        let mut cell =
+            new_active_mcp_tool_call("call-image-data-url".into(), invocation, true, Language::En);
         let extra_cell = cell
             .complete(Duration::from_millis(25), Ok(result))
             .expect("expected image cell");
@@ -2984,7 +2986,8 @@ mod tests {
             meta: None,
         };
 
-        let mut cell = new_active_mcp_tool_call("call-image-2".into(), invocation, true);
+        let mut cell =
+            new_active_mcp_tool_call("call-image-2".into(), invocation, true, Language::En);
         let extra_cell = cell
             .complete(Duration::from_millis(25), Ok(result))
             .expect("expected image cell");

@@ -1,7 +1,7 @@
 use crate::i18n::tr;
 use crate::i18n::tr_list;
-use codex_core::features::Feature;
 use codex_core::features::FEATURES;
+use codex_core::features::Feature;
 use codex_protocol::account::PlanType;
 use codex_protocol::config_types::Language;
 use lazy_static::lazy_static;

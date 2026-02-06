@@ -76,7 +76,6 @@ use codex_core::protocol::ReviewRequest;
 use codex_core::protocol::ReviewTarget;
 use codex_core::protocol::SddGitAction;
 use codex_core::protocol::SkillMetadata as ProtocolSkillMetadata;
-use codex_core::protocol::SkillsListEntry;
 use codex_core::protocol::StreamErrorEvent;
 use codex_core::protocol::TerminalInteractionEvent;
 use codex_core::protocol::TokenUsage;
@@ -1173,6 +1172,7 @@ impl ChatWidget {
                 self.add_to_history(history_cell::FinalMessageSeparator::new(
                     elapsed_seconds,
                     runtime_metrics,
+                    self.config.language,
                 ));
             }
             self.needs_final_message_separator = false;
@@ -1325,7 +1325,7 @@ impl ChatWidget {
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some(PLAN_IMPLEMENTATION_TITLE.to_string()),
             subtitle: None,
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             ..Default::default()
         });
@@ -1974,6 +1974,7 @@ impl ChatWidget {
             ev.call_id,
             String::new(),
             self.config.animations,
+            self.config.language,
         )));
         self.bump_active_cell_revision();
         self.request_redraw();
@@ -2639,8 +2640,8 @@ impl ChatWidget {
         let model = model.filter(|m| !m.trim().is_empty());
         let mut config = config;
         config.model = model.clone();
-        let mut rng = rand::rng();
-        let placeholder = PLACEHOLDERS[rng.random_range(0..PLACEHOLDERS.len())].to_string();
+        let language = config.language;
+        let placeholder = example_prompt_placeholder(language);
 
         let model_override = model.as_deref();
         let model_for_header = model
@@ -2678,6 +2679,7 @@ impl ChatWidget {
                 disable_paste_burst: config.disable_paste_burst,
                 animations_enabled: config.animations,
                 skills: None,
+                language,
             }),
             active_cell,
             active_cell_revision: 0,
@@ -2692,6 +2694,7 @@ impl ChatWidget {
             session_header: SessionHeader::new(header_model),
             initial_user_message,
             token_info: None,
+            last_api_token_usage: None,
             rate_limit_snapshot: None,
             plan_type: None,
             rate_limit_warnings: RateLimitWarningState::default(),
@@ -2712,7 +2715,7 @@ impl ChatWidget {
             interrupts: InterruptManager::new(),
             reasoning_buffer: String::new(),
             full_reasoning_buffer: String::new(),
-            current_status_header: String::from("Working"),
+            current_status_header: tr(language, "chatwidget.status.working").to_string(),
             retry_status_header: None,
             thread_id: None,
             thread_name: None,
@@ -2729,6 +2732,7 @@ impl ChatWidget {
             quit_shortcut_key: None,
             is_review_mode: false,
             pre_review_token_info: None,
+            pre_review_last_api_token_usage: None,
             needs_final_message_separator: false,
             had_work_activity: false,
             last_separator_elapsed_secs: None,
@@ -2736,6 +2740,12 @@ impl ChatWidget {
             feedback,
             feedback_audience,
             current_rollout_path: None,
+            sdd_state: None,
+            sdd_pending_plan_rework_prompt: None,
+            sdd_open_plan_options_after_task: false,
+            sdd_pending_git_action: None,
+            sdd_git_action_failed: false,
+            sdd_new_session_after_cleanup: false,
             external_editor_state: ExternalEditorState::Closed,
         };
 
@@ -3638,7 +3648,7 @@ impl ChatWidget {
         self.sdd_git_action_failed = false;
         let prompt = self.build_sdd_plan_rework_prompt(&state.description);
         self.sdd_pending_plan_rework_prompt = Some(prompt);
-        self.set_composer_text(String::new());
+        self.set_composer_text(String::new(), Vec::new(), Vec::new());
         self.add_info_message(
             tr(language, "chatwidget.sdd.plan_rework_ready").to_string(),
             Some(tr(language, "chatwidget.sdd.plan_rework_hint").to_string()),
@@ -3668,7 +3678,7 @@ impl ChatWidget {
             state.description,
             tr(language, "chatwidget.sdd.continue_prompt_details")
         );
-        self.set_composer_text(prefill);
+        self.set_composer_text(prefill, Vec::new(), Vec::new());
         self.add_info_message(
             tr(language, "chatwidget.sdd.continue_prompt_ready").to_string(),
             Some(tr(language, "chatwidget.sdd.continue_prompt_hint").to_string()),
@@ -3941,6 +3951,7 @@ impl ChatWidget {
             title.to_string(),
             "Type a name and press Enter".to_string(),
             None,
+            self.config.language,
             Box::new(move |name: String| {
                 let Some(name) = codex_core::util::normalize_thread_name(&name) else {
                     tx.send(AppEvent::InsertHistoryCell(Box::new(
@@ -4220,7 +4231,7 @@ impl ChatWidget {
     }
 
     fn try_handle_sdd_develop(&mut self, text: &str) -> bool {
-        if let Some((name, rest)) = parse_slash_name(text)
+        if let Some((name, rest, _rest_offset)) = parse_slash_name(text)
             && name == SlashCommand::SddDevelop.command()
         {
             let description = rest.trim();
@@ -4233,6 +4244,7 @@ impl ChatWidget {
             return true;
         }
         false
+    }
     /// Restore the blocked submission draft without losing mention resolution state.
     ///
     /// The blocked-image path intentionally keeps the draft in the composer so
@@ -4974,7 +4986,7 @@ impl ChatWidget {
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
             header: Box::new(header),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             ..Default::default()
         });
@@ -5203,7 +5215,7 @@ impl ChatWidget {
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some("Select Collaboration Mode".to_string()),
             subtitle: Some("Pick a collaboration preset.".to_string()),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             ..Default::default()
         });
@@ -5482,10 +5494,18 @@ impl ChatWidget {
                     tr(self.config.language, "chatwidget.approvals.auto.desc").to_string(),
                 ),
                 "full-access" => (
-                    tr(self.config.language, "chatwidget.approvals.full_access.label").to_string(),
-                    tr(self.config.language, "chatwidget.approvals.full_access.desc").to_string(),
+                    tr(
+                        self.config.language,
+                        "chatwidget.approvals.full_access.label",
+                    )
+                    .to_string(),
+                    tr(
+                        self.config.language,
+                        "chatwidget.approvals.full_access.desc",
+                    )
+                    .to_string(),
                 ),
-                _ => (preset.label.clone(), preset.description.clone()),
+                _ => (preset.label.to_string(), preset.description.to_string()),
             };
             let is_current =
                 Self::preset_matches_current(current_approval, current_sandbox, &preset);

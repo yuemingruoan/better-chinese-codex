@@ -501,10 +501,8 @@ impl HistoryCell for StatusHistoryCell {
         }
 
         if let Some(thread_name) = thread_name {
-            lines.push(formatter.line(
-                label_thread_name,
-                vec![Span::from(thread_name.to_string())],
-            ));
+            lines
+                .push(formatter.line(label_thread_name, vec![Span::from(thread_name.to_string())]));
         }
         if let Some(collab_mode) = self.collaboration_mode.as_ref() {
             lines.push(formatter.line(
@@ -518,10 +516,7 @@ impl HistoryCell for StatusHistoryCell {
         if self.session_id.is_some()
             && let Some(forked_from) = self.forked_from.as_ref()
         {
-            lines.push(formatter.line(
-                label_forked_from,
-                vec![Span::from(forked_from.clone())],
-            ));
+            lines.push(formatter.line(label_forked_from, vec![Span::from(forked_from.clone())]));
         }
 
         lines.push(Line::from(Vec::<Span<'static>>::new()));
