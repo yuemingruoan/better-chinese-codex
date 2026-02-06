@@ -5289,7 +5289,8 @@ impl ChatWidget {
         });
         let warn_for_model = preset.model.starts_with("gpt-5.1-codex")
             || preset.model.starts_with("gpt-5.1-codex-max")
-            || preset.model.starts_with("gpt-5.2");
+            || preset.model.starts_with("gpt-5.2")
+            || preset.model.starts_with("gpt-5.3");
 
         struct EffortChoice {
             stored: Option<ReasoningEffortConfig>,
