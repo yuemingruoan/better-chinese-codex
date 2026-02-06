@@ -30,9 +30,11 @@ jobs:
   build:
     name: Build ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.timeout }}
     env:
       CARGO_TERM_COLOR: always
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
     defaults:
       run:
         working-directory: codex-rs
@@ -42,16 +44,22 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: codex-linux
+            timeout: 40
           - os: macos-14
             artifact: codex-macos
+            timeout: 45
           - os: windows-latest
             artifact: codex-windows
+            timeout: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Enable sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -62,13 +70,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ${{ github.workspace }}/codex-rs/target/
-          # Use a simple key to avoid hashFiles failures on runners with path issues.
-          key: cargo-${{ matrix.os }}-${{ github.sha }}
+          key: cargo-${{ matrix.os }}-${{ hashFiles('codex-rs/Cargo.lock') }}
           restore-keys: |
             cargo-${{ matrix.os }}-
 
       - name: Build codex binary
-        run: cargo build --release --bin codex
+        run: cargo build --release -p codex-cli --bin codex --locked
 
       - name: Package artifact (Unix)
         if: runner.os != 'Windows'
