@@ -1148,7 +1148,7 @@ mod tests {
             lines,
             vec![
                 "Token usage: total=2 input=0 output=2".to_string(),
-                "To continue this session, run codex resume my-thread".to_string(),
+                "若要继续此会话，请运行 codex resume my-thread".to_string(),
             ]
         );
     }

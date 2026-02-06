@@ -152,17 +152,17 @@ impl McpProcess {
         );
         let JsonRpcMessage::Response(JsonRpcResponse {
             jsonrpc,
-            id,
-            result,
+            ref id,
+            ref result,
         }) = initialized
         else {
             anyhow::bail!("expected initialize response message, got: {initialized:?}")
         };
         assert_eq!(jsonrpc, JsonRpcVersion2_0);
-        assert_eq!(id, RequestId::Number(request_id));
+        assert_eq!(*id, RequestId::Number(request_id));
         assert_eq!(
             result,
-            json!({
+            &json!({
                 "capabilities": {
                     "tools": {
                         "listChanged": true
@@ -176,7 +176,7 @@ impl McpProcess {
                 },
                 "protocolVersion": ProtocolVersion::V_2025_03_26
             }),
-            initialized
+            "{initialized:?}"
         );
 
         // Send notifications/initialized to ack the response.
