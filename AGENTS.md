@@ -1,7 +1,7 @@
-## Upstream merge strategy (Codex 0.79 → 0.84 sync)
+## Upstream merge strategy (Codex 0.84 → 0.98 sync)
 
 - Default to working on the `develop-main` branch unless the user explicitly requests another branch.
-- Current target release: `rust-v0.84.0` (range: `rust-v0.79.0..rust-v0.84.0`).
+- Current target release: `rust-v0.98.0` (range: `rust-v0.84.0..rust-v0.98.0`).
 - 本仓库合并策略以本节为准；如需调整目标版本或策略，请先更新此处。
 
 - Assets and docs follow upstream changes; do not keep deleted upstream assets.
