@@ -2,7 +2,7 @@
 source: tui/src/update_prompt.rs
 expression: terminal.backend()
 ---
-  ✨ 发现新版本！ 1.6.7 -> 9.9.9
+  ✨ 发现新版本！ 1.7.0 -> 9.9.9
 
   请打开发布页面下载最新版：https://github.com/yuemingruoan/better-chinese-codex/releases
   页面包含 Windows / macOS / Linux 的安装说明。

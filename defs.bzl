@@ -105,7 +105,7 @@ def codex_rust_crate(
             proc_macro_deps = all_crate_deps(build_proc_macro = True),
             data = build_script_data,
             # Some build script deps sniff version-related env vars...
-            version = "1.6.7",
+            version = "1.7.0",
         )
 
         deps = deps + [name + "-build-script"]
