@@ -33,8 +33,6 @@ jobs:
     timeout-minutes: ${{ matrix.timeout }}
     env:
       CARGO_TERM_COLOR: always
-      SCCACHE_DIR: ~/.cache/sccache
-      SCCACHE_GHA_ENABLED: "false"
     defaults:
       run:
         working-directory: codex-rs
@@ -58,34 +56,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
         continue-on-error: true
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ~/.cache/sccache
-            ${{ github.workspace }}/codex-rs/target/
-          key: cargo-${{ matrix.os }}-${{ hashFiles('codex-rs/Cargo.lock') }}
-          restore-keys: |
-            cargo-${{ matrix.os }}-
-
-      - name: Enable sccache
-        uses: mozilla-actions/sccache-action@v0.0.7
-        continue-on-error: true
-
-      - name: Configure sccache (optional)
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v sccache >/dev/null 2>&1 && sccache --start-server; then
-            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-          else
-            echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
-          fi
+          workspaces: codex-rs -> target
 
       - name: Build codex binary
         run: cargo build --release -p codex-cli --bin codex --locked
