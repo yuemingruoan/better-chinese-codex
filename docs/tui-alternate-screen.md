@@ -1,130 +1,61 @@
-# TUI Alternate Screen and Terminal Multiplexers
+# TUI 备用屏幕与终端复用器
 
-## Overview
+## 概览
 
-This document explains the design decision behind Codex's alternate screen handling, particularly in terminal multiplexers like Zellij. This addresses a fundamental conflict between fullscreen TUI behavior and terminal scrollback history preservation.
+本文解释 Codex 对备用屏幕（alternate screen）的设计决策，尤其是在 Zellij 等终端复用器中。
+该问题源于全屏 TUI 行为与终端回滚历史保存之间的根本冲突。
 
-## The Problem
+## 问题
 
-### Fullscreen TUI Benefits
+### 全屏 TUI 的好处
 
-Codex's TUI uses the terminal's **alternate screen buffer** to provide a clean fullscreen experience. This approach:
+Codex 的 TUI 使用终端的 **备用屏幕缓冲区** 来提供干净的全屏体验。该方式：
 
-- Uses the entire viewport without polluting the terminal's scrollback history
-- Provides a dedicated environment for the chat interface
-- Mirrors the behavior of other terminal applications (vim, tmux, etc.)
+- 使用完整视口而不污染终端回滚历史
+- 为聊天界面提供独立环境
+- 与其他终端应用（vim、tmux 等）行为一致
 
-### The Zellij Conflict
+### 与 Zellij 的冲突
 
-Terminal multiplexers like **Zellij** strictly follow the xterm specification, which defines that alternate screen buffers should **not** have scrollback. This is intentional design, not a bug:
+像 **Zellij** 这样的终端复用器严格遵循 xterm 规范，该规范规定备用屏幕 **不应有回滚历史**。
+这是设计选择而非 bug：
 
-- **Zellij PR:** https://github.com/zellij-org/zellij/pull/1032
-- **Rationale:** The xterm spec explicitly states that alternate screen mode disallows scrollback
-- **Configurability:** This is not configurable in Zellij—there is no option to enable scrollback in alternate screen mode
+- **Zellij PR：** https://github.com/zellij-org/zellij/pull/1032
+- **依据：** xterm 规范明确说明备用屏幕模式不允许回滚
+- **可配置性：** Zellij 不提供在备用屏幕中启用回滚的选项
 
-When using Codex's TUI in Zellij, users cannot scroll back through the conversation history because:
+当在 Zellij 中使用 Codex TUI 时，用户无法通过终端滚动回看对话历史，因为：
 
-1. The TUI runs in alternate screen mode (fullscreen)
-2. Zellij disables scrollback in alternate screen buffers (per xterm spec)
-3. The entire conversation becomes inaccessible via normal terminal scrolling
+1. TUI 在备用屏幕模式运行（全屏）
+2. Zellij 在备用屏幕中禁用回滚（遵循 xterm 规范）
+3. 整段对话无法通过常规终端滚动访问
 
-## The Solution
+## 解决方案
 
-Codex implements a **pragmatic workaround** with three modes, controlled by `tui.alternate_screen` in `config.toml`:
+Codex 提供一个 **务实的折中方案**，通过 `config.toml` 的 `tui.alternate_screen` 控制三种模式：
 
-### 1. `auto` (default)
+### 1. `auto`（默认）
 
-- **Behavior:** Automatically detect the terminal multiplexer
-- **In Zellij:** Disable alternate screen mode (inline mode, preserves scrollback)
-- **Elsewhere:** Enable alternate screen mode (fullscreen experience)
-- **Rationale:** Provides the best UX in each environment
+- **行为：** 自动检测终端复用器
+- **在 Zellij 中：** 关闭备用屏幕（行内模式，保留回滚）
+- **其他情况：** 启用备用屏幕（全屏体验）
+- **理由：** 在不同环境下提供最佳体验
 
 ### 2. `always`
 
-- **Behavior:** Always use alternate screen mode (original behavior)
-- **Use case:** Users who prefer fullscreen and don't use Zellij, or who have found a workaround
+- **行为：** 始终使用备用屏幕（原始行为）
+- **适用：** 偏好全屏且不使用 Zellij，或已找到解决方案的用户
 
 ### 3. `never`
 
-- **Behavior:** Never use alternate screen mode (inline mode)
-- **Use case:** Users who always want scrollback history preserved
-- **Trade-off:** Pollutes the terminal scrollback with TUI output
+- **行为：** 从不使用备用屏幕（行内模式）
+- **适用：** 始终希望保留回滚历史的用户
+- **代价：** TUI 输出会污染终端回滚
 
-## Runtime Override
+## 运行时覆盖
 
-The `--no-alt-screen` CLI flag can override the config setting at runtime:
+可使用 `--no-alt-screen` CLI 参数在运行时覆盖配置：
 
 ```bash
 codex --no-alt-screen
-```
-
-This runs the TUI in inline mode regardless of the configuration, useful for:
-
-- One-off sessions where scrollback is critical
-- Debugging terminal-related issues
-- Testing alternate screen behavior
-
-## Implementation Details
-
-### Auto-Detection
-
-The `auto` mode detects Zellij by checking the `ZELLIJ` environment variable:
-
-```rust
-let terminal_info = codex_core::terminal::terminal_info();
-!matches!(terminal_info.multiplexer, Some(Multiplexer::Zellij { .. }))
-```
-
-This detection happens in the helper function `determine_alt_screen_mode()` in `codex-rs/tui/src/lib.rs`.
-
-### Configuration Schema
-
-The `AltScreenMode` enum is defined in `codex-rs/protocol/src/config_types.rs` and serializes to lowercase TOML:
-
-```toml
-[tui]
-# Options: auto, always, never
-alternate_screen = "auto"
-```
-
-### Why Not Just Disable Alternate Screen in Zellij Permanently?
-
-We use `auto` detection instead of always disabling in Zellij because:
-
-1. Many Zellij users don't care about scrollback and prefer the fullscreen experience
-2. Some users may use tmux inside Zellij, creating a chain of multiplexers
-3. Provides user choice without requiring manual configuration
-
-## Related Issues and References
-
-- **Original Issue:** [GitHub #2558](https://github.com/openai/codex/issues/2558) - "No scrollback in Zellij"
-- **Implementation PR:** [GitHub #8555](https://github.com/openai/codex/pull/8555)
-- **Zellij PR:** https://github.com/zellij-org/zellij/pull/1032 (why scrollback is disabled)
-- **xterm Spec:** Alternate screen buffers should not have scrollback
-
-## Future Considerations
-
-### Alternative Approaches Considered
-
-1. **Implement custom scrollback in TUI:** Would require significant architectural changes to buffer and render all historical output
-2. **Request Zellij to add a config option:** Not viable—Zellij maintainers explicitly chose this behavior to follow the spec
-3. **Disable alternate screen unconditionally:** Would degrade UX for non-Zellij users
-
-### Transcript Pager
-
-Codex's transcript pager (opened with Ctrl+T) provides an alternative way to review conversation history, even in fullscreen mode. However, this is not as seamless as natural scrollback.
-
-## For Developers
-
-When modifying TUI code, remember:
-
-- The `determine_alt_screen_mode()` function encapsulates all the logic
-- Configuration is in `config.tui_alternate_screen`
-- CLI flag is in `cli.no_alt_screen`
-- The behavior is applied via `tui.set_alt_screen_enabled()`
-
-If you encounter issues with terminal state after running Codex, you can restore your terminal with:
-
-```bash
-reset
 ```

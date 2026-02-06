@@ -1,6 +1,20 @@
+use super::cache::ModelsCacheManager;
+use crate::api_bridge::auth_provider_from_auth;
+use crate::api_bridge::map_api_error;
+use crate::auth::AuthManager;
+use crate::auth::AuthMode;
+use crate::config::Config;
+use crate::default_client::build_reqwest_client;
+use crate::error::CodexErr;
+use crate::error::Result as CoreResult;
+use crate::features::Feature;
+use crate::model_provider_info::ModelProviderInfo;
+use crate::models_manager::collaboration_mode_presets::builtin_collaboration_mode_presets;
+use crate::models_manager::model_info;
+use crate::models_manager::model_presets::builtin_model_presets;
 use codex_api::ModelsClient;
 use codex_api::ReqwestTransport;
-use codex_app_server_protocol::AuthMode;
+use codex_protocol::config_types::CollaborationModeMask;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::openai_models::ModelsResponse;
@@ -13,25 +27,9 @@ use tokio::sync::TryLockError;
 use tokio::time::timeout;
 use tracing::error;
 
-use super::cache::ModelsCacheManager;
-use crate::api_bridge::auth_provider_from_auth;
-use crate::api_bridge::map_api_error;
-use crate::auth::AuthManager;
-use crate::config::Config;
-use crate::default_client::build_reqwest_client;
-use crate::error::CodexErr;
-use crate::error::Result as CoreResult;
-use crate::features::Feature;
-use crate::model_provider_info::ModelProviderInfo;
-use crate::models_manager::model_info;
-use crate::models_manager::model_presets::builtin_model_presets;
-
 const MODEL_CACHE_FILE: &str = "models_cache.json";
 const DEFAULT_MODEL_CACHE_TTL: Duration = Duration::from_secs(300);
 const MODELS_REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
-const OPENAI_DEFAULT_API_MODEL: &str = "gpt-5.2-codex";
-const OPENAI_DEFAULT_CHATGPT_MODEL: &str = "gpt-5.2-codex";
-const CODEX_AUTO_BALANCED_MODEL: &str = "codex-auto-balanced";
 
 /// Strategy for refreshing available models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +61,7 @@ impl ModelsManager {
         let cache_path = codex_home.join(MODEL_CACHE_FILE);
         let cache_manager = ModelsCacheManager::new(cache_path, DEFAULT_MODEL_CACHE_TTL);
         Self {
-            local_models: builtin_model_presets(auth_manager.get_auth_mode()),
+            local_models: builtin_model_presets(auth_manager.get_internal_auth_mode()),
             remote_models: RwLock::new(Self::load_remote_models_from_file().unwrap_or_default()),
             auth_manager,
             etag: RwLock::new(None),
@@ -90,6 +88,13 @@ impl ModelsManager {
         self.build_available_models(remote_models)
     }
 
+    /// List collaboration mode presets.
+    ///
+    /// Returns a static set of presets seeded with the configured model.
+    pub fn list_collaboration_modes(&self) -> Vec<CollaborationModeMask> {
+        builtin_collaboration_mode_presets()
+    }
+
     /// Attempt to list models without blocking, using the current cached state.
     ///
     /// Returns an error if the internal lock cannot be acquired.
@@ -102,7 +107,7 @@ impl ModelsManager {
     /// Get the model identifier to use, refreshing according to the specified strategy.
     ///
     /// If `model` is provided, returns it directly. Otherwise selects the default based on
-    /// auth mode and available models (prefers `codex-auto-balanced` for ChatGPT auth).
+    /// auth mode and available models.
     pub async fn get_default_model(
         &self,
         model: &Option<String>,
@@ -118,20 +123,14 @@ impl ModelsManager {
         {
             error!("failed to refresh available models: {err}");
         }
-        // if codex-auto-balanced exists & signed in with chatgpt mode, return it, otherwise return the default model
-        let auth_mode = self.auth_manager.get_auth_mode();
         let remote_models = self.get_remote_models(config).await;
-        if auth_mode == Some(AuthMode::ChatGPT) {
-            let has_auto_balanced = self
-                .build_available_models(remote_models)
-                .iter()
-                .any(|model| model.model == CODEX_AUTO_BALANCED_MODEL && model.show_in_picker);
-            if has_auto_balanced {
-                return CODEX_AUTO_BALANCED_MODEL.to_string();
-            }
-            return OPENAI_DEFAULT_CHATGPT_MODEL.to_string();
-        }
-        OPENAI_DEFAULT_API_MODEL.to_string()
+        let available = self.build_available_models(remote_models);
+        available
+            .iter()
+            .find(|model| model.is_default)
+            .or_else(|| available.first())
+            .map(|model| model.model.clone())
+            .unwrap_or_default()
     }
 
     // todo(aibrahim): look if we can tighten it to pub(crate)
@@ -176,7 +175,7 @@ impl ModelsManager {
         refresh_strategy: RefreshStrategy,
     ) -> CoreResult<()> {
         if !config.features.enabled(Feature::RemoteModels)
-            || self.auth_manager.get_auth_mode() == Some(AuthMode::ApiKey)
+            || self.auth_manager.get_internal_auth_mode() == Some(AuthMode::ApiKey)
         {
             return Ok(());
         }
@@ -202,13 +201,16 @@ impl ModelsManager {
     }
 
     async fn fetch_and_update_models(&self) -> CoreResult<()> {
+        let _timer =
+            codex_otel::start_global_timer("codex.remote_models.fetch_update.duration_ms", &[]);
         let auth = self.auth_manager.auth().await;
-        let api_provider = self.provider.to_api_provider(Some(AuthMode::ChatGPT))?;
+        let auth_mode = self.auth_manager.get_internal_auth_mode();
+        let api_provider = self.provider.to_api_provider(auth_mode)?;
         let api_auth = auth_provider_from_auth(auth.clone(), &self.provider)?;
         let transport = ReqwestTransport::new(build_reqwest_client());
         let client = ModelsClient::new(transport, api_provider, api_auth);
 
-        let client_version = format_client_version_to_whole();
+        let client_version = crate::models_manager::client_version_to_whole();
         let (models, etag) = timeout(
             MODELS_REFRESH_TIMEOUT,
             client.list_models(&client_version, HeaderMap::new()),
@@ -219,7 +221,9 @@ impl ModelsManager {
 
         self.apply_remote_models(models.clone()).await;
         *self.etag.write().await = etag.clone();
-        self.cache_manager.persist_cache(&models, etag).await;
+        self.cache_manager
+            .persist_cache(&models, etag, client_version)
+            .await;
         Ok(())
     }
 
@@ -229,7 +233,18 @@ impl ModelsManager {
 
     /// Replace the cached remote models and rebuild the derived presets list.
     async fn apply_remote_models(&self, models: Vec<ModelInfo>) {
-        *self.remote_models.write().await = models;
+        let mut existing_models = Self::load_remote_models_from_file().unwrap_or_default();
+        for model in models {
+            if let Some(existing_index) = existing_models
+                .iter()
+                .position(|existing| existing.slug == model.slug)
+            {
+                existing_models[existing_index] = model;
+            } else {
+                existing_models.push(model);
+            }
+        }
+        *self.remote_models.write().await = existing_models;
     }
 
     fn load_remote_models_from_file() -> Result<Vec<ModelInfo>, std::io::Error> {
@@ -240,7 +255,10 @@ impl ModelsManager {
 
     /// Attempt to satisfy the refresh from the cache when it matches the provider and TTL.
     async fn try_load_cache(&self) -> bool {
-        let cache = match self.cache_manager.load_fresh().await {
+        let _timer =
+            codex_otel::start_global_timer("codex.remote_models.load_cache.duration_ms", &[]);
+        let client_version = crate::models_manager::client_version_to_whole();
+        let cache = match self.cache_manager.load_fresh(&client_version).await {
             Some(cache) => cache,
             None => return false,
         };
@@ -257,19 +275,22 @@ impl ModelsManager {
         let remote_presets: Vec<ModelPreset> = remote_models.into_iter().map(Into::into).collect();
         let existing_presets = self.local_models.clone();
         let mut merged_presets = ModelPreset::merge(remote_presets, existing_presets);
-        let chatgpt_mode = self.auth_manager.get_auth_mode() == Some(AuthMode::ChatGPT);
+        let chatgpt_mode = matches!(
+            self.auth_manager.get_internal_auth_mode(),
+            Some(AuthMode::Chatgpt)
+        );
         merged_presets = ModelPreset::filter_by_auth(merged_presets, chatgpt_mode);
 
-        let has_default = merged_presets.iter().any(|preset| preset.is_default);
-        if !has_default {
-            if let Some(default) = merged_presets
-                .iter_mut()
-                .find(|preset| preset.show_in_picker)
-            {
-                default.is_default = true;
-            } else if let Some(default) = merged_presets.first_mut() {
-                default.is_default = true;
-            }
+        for preset in &mut merged_presets {
+            preset.is_default = false;
+        }
+        if let Some(default) = merged_presets
+            .iter_mut()
+            .find(|preset| preset.show_in_picker)
+        {
+            default.is_default = true;
+        } else if let Some(default) = merged_presets.first_mut() {
+            default.is_default = true;
         }
 
         merged_presets
@@ -301,7 +322,7 @@ impl ModelsManager {
         let cache_path = codex_home.join(MODEL_CACHE_FILE);
         let cache_manager = ModelsCacheManager::new(cache_path, DEFAULT_MODEL_CACHE_TTL);
         Self {
-            local_models: builtin_model_presets(auth_manager.get_auth_mode()),
+            local_models: builtin_model_presets(auth_manager.get_internal_auth_mode()),
             remote_models: RwLock::new(Self::load_remote_models_from_file().unwrap_or_default()),
             auth_manager,
             etag: RwLock::new(None),
@@ -313,7 +334,16 @@ impl ModelsManager {
     #[cfg(any(test, feature = "test-support"))]
     /// Get model identifier without consulting remote state or cache.
     pub fn get_model_offline(model: Option<&str>) -> String {
-        model.unwrap_or(OPENAI_DEFAULT_CHATGPT_MODEL).to_string()
+        if let Some(model) = model {
+            return model.to_string();
+        }
+        let presets = builtin_model_presets(None);
+        presets
+            .iter()
+            .find(|preset| preset.show_in_picker)
+            .or_else(|| presets.first())
+            .map(|preset| preset.model.clone())
+            .unwrap_or_default()
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -321,16 +351,6 @@ impl ModelsManager {
     pub fn construct_model_info_offline(model: &str, config: &Config) -> ModelInfo {
         model_info::with_config_overrides(model_info::find_model_info_for_slug(model), config)
     }
-}
-
-/// Convert a client version string to a whole version string (e.g. "1.2.3-alpha.4" -> "1.2.3")
-fn format_client_version_to_whole() -> String {
-    format!(
-        "{}.{}.{}",
-        env!("CARGO_PKG_VERSION_MAJOR"),
-        env!("CARGO_PKG_VERSION_MINOR"),
-        env!("CARGO_PKG_VERSION_PATCH")
-    )
 }
 
 #[cfg(test)]
@@ -384,6 +404,16 @@ mod tests {
         .expect("valid model")
     }
 
+    fn assert_models_contain(actual: &[ModelInfo], expected: &[ModelInfo]) {
+        for model in expected {
+            assert!(
+                actual.iter().any(|candidate| candidate.slug == model.slug),
+                "expected model {} in cached list",
+                model.slug
+            );
+        }
+    }
+
     fn provider_for(base_url: String) -> ModelProviderInfo {
         ModelProviderInfo {
             name: "mock".into(),
@@ -399,11 +429,12 @@ mod tests {
             stream_max_retries: Some(0),
             stream_idle_timeout_ms: Some(5_000),
             requires_openai_auth: false,
+            supports_websockets: false,
         }
     }
 
     #[tokio::test]
-    async fn refresh_available_models_sorts_and_marks_default() {
+    async fn refresh_available_models_sorts_by_priority() {
         let server = MockServer::start().await;
         let remote_models = vec![
             remote_model("priority-low", "Low", 1),
@@ -435,7 +466,7 @@ mod tests {
             .await
             .expect("refresh succeeds");
         let cached_remote = manager.get_remote_models(&config).await;
-        assert_eq!(cached_remote, remote_models);
+        assert_models_contain(&cached_remote, &remote_models);
 
         let available = manager
             .list_models(&config, RefreshStrategy::OnlineIfUncached)
@@ -452,11 +483,6 @@ mod tests {
             high_idx < low_idx,
             "higher priority should be listed before lower priority"
         );
-        assert!(
-            available[high_idx].is_default,
-            "highest priority should be default"
-        );
-        assert!(!available[low_idx].is_default);
         assert_eq!(
             models_mock.requests().len(),
             1,
@@ -496,22 +522,14 @@ mod tests {
             .refresh_available_models(&config, RefreshStrategy::OnlineIfUncached)
             .await
             .expect("first refresh succeeds");
-        assert_eq!(
-            manager.get_remote_models(&config).await,
-            remote_models,
-            "remote cache should store fetched models"
-        );
+        assert_models_contain(&manager.get_remote_models(&config).await, &remote_models);
 
         // Second call should read from cache and avoid the network.
         manager
             .refresh_available_models(&config, RefreshStrategy::OnlineIfUncached)
             .await
             .expect("cached refresh succeeds");
-        assert_eq!(
-            manager.get_remote_models(&config).await,
-            remote_models,
-            "cache path should not mutate stored models"
-        );
+        assert_models_contain(&manager.get_remote_models(&config).await, &remote_models);
         assert_eq!(
             models_mock.requests().len(),
             1,
@@ -575,11 +593,7 @@ mod tests {
             .refresh_available_models(&config, RefreshStrategy::OnlineIfUncached)
             .await
             .expect("second refresh succeeds");
-        assert_eq!(
-            manager.get_remote_models(&config).await,
-            updated_models,
-            "stale cache should trigger refetch"
-        );
+        assert_models_contain(&manager.get_remote_models(&config).await, &updated_models);
         assert_eq!(
             initial_mock.requests().len(),
             1,
@@ -589,6 +603,75 @@ mod tests {
             refreshed_mock.requests().len(),
             1,
             "stale cache refresh should fetch /models once"
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_available_models_refetches_when_version_mismatch() {
+        let server = MockServer::start().await;
+        let initial_models = vec![remote_model("old", "Old", 1)];
+        let initial_mock = mount_models_once(
+            &server,
+            ModelsResponse {
+                models: initial_models.clone(),
+            },
+        )
+        .await;
+
+        let codex_home = tempdir().expect("temp dir");
+        let mut config = ConfigBuilder::default()
+            .codex_home(codex_home.path().to_path_buf())
+            .build()
+            .await
+            .expect("load default test config");
+        config.features.enable(Feature::RemoteModels);
+        let auth_manager = Arc::new(AuthManager::new(
+            codex_home.path().to_path_buf(),
+            false,
+            AuthCredentialsStoreMode::File,
+        ));
+        let provider = provider_for(server.uri());
+        let manager =
+            ModelsManager::with_provider(codex_home.path().to_path_buf(), auth_manager, provider);
+
+        manager
+            .refresh_available_models(&config, RefreshStrategy::OnlineIfUncached)
+            .await
+            .expect("initial refresh succeeds");
+
+        manager
+            .cache_manager
+            .mutate_cache_for_test(|cache| {
+                let client_version = crate::models_manager::client_version_to_whole();
+                cache.client_version = Some(format!("{client_version}-mismatch"));
+            })
+            .await
+            .expect("cache mutation succeeds");
+
+        let updated_models = vec![remote_model("new", "New", 2)];
+        server.reset().await;
+        let refreshed_mock = mount_models_once(
+            &server,
+            ModelsResponse {
+                models: updated_models.clone(),
+            },
+        )
+        .await;
+
+        manager
+            .refresh_available_models(&config, RefreshStrategy::OnlineIfUncached)
+            .await
+            .expect("second refresh succeeds");
+        assert_models_contain(&manager.get_remote_models(&config).await, &updated_models);
+        assert_eq!(
+            initial_mock.requests().len(),
+            1,
+            "initial refresh should only hit /models once"
+        );
+        assert_eq!(
+            refreshed_mock.requests().len(),
+            1,
+            "version mismatch should fetch /models once"
         );
     }
 

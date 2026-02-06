@@ -11,17 +11,23 @@ use codex_core::protocol::SandboxPolicy;
 use codex_core::protocol_config_types::ReasoningSummary;
 use codex_core::shell::Shell;
 use codex_core::shell::default_user_shell;
+use codex_protocol::config_types::CollaborationMode;
+use codex_protocol::config_types::ModeKind;
+use codex_protocol::config_types::Settings;
 use codex_protocol::config_types::WebSearchMode;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::user_input::UserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
-use core_test_support::load_sse_fixture_with_id;
+use core_test_support::responses::ev_completed;
+use core_test_support::responses::ev_response_created;
 use core_test_support::responses::mount_sse_once;
+use core_test_support::responses::sse;
 use core_test_support::responses::start_mock_server;
 use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::TestCodex;
 use core_test_support::test_codex::test_codex;
 use core_test_support::wait_for_event;
+use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 
 fn text_user_input(text: String) -> serde_json::Value {
@@ -40,11 +46,6 @@ fn default_env_context_str(cwd: &str, shell: &Shell) -> String {
   <shell>{shell_name}</shell>
 </environment_context>"#
     )
-}
-
-/// Build minimal SSE stream with completed marker using the JSON fixture.
-fn sse_completed(id: &str) -> String {
-    load_sse_fixture_with_id("../fixtures/completed_template.json", id)
 }
 
 fn assert_tool_names(body: &serde_json::Value, expected_names: &[&str]) {
@@ -75,8 +76,16 @@ async fn prompt_tools_are_consistent_across_requests() -> anyhow::Result<()> {
     use pretty_assertions::assert_eq;
 
     let server = start_mock_server().await;
-    let req1 = mount_sse_once(&server, sse_completed("resp-1")).await;
-    let req2 = mount_sse_once(&server, sse_completed("resp-2")).await;
+    let req1 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
+    )
+    .await;
+    let req2 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-2"), ev_completed("resp-2")]),
+    )
+    .await;
 
     let TestCodex {
         codex,
@@ -88,7 +97,8 @@ async fn prompt_tools_are_consistent_across_requests() -> anyhow::Result<()> {
             config.user_instructions = Some("be consistent and helpful".to_string());
             config.model = Some("gpt-5.1-codex-max".to_string());
             // Keep tool expectations stable when the default web_search mode changes.
-            config.web_search_mode = WebSearchMode::Cached;
+            config.web_search_mode = Some(WebSearchMode::Cached);
+            config.features.enable(Feature::CollaborationModes);
         })
         .build(&server)
         .await?;
@@ -126,17 +136,22 @@ async fn prompt_tools_are_consistent_across_requests() -> anyhow::Result<()> {
         .await?;
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
-    let expected_tools_names = vec![
-        "shell_command",
+    let mut expected_tools_names = if cfg!(windows) {
+        vec!["shell_command"]
+    } else {
+        vec!["exec_command", "write_stdin"]
+    };
+    expected_tools_names.extend([
         "list_mcp_resources",
         "list_mcp_resource_templates",
         "read_mcp_resource",
         "update_plan",
+        "request_user_input",
         "apply_patch",
         "batches_read_file",
         "web_search",
         "view_image",
-    ];
+    ]);
     let body0 = req1.single_request().body_json();
 
     let expected_instructions = if expected_tools_names.contains(&"apply_patch") {
@@ -167,13 +182,22 @@ async fn codex_mini_latest_tools() -> anyhow::Result<()> {
     use pretty_assertions::assert_eq;
 
     let server = start_mock_server().await;
-    let req1 = mount_sse_once(&server, sse_completed("resp-1")).await;
-    let req2 = mount_sse_once(&server, sse_completed("resp-2")).await;
+    let req1 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
+    )
+    .await;
+    let req2 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-2"), ev_completed("resp-2")]),
+    )
+    .await;
 
     let TestCodex { codex, .. } = test_codex()
         .with_config(|config| {
             config.user_instructions = Some("be consistent and helpful".to_string());
             config.features.disable(Feature::ApplyPatchFreeform);
+            config.features.enable(Feature::CollaborationModes);
             config.model = Some("codex-mini-latest".to_string());
         })
         .build(&server)
@@ -232,12 +256,21 @@ async fn prefixes_context_and_instructions_once_and_consistently_across_requests
     use pretty_assertions::assert_eq;
 
     let server = start_mock_server().await;
-    let req1 = mount_sse_once(&server, sse_completed("resp-1")).await;
-    let req2 = mount_sse_once(&server, sse_completed("resp-2")).await;
+    let req1 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
+    )
+    .await;
+    let req2 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-2"), ev_completed("resp-2")]),
+    )
+    .await;
 
     let TestCodex { codex, config, .. } = test_codex()
         .with_config(|config| {
             config.user_instructions = Some("be consistent and helpful".to_string());
+            config.features.enable(Feature::CollaborationModes);
         })
         .build(&server)
         .await?;
@@ -308,12 +341,21 @@ async fn overrides_turn_context_but_keeps_cached_prefix_and_key_constant() -> an
     use pretty_assertions::assert_eq;
 
     let server = start_mock_server().await;
-    let req1 = mount_sse_once(&server, sse_completed("resp-1")).await;
-    let req2 = mount_sse_once(&server, sse_completed("resp-2")).await;
+    let req1 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
+    )
+    .await;
+    let req2 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-2"), ev_completed("resp-2")]),
+    )
+    .await;
 
     let TestCodex { codex, .. } = test_codex()
         .with_config(|config| {
             config.user_instructions = Some("be consistent and helpful".to_string());
+            config.features.enable(Feature::CollaborationModes);
         })
         .build(&server)
         .await?;
@@ -342,9 +384,12 @@ async fn overrides_turn_context_but_keeps_cached_prefix_and_key_constant() -> an
             cwd: None,
             approval_policy: Some(AskForApproval::Never),
             sandbox_policy: Some(new_policy.clone()),
-            model: Some("o3".to_string()),
+            windows_sandbox_level: None,
+            model: None,
             effort: Some(Some(ReasoningEffort::High)),
             summary: Some(ReasoningSummary::Detailed),
+            collaboration_mode: None,
+            personality: None,
         })
         .await?;
 
@@ -376,14 +421,14 @@ async fn overrides_turn_context_but_keeps_cached_prefix_and_key_constant() -> an
         "content": [ { "type": "input_text", "text": "hello 2" } ]
     });
     let expected_permissions_msg = body1["input"][0].clone();
-    // After overriding the turn context, emit a new permissions message.
     let body1_input = body1["input"].as_array().expect("input array");
+    // After overriding the turn context, emit one updated permissions message.
     let expected_permissions_msg_2 = body2["input"][body1_input.len()].clone();
     assert_ne!(
         expected_permissions_msg_2, expected_permissions_msg,
         "expected updated permissions message after override"
     );
-    let mut expected_body2 = body1["input"].as_array().expect("input array").to_vec();
+    let mut expected_body2 = body1_input.to_vec();
     expected_body2.push(expected_permissions_msg_2);
     expected_body2.push(expected_user_message_2);
     assert_eq!(body2["input"], serde_json::Value::Array(expected_body2));
@@ -396,18 +441,34 @@ async fn override_before_first_turn_emits_environment_context() -> anyhow::Resul
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
-    let req = mount_sse_once(&server, sse_completed("resp-1")).await;
+    let req = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
+    )
+    .await;
 
     let TestCodex { codex, .. } = test_codex().build(&server).await?;
+
+    let collaboration_mode = CollaborationMode {
+        mode: ModeKind::Default,
+        settings: Settings {
+            model: "gpt-5.1".to_string(),
+            reasoning_effort: Some(ReasoningEffort::High),
+            developer_instructions: None,
+        },
+    };
 
     codex
         .submit(Op::OverrideTurnContext {
             cwd: None,
             approval_policy: Some(AskForApproval::Never),
             sandbox_policy: None,
-            model: None,
-            effort: None,
+            windows_sandbox_level: None,
+            model: Some("gpt-5.1-codex".to_string()),
+            effort: Some(Some(ReasoningEffort::Low)),
             summary: None,
+            collaboration_mode: Some(collaboration_mode),
+            personality: None,
         })
         .await?;
 
@@ -424,6 +485,13 @@ async fn override_before_first_turn_emits_environment_context() -> anyhow::Resul
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     let body = req.single_request().body_json();
+    assert_eq!(body["model"].as_str(), Some("gpt-5.1"));
+    assert_eq!(
+        body.get("reasoning")
+            .and_then(|reasoning| reasoning.get("effort"))
+            .and_then(|value| value.as_str()),
+        Some("high")
+    );
     let input = body["input"]
         .as_array()
         .expect("input array must be present");
@@ -512,12 +580,21 @@ async fn per_turn_overrides_keep_cached_prefix_and_key_constant() -> anyhow::Res
     use pretty_assertions::assert_eq;
 
     let server = start_mock_server().await;
-    let req1 = mount_sse_once(&server, sse_completed("resp-1")).await;
-    let req2 = mount_sse_once(&server, sse_completed("resp-2")).await;
+    let req1 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
+    )
+    .await;
+    let req2 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-2"), ev_completed("resp-2")]),
+    )
+    .await;
 
     let TestCodex { codex, .. } = test_codex()
         .with_config(|config| {
             config.user_instructions = Some("be consistent and helpful".to_string());
+            config.features.enable(Feature::CollaborationModes);
         })
         .build(&server)
         .await?;
@@ -555,7 +632,9 @@ async fn per_turn_overrides_keep_cached_prefix_and_key_constant() -> anyhow::Res
             model: "o3".to_string(),
             effort: Some(ReasoningEffort::High),
             summary: ReasoningSummary::Detailed,
+            collaboration_mode: None,
             final_output_json_schema: None,
+            personality: None,
         })
         .await?;
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
@@ -598,9 +677,21 @@ async fn per_turn_overrides_keep_cached_prefix_and_key_constant() -> anyhow::Res
         expected_permissions_msg_2, expected_permissions_msg,
         "expected updated permissions message after per-turn override"
     );
+    let expected_model_switch_msg = body2["input"][body1_input.len() + 2].clone();
+    assert_eq!(
+        expected_model_switch_msg["role"].as_str(),
+        Some("developer")
+    );
+    assert!(
+        expected_model_switch_msg["content"][0]["text"]
+            .as_str()
+            .is_some_and(|text| text.contains("<model_switch>")),
+        "expected model switch message after model override: {expected_model_switch_msg:?}"
+    );
     let mut expected_body2 = body1_input.to_vec();
     expected_body2.push(expected_env_msg_2);
     expected_body2.push(expected_permissions_msg_2);
+    expected_body2.push(expected_model_switch_msg);
     expected_body2.push(expected_user_message_2);
     assert_eq!(body2["input"], serde_json::Value::Array(expected_body2));
 
@@ -613,8 +704,16 @@ async fn send_user_turn_with_no_changes_does_not_send_environment_context() -> a
     use pretty_assertions::assert_eq;
 
     let server = start_mock_server().await;
-    let req1 = mount_sse_once(&server, sse_completed("resp-1")).await;
-    let req2 = mount_sse_once(&server, sse_completed("resp-2")).await;
+    let req1 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
+    )
+    .await;
+    let req2 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-2"), ev_completed("resp-2")]),
+    )
+    .await;
 
     let TestCodex {
         codex,
@@ -624,6 +723,7 @@ async fn send_user_turn_with_no_changes_does_not_send_environment_context() -> a
     } = test_codex()
         .with_config(|config| {
             config.user_instructions = Some("be consistent and helpful".to_string());
+            config.features.enable(Feature::CollaborationModes);
         })
         .build(&server)
         .await?;
@@ -647,7 +747,9 @@ async fn send_user_turn_with_no_changes_does_not_send_environment_context() -> a
             model: default_model.clone(),
             effort: default_effort,
             summary: default_summary,
+            collaboration_mode: None,
             final_output_json_schema: None,
+            personality: None,
         })
         .await?;
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
@@ -664,7 +766,9 @@ async fn send_user_turn_with_no_changes_does_not_send_environment_context() -> a
             model: default_model.clone(),
             effort: default_effort,
             summary: default_summary,
+            collaboration_mode: None,
             final_output_json_schema: None,
+            personality: None,
         })
         .await?;
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
@@ -709,8 +813,16 @@ async fn send_user_turn_with_changes_sends_environment_context() -> anyhow::Resu
 
     let server = start_mock_server().await;
 
-    let req1 = mount_sse_once(&server, sse_completed("resp-1")).await;
-    let req2 = mount_sse_once(&server, sse_completed("resp-2")).await;
+    let req1 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
+    )
+    .await;
+    let req2 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-2"), ev_completed("resp-2")]),
+    )
+    .await;
     let TestCodex {
         codex,
         config,
@@ -719,6 +831,7 @@ async fn send_user_turn_with_changes_sends_environment_context() -> anyhow::Resu
     } = test_codex()
         .with_config(|config| {
             config.user_instructions = Some("be consistent and helpful".to_string());
+            config.features.enable(Feature::CollaborationModes);
         })
         .build(&server)
         .await?;
@@ -742,7 +855,9 @@ async fn send_user_turn_with_changes_sends_environment_context() -> anyhow::Resu
             model: default_model,
             effort: default_effort,
             summary: default_summary,
+            collaboration_mode: None,
             final_output_json_schema: None,
+            personality: None,
         })
         .await?;
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
@@ -759,7 +874,9 @@ async fn send_user_turn_with_changes_sends_environment_context() -> anyhow::Resu
             model: "o3".to_string(),
             effort: Some(ReasoningEffort::High),
             summary: ReasoningSummary::Detailed,
+            collaboration_mode: None,
             final_output_json_schema: None,
+            personality: None,
         })
         .await?;
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
@@ -788,6 +905,17 @@ async fn send_user_turn_with_changes_sends_environment_context() -> anyhow::Resu
         expected_permissions_msg_2, expected_permissions_msg,
         "expected updated permissions message after policy change"
     );
+    let expected_model_switch_msg = body2["input"][body1_input.len() + 1].clone();
+    assert_eq!(
+        expected_model_switch_msg["role"].as_str(),
+        Some("developer")
+    );
+    assert!(
+        expected_model_switch_msg["content"][0]["text"]
+            .as_str()
+            .is_some_and(|text| text.contains("<model_switch>")),
+        "expected model switch message after model override: {expected_model_switch_msg:?}"
+    );
     let expected_user_message_2 = text_user_input("hello 2".to_string());
     let expected_input_2 = serde_json::Value::Array(vec![
         expected_permissions_msg,
@@ -795,6 +923,7 @@ async fn send_user_turn_with_changes_sends_environment_context() -> anyhow::Resu
         expected_env_msg_1,
         expected_user_message_1,
         expected_permissions_msg_2,
+        expected_model_switch_msg,
         expected_user_message_2,
     ]);
     assert_eq!(body2["input"], expected_input_2);

@@ -64,7 +64,8 @@ impl SessionTask for SddGitTask {
         cancellation_token: CancellationToken,
     ) -> Option<String> {
         let event = EventMsg::TurnStarted(TurnStartedEvent {
-            model_context_window: turn_context.client.get_model_context_window(),
+            model_context_window: turn_context.model_context_window(),
+            collaboration_mode_kind: turn_context.collaboration_mode.mode,
         });
         let session = session.clone_session();
         session.send_event(turn_context.as_ref(), event).await;
@@ -94,7 +95,7 @@ async fn run_sdd_git_action(
     action: &SddGitAction,
     cancellation_token: &CancellationToken,
 ) -> Result<(), String> {
-    let language = turn_context.client.config().language;
+    let language = turn_context.config.language;
     ensure_git_repository(&turn_context.cwd, language)?;
 
     match action {
@@ -360,9 +361,13 @@ async fn run_git_logged(
     let exec_env = ExecEnv {
         command: command.clone(),
         cwd: turn_context.cwd.clone(),
-        env: create_env(&turn_context.shell_environment_policy),
+        env: create_env(
+            &turn_context.shell_environment_policy,
+            Some(session.conversation_id),
+        ),
         expiration: SDD_GIT_TIMEOUT_MS.into(),
         sandbox: SandboxType::None,
+        windows_sandbox_level: turn_context.windows_sandbox_level,
         sandbox_permissions: crate::sandboxing::SandboxPermissions::UseDefault,
         justification: None,
         arg0: None,

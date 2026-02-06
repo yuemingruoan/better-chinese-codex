@@ -3,11 +3,15 @@
 // Note this file should generally be restricted to simple struct/enum
 // definitions that do not contain business logic.
 
+use crate::config_loader::RequirementSource;
 pub use codex_protocol::config_types::AltScreenMode;
+pub use codex_protocol::config_types::ModeKind;
+pub use codex_protocol::config_types::Personality;
 pub use codex_protocol::config_types::WebSearchMode;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
 use wildmatch::WildMatchPattern;
@@ -20,6 +24,23 @@ use serde::de::Error as SerdeError;
 
 pub const DEFAULT_OTEL_ENVIRONMENT: &str = "dev";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum McpServerDisabledReason {
+    Unknown,
+    Requirements { source: RequirementSource },
+}
+
+impl fmt::Display for McpServerDisabledReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            McpServerDisabledReason::Unknown => write!(f, "unknown"),
+            McpServerDisabledReason::Requirements { source } => {
+                write!(f, "requirements ({source})")
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct McpServerConfig {
     #[serde(flatten)]
@@ -28,6 +49,10 @@ pub struct McpServerConfig {
     /// When `false`, Codex skips initializing this MCP server.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+
+    /// Reason this server was disabled after applying requirements.
+    #[serde(skip)]
+    pub disabled_reason: Option<McpServerDisabledReason>,
 
     /// Startup timeout in seconds for initializing MCP server & initially listing tools.
     #[serde(
@@ -48,6 +73,10 @@ pub struct McpServerConfig {
     /// Explicit deny-list of tools. These tools will be removed after applying `enabled_tools`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disabled_tools: Option<Vec<String>>,
+
+    /// Optional OAuth scopes to request during MCP login.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scopes: Option<Vec<String>>,
 }
 
 // Raw MCP config shape used for deserialization and JSON Schema generation.
@@ -88,6 +117,8 @@ pub(crate) struct RawMcpServerConfig {
     pub enabled_tools: Option<Vec<String>>,
     #[serde(default)]
     pub disabled_tools: Option<Vec<String>>,
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
 }
 
 impl<'de> Deserialize<'de> for McpServerConfig {
@@ -109,6 +140,7 @@ impl<'de> Deserialize<'de> for McpServerConfig {
         let enabled = raw.enabled.unwrap_or_else(default_enabled);
         let enabled_tools = raw.enabled_tools.clone();
         let disabled_tools = raw.disabled_tools.clone();
+        let scopes = raw.scopes.clone();
 
         fn throw_if_set<E, T>(transport: &str, field: &str, value: Option<&T>) -> Result<(), E>
         where
@@ -160,8 +192,10 @@ impl<'de> Deserialize<'de> for McpServerConfig {
             startup_timeout_sec,
             tool_timeout_sec,
             enabled,
+            disabled_reason: None,
             enabled_tools,
             disabled_tools,
+            scopes,
         })
     }
 }
@@ -412,6 +446,24 @@ pub enum ScrollInputMode {
     Trackpad,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum NotificationMethod {
+    #[default]
+    Auto,
+    Osc9,
+    Bel,
+}
+
+impl fmt::Display for NotificationMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NotificationMethod::Auto => write!(f, "auto"),
+            NotificationMethod::Osc9 => write!(f, "osc9"),
+            NotificationMethod::Bel => write!(f, "bel"),
+        }
+    }
+}
 /// Collection of settings that are specific to the TUI.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -420,6 +472,11 @@ pub struct Tui {
     /// Defaults to `true`.
     #[serde(default)]
     pub notifications: Notifications,
+
+    /// Notification method to use for unfocused terminal notifications.
+    /// Defaults to `auto`.
+    #[serde(default)]
+    pub notification_method: NotificationMethod,
 
     /// Enable animations (welcome screen, shimmer effects, spinners).
     /// Defaults to `true`.
@@ -431,108 +488,10 @@ pub struct Tui {
     #[serde(default = "default_true")]
     pub show_tooltips: bool,
 
-    /// Override the *wheel* event density used to normalize TUI2 scrolling.
-    ///
-    /// Terminals generally deliver both mouse wheels and trackpads as discrete `scroll up/down`
-    /// mouse events with direction but no magnitude. Unfortunately, the *number* of raw events
-    /// per physical wheel notch varies by terminal (commonly 1, 3, or 9+). TUI2 uses this value
-    /// to normalize that raw event density into consistent "wheel tick" behavior.
-    ///
-    /// Wheel math (conceptually):
-    ///
-    /// - A single event contributes `1 / scroll_events_per_tick` tick-equivalents.
-    /// - Wheel-like streams then scale that by `scroll_wheel_lines` so one physical notch scrolls
-    ///   a fixed number of lines.
-    ///
-    /// Trackpad math is intentionally *not* fully tied to this value: in trackpad-like mode, TUI2
-    /// uses `min(scroll_events_per_tick, 3)` as the divisor so terminals with dense wheel ticks
-    /// (e.g. 9 events per notch) do not make trackpads feel artificially slow.
-    ///
-    /// Defaults are derived per terminal from [`crate::terminal::TerminalInfo`] when TUI2 starts.
-    /// See `codex-rs/tui2/docs/scroll_input_model.md` for the probe data and rationale.
-    pub scroll_events_per_tick: Option<u16>,
-
-    /// Override how many transcript lines one physical *wheel notch* should scroll in TUI2.
-    ///
-    /// This is the "classic feel" knob. Defaults to 3.
-    ///
-    /// Wheel-like per-event contribution is `scroll_wheel_lines / scroll_events_per_tick`. For
-    /// example, in a terminal that emits 9 events per notch, the default `3 / 9` yields 1/3 of a
-    /// line per event and totals 3 lines once the full notch burst arrives.
-    ///
-    /// See `codex-rs/tui2/docs/scroll_input_model.md` for details on the stream model and the
-    /// wheel/trackpad heuristic.
-    pub scroll_wheel_lines: Option<u16>,
-
-    /// Override baseline trackpad scroll sensitivity in TUI2.
-    ///
-    /// Trackpads do not have discrete notches, but terminals still emit discrete `scroll up/down`
-    /// events. In trackpad-like mode, TUI2 accumulates fractional scroll and only applies whole
-    /// lines to the viewport.
-    ///
-    /// Trackpad per-event contribution is:
-    ///
-    /// - `scroll_trackpad_lines / min(scroll_events_per_tick, 3)`
-    ///
-    /// (plus optional bounded acceleration; see `scroll_trackpad_accel_*`). The `min(..., 3)`
-    /// divisor is deliberate: `scroll_events_per_tick` is calibrated from *wheel* behavior and
-    /// can be much larger than trackpad event density, which would otherwise make trackpads feel
-    /// too slow in dense-wheel terminals.
-    ///
-    /// Defaults to 1, meaning one tick-equivalent maps to one transcript line.
-    pub scroll_trackpad_lines: Option<u16>,
-
-    /// Trackpad acceleration: approximate number of events required to gain +1x speed in TUI2.
-    ///
-    /// This keeps small swipes precise while allowing large/faster swipes to cover more content.
-    /// Defaults are chosen to address terminals where trackpad event density is comparatively low.
-    ///
-    /// Concretely, TUI2 computes an acceleration multiplier for trackpad-like streams:
-    ///
-    /// - `multiplier = clamp(1 + abs(events) / scroll_trackpad_accel_events, 1..scroll_trackpad_accel_max)`
-    ///
-    /// The multiplier is applied to the stream’s computed line delta (including any carried
-    /// fractional remainder).
-    pub scroll_trackpad_accel_events: Option<u16>,
-
-    /// Trackpad acceleration: maximum multiplier applied to trackpad-like streams.
-    ///
-    /// Set to 1 to effectively disable trackpad acceleration.
-    ///
-    /// See [`Tui::scroll_trackpad_accel_events`] for the exact multiplier formula.
-    pub scroll_trackpad_accel_max: Option<u16>,
-
-    /// Select how TUI2 interprets mouse scroll input.
-    ///
-    /// - `auto` (default): infer wheel vs trackpad per scroll stream.
-    /// - `wheel`: always use wheel behavior (fixed lines per wheel notch).
-    /// - `trackpad`: always use trackpad behavior (fractional accumulation; wheel may feel slow).
+    /// Start the TUI in the specified collaboration mode (plan/default).
+    /// Defaults to unset.
     #[serde(default)]
-    pub scroll_mode: ScrollInputMode,
-
-    /// Auto-mode threshold: maximum time (ms) for the first tick-worth of events to arrive.
-    ///
-    /// In `scroll_mode = "auto"`, TUI2 starts a stream as trackpad-like (to avoid overshoot) and
-    /// promotes it to wheel-like if `scroll_events_per_tick` events arrive "quickly enough". This
-    /// threshold controls what "quickly enough" means.
-    ///
-    /// Most users should leave this unset; it is primarily for terminals that emit wheel ticks
-    /// batched over longer time spans.
-    pub scroll_wheel_tick_detect_max_ms: Option<u64>,
-
-    /// Auto-mode fallback: maximum duration (ms) that a very small stream is still treated as wheel-like.
-    ///
-    /// This is only used when `scroll_events_per_tick` is effectively 1 (one event per wheel
-    /// notch). In that case, we cannot observe a "tick completion time", so TUI2 treats a
-    /// short-lived, small stream (<= 2 events) as wheel-like to preserve classic wheel behavior.
-    pub scroll_wheel_like_max_duration_ms: Option<u64>,
-
-    /// Invert mouse scroll direction in TUI2.
-    ///
-    /// This flips the scroll sign after terminal detection. It is applied consistently to both
-    /// wheel and trackpad input.
-    #[serde(default)]
-    pub scroll_invert: bool,
+    pub experimental_mode: Option<ModeKind>,
 
     /// Controls whether the TUI uses the terminal's alternate screen buffer.
     ///
@@ -554,7 +513,6 @@ const fn default_true() -> bool {
 /// (primarily the Codex IDE extension). NOTE: these are different from
 /// notifications - notices are warnings, NUX screens, acknowledgements, etc.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
-#[schemars(deny_unknown_fields)]
 pub struct Notice {
     /// Tracks whether the user has acknowledged the full access warning prompt.
     pub hide_full_access_warning: Option<bool>,
@@ -575,6 +533,20 @@ pub struct Notice {
 impl Notice {
     /// referenced by config_edit helpers when writing notice flags
     pub(crate) const TABLE_KEY: &'static str = "notice";
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct SkillConfig {
+    pub path: AbsolutePathBuf,
+    pub enabled: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct SkillsConfig {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub config: Vec<SkillConfig>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]

@@ -3,7 +3,6 @@ use crate::i18n::tr_args;
 use codex_core::DEFAULT_LMSTUDIO_PORT;
 use codex_core::DEFAULT_OLLAMA_PORT;
 use codex_core::LMSTUDIO_OSS_PROVIDER_ID;
-use codex_core::OLLAMA_CHAT_PROVIDER_ID;
 use codex_core::OLLAMA_OSS_PROVIDER_ID;
 use codex_core::config::set_default_oss_provider;
 use codex_protocol::config_types::Language;
@@ -140,12 +139,6 @@ impl OssSelectionWidget<'_> {
                 description: tr(language, "oss_selection.option.ollama_responses"),
                 key: KeyCode::Char('o'),
                 provider_id: OLLAMA_OSS_PROVIDER_ID,
-            },
-            SelectOption {
-                label: Line::from(vec!["Ollama (".into(), "c".underlined(), "hat)".into()]),
-                description: tr(language, "oss_selection.option.ollama_chat"),
-                key: KeyCode::Char('c'),
-                provider_id: OLLAMA_CHAT_PROVIDER_ID,
             },
         ];
 

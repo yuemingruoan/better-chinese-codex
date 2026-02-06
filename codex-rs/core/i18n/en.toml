@@ -26,6 +26,14 @@ sdd_develop = "start the SDD development workflow"
 skills = "use skills to improve how Codex performs specific tasks"
 status = "show current session configuration and token usage"
 test_approval = "test approval request"
+rename = "rename the current thread"
+permissions = "manage approval permissions"
+apps = "manage connected apps"
+debug_config = "show the effective configuration"
+personality = "customize how Codex communicates"
+plan = "switch to plan mode"
+collab = "choose a collaboration mode"
+agent = "select an agent"
 
 [tooltips]
 items = [
@@ -48,6 +56,16 @@ items = [
     "Paste an image with Ctrl+V to attach it to your next message.",
     "You can resume a previous conversation by running `codex resume`",
 ]
+
+[tooltips.promo]
+paid = "*New* Try the **Codex App** with 2x rate limits until *April 2nd*. Run 'codex app' or visit https://chatgpt.com/codex"
+other = "*New* Build faster with the **Codex App**. Run 'codex app' or visit https://chatgpt.com/codex"
+free_go = "*New* Codex is included in your plan for free through *March 2nd* - let's build together."
+
+[tooltips.experimental]
+shell_snapshot = "NEW! Try shell snapshotting to make your Codex faster. Enable in /experimental!"
+collab = "NEW: Sub-agents can now be spawned by Codex. Enable in /experimental and restart Codex!"
+apps = "NEW: Use ChatGPT Apps (Connectors) in Codex via $ mentions. Enable in /experimental and restart Codex!"
 
 [prompt]
 init = '''Generate a file named AGENTS.md that serves as a contributor guide for this repository.
@@ -212,12 +230,19 @@ token_usage = "↑ ${input_prior} + ${input_last} tokens (${cached_prior} + ${ca
 edit_previous = " to edit previous message"
 edit_previous_again = " again to edit previous message"
 queue_message = " to queue message"
+queue_short = " to queue"
 quit_again = " again to quit"
 shortcuts = " for shortcuts"
 
 [footer.context]
 used = "context used"
 used_suffix = "used"
+
+[footer.mode]
+plan = "Plan mode"
+pair_programming = "Pair Programming mode"
+execute = "Execute mode"
+cycle_hint = " (shift+tab to cycle)"
 
 [footer.shortcuts]
 commands = " for commands"
@@ -229,6 +254,7 @@ queue_message = " to queue message"
 quit = " to exit"
 shell_commands = " for shell commands"
 show_transcript = " to view transcript"
+change_mode = " to change mode"
 
 [footer.copy]
 copied = "Copied"
@@ -238,6 +264,47 @@ failed = "Copy failed"
 copy_selection = " copy selection"
 jump = " jump"
 scroll = " scroll"
+
+[request_user_input.placeholder]
+notes = "Add notes"
+answer = "Type your answer (optional)"
+select_option = "Select an option to add notes"
+
+[request_user_input.other_option]
+label = "None of the above"
+description = "Optionally, add details in notes (tab)."
+
+[request_user_input.confirm_unanswered]
+title = "Submit with unanswered questions?"
+subtitle = "${count} unanswered ${suffix}"
+go_back = "Go back"
+go_back_desc = "Return to the first unanswered question."
+submit = "Proceed"
+submit_desc_singular = "question"
+submit_desc_plural = "questions"
+submit_with_count = "Submit with ${count} unanswered ${suffix}."
+
+[request_user_input.footer]
+tab_add_notes = "tab to add notes"
+tab_or_esc_clear_notes = "tab or esc to clear notes"
+enter_submit_answer = "enter to submit answer"
+enter_submit_all = "enter to submit all"
+ctrl_n_first_question = "ctrl + n first question"
+ctrl_n_next_question = "ctrl + n next question"
+esc_interrupt = "esc to interrupt"
+option_count = "option ${selected}/${total}"
+
+[request_user_input.progress]
+question = "Question ${index}/${total}"
+unanswered = "(${count} unanswered)"
+none = "No questions"
+
+[request_user_input.empty]
+choices = "No choices"
+options = "No options"
+
+[request_user_input.hint]
+answer_questions = "Answer the questions to continue."
 
 [popup.hint]
 confirm_or = " to confirm or "
@@ -310,6 +377,9 @@ model_provider = "Model provider"
 sandbox = "Sandbox"
 session = "Session"
 token_usage = "Token usage"
+thread_name = "Thread name"
+forked_from = "Forked from"
+collaboration_mode = "Collaboration mode"
 
 [status.note]
 rate_limits_and_credits = "information on rate limits and credits"
@@ -416,6 +486,7 @@ policy_failed = "Failed to set sandbox policy: ${error}"
 [app.session]
 fork_failed = "Failed to fork session from ${path}"
 fork_failed_detail = "Failed to fork session from ${path}: ${error}"
+fork_not_ready = "The forked session is not ready yet. Try again in a moment."
 resume_failed = "Failed to resume session from ${path}"
 resume_failed_detail = "Failed to resume session from ${path}: ${error}"
 resume_hint = "To continue this session, run "
@@ -454,6 +525,12 @@ label = "Agent (full access)"
 [chatwidget.approvals.read_only]
 desc = "Agent (non-elevated sandbox)"
 label = "Agent (non-elevated sandbox)"
+
+[chatwidget.collab]
+disabled = "Collaboration modes are disabled."
+enable_plan = "Enable collaboration modes to use /plan."
+plan_unavailable = "Plan mode is unavailable for the current model."
+enable_collab = "Enable collaboration modes to use /collab."
 
 [chatwidget.clean]
 deleted = "Clipboard image cache cleaned: deleted ${deleted} file(s)."
@@ -830,6 +907,7 @@ visit_prefix = "Visit "
 
 [history.web_search]
 searched = "Searched"
+searching = "Searching"
 
 [language.name]
 en = "English"
@@ -891,6 +969,8 @@ training_prefs = "\\u{1b}]8;;https://chatgpt.com/#settings\\u{7}training data pr
 api_key = "Provide your own API key"
 api_key_description = "Pay for what you use"
 chatgpt = "Sign in with ChatGPT"
+device_code = "Sign in with a device code"
+device_code_description = "Use a one-time code in your browser"
 
 [onboarding.auth.pick]
 api_key_disabled_workspace = "  API key login is disabled by this workspace. Sign in with ChatGPT to continue."
@@ -936,6 +1016,7 @@ select_quit = "  Press Enter to select • Ctrl+C to quit"
 [pager_overlay.hint]
 edit_message = "Edit message"
 edit_prev = "Edit previous"
+edit_next = "Edit next"
 jump = "Jump"
 page = "Page"
 quit = "Quit"

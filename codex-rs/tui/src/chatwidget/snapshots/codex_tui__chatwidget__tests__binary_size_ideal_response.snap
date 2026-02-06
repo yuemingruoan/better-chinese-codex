@@ -26,8 +26,8 @@ expression: "lines[start_idx..].join(\"\\n\")"
   through crates for heavy dependencies in Cargo.toml, including cli, core,
   exec, linux-sandbox, tui, login, ollama, and mcp.
 
-• 已 运 行  for d in ansi-escape apply-patch arg0 cli common core exec execpolicy
-  │ file-search linux-sandbox login mcp-client mcp-server mcp-types ollama
+• Ran for d in ansi-escape apply-patch arg0 cli common core exec execpolicy
+  │ file-search linux-sandbox login mcp-client mcp-server ollama
   │ tui; do echo "--- $d/Cargo.toml"; sed -n '1,200p' $d/Cargo.toml; echo;
   │ … +1 行
   └ --- ansi-escape/Cargo.toml

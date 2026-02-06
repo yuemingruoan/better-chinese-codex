@@ -28,6 +28,7 @@ impl EnvironmentContext {
             cwd,
             // should compare all fields except shell
             shell: _,
+            ..
         } = other;
 
         self.cwd == *cwd
@@ -79,6 +80,8 @@ impl From<EnvironmentContext> for ResponseItem {
             content: vec![ContentItem::InputText {
                 text: ec.serialize_to_xml(),
             }],
+            end_turn: None,
+            phase: None,
         }
     }
 }
@@ -95,7 +98,7 @@ mod tests {
         Shell {
             shell_type: ShellType::Bash,
             shell_path: PathBuf::from("/bin/bash"),
-            shell_snapshot: None,
+            shell_snapshot: crate::shell::empty_shell_snapshot_receiver(),
         }
     }
 
@@ -189,7 +192,7 @@ mod tests {
             Shell {
                 shell_type: ShellType::Bash,
                 shell_path: "/bin/bash".into(),
-                shell_snapshot: None,
+                shell_snapshot: crate::shell::empty_shell_snapshot_receiver(),
             },
         );
         let context2 = EnvironmentContext::new(
@@ -197,7 +200,7 @@ mod tests {
             Shell {
                 shell_type: ShellType::Zsh,
                 shell_path: "/bin/zsh".into(),
-                shell_snapshot: None,
+                shell_snapshot: crate::shell::empty_shell_snapshot_receiver(),
             },
         );
 

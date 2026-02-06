@@ -63,6 +63,7 @@ pub struct Cli {
 
     /// 指定本地提供者（lmstudio / ollama / ollama-chat），未通过 --oss 指定时沿用配置默认或进入选择界面。
     /// Specify which local provider to use (lmstudio, ollama, or ollama-chat).
+    /// If not specified with --oss, will use config default or show selection.
     #[arg(long = "local-provider")]
     pub oss_provider: Option<String>,
 

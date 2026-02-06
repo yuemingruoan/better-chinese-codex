@@ -23,32 +23,32 @@ use codex_core::protocol::Submission;
 use codex_core::protocol::TurnCompleteEvent;
 use codex_protocol::ThreadId;
 use codex_protocol::user_input::UserInput;
-use mcp_types::CallToolResult;
-use mcp_types::ContentBlock;
-use mcp_types::RequestId;
-use mcp_types::TextContent;
+use rmcp::model::CallToolResult;
+use rmcp::model::Content;
+use rmcp::model::RequestId;
 use serde_json::json;
 use tokio::sync::Mutex;
 
-pub(crate) const INVALID_PARAMS_ERROR_CODE: i64 = -32602;
-
 /// To adhere to MCP `tools/call` response format, include the Codex
 /// `threadId` in the `structured_content` field of the response.
-fn create_call_tool_result_with_thread_id(
+/// Some MCP clients ignore `content` when `structuredContent` is present, so
+/// mirror the text there as well.
+pub(crate) fn create_call_tool_result_with_thread_id(
     thread_id: ThreadId,
     text: String,
     is_error: Option<bool>,
 ) -> CallToolResult {
+    let content_text = text;
+    let content = vec![Content::text(content_text.clone())];
+    let structured_content = json!({
+        "threadId": thread_id,
+        "content": content_text,
+    });
     CallToolResult {
-        content: vec![ContentBlock::TextContent(TextContent {
-            r#type: "text".to_string(),
-            text,
-            annotations: None,
-        })],
+        content,
         is_error,
-        structured_content: Some(json!({
-            "threadId": thread_id,
-        })),
+        structured_content: Some(structured_content),
+        meta: None,
     }
 }
 
@@ -72,13 +72,10 @@ pub async fn run_codex_tool_session(
         Ok(res) => res,
         Err(e) => {
             let result = CallToolResult {
-                content: vec![ContentBlock::TextContent(TextContent {
-                    r#type: "text".to_string(),
-                    text: format!("Failed to start Codex session: {e}"),
-                    annotations: None,
-                })],
+                content: vec![Content::text(format!("Failed to start Codex session: {e}"))],
                 is_error: Some(true),
                 structured_content: None,
+                meta: None,
             };
             outgoing.send_response(id.clone(), result).await;
             return;
@@ -103,10 +100,7 @@ pub async fn run_codex_tool_session(
     // Use the original MCP request ID as the `sub_id` for the Codex submission so that
     // any events emitted for this tool-call can be correlated with the
     // originating `tools/call` request.
-    let sub_id = match &id {
-        RequestId::String(s) => s.clone(),
-        RequestId::Integer(n) => n.to_string(),
-    };
+    let sub_id = id.to_string();
     running_requests_id_to_codex_uuid
         .lock()
         .await
@@ -116,6 +110,7 @@ pub async fn run_codex_tool_session(
         op: Op::UserInput {
             items: vec![UserInput::Text {
                 text: initial_prompt.clone(),
+                // MCP tool prompts are plain text with no UI element ranges.
                 text_elements: Vec::new(),
             }],
             final_output_json_schema: None,
@@ -161,7 +156,7 @@ pub async fn run_codex_tool_session_reply(
         .submit(Op::UserInput {
             items: vec![UserInput::Text {
                 text: prompt,
-                // Plain text conversion has no UI element ranges.
+                // MCP tool prompts are plain text with no UI element ranges.
                 text_elements: Vec::new(),
             }],
             final_output_json_schema: None,
@@ -200,10 +195,7 @@ async fn run_codex_tool_session_inner(
     request_id: RequestId,
     running_requests_id_to_codex_uuid: Arc<Mutex<HashMap<RequestId, ThreadId>>>,
 ) {
-    let request_id_str = match &request_id {
-        RequestId::String(s) => s.clone(),
-        RequestId::Integer(n) => n.to_string(),
-    };
+    let request_id_str = request_id.to_string();
 
     // Stream events until the task needs to pause for user interaction or
     // completes.
@@ -243,6 +235,9 @@ async fn run_codex_tool_session_inner(
                             thread_id,
                         )
                         .await;
+                        continue;
+                    }
+                    EventMsg::PlanDelta(_) => {
                         continue;
                     }
                     EventMsg::Error(err_event) => {
@@ -301,6 +296,9 @@ async fn run_codex_tool_session_inner(
                     EventMsg::SessionConfigured(_) => {
                         tracing::error!("unexpected SessionConfigured event");
                     }
+                    EventMsg::ThreadNameUpdated(_) => {
+                        // Ignore session metadata updates in MCP tool runner.
+                    }
                     EventMsg::AgentMessageDelta(_) => {
                         // TODO: think how we want to support this in the MCP
                     }
@@ -324,6 +322,8 @@ async fn run_codex_tool_session_inner(
                     | EventMsg::McpListToolsResponse(_)
                     | EventMsg::ListCustomPromptsResponse(_)
                     | EventMsg::ListSkillsResponse(_)
+                    | EventMsg::ListRemoteSkillsResponse(_)
+                    | EventMsg::RemoteSkillDownloaded(_)
                     | EventMsg::ExecCommandBegin(_)
                     | EventMsg::TerminalInteraction(_)
                     | EventMsg::ExecCommandOutputDelta(_)
@@ -352,6 +352,8 @@ async fn run_codex_tool_session_inner(
                     | EventMsg::UndoStarted(_)
                     | EventMsg::UndoCompleted(_)
                     | EventMsg::ExitedReviewMode(_)
+                    | EventMsg::RequestUserInput(_)
+                    | EventMsg::DynamicToolCallRequest(_)
                     | EventMsg::ContextCompacted(_)
                     | EventMsg::ThreadRolledBack(_)
                     | EventMsg::CollabAgentSpawnBegin(_)
@@ -398,6 +400,7 @@ mod tests {
             result.structured_content,
             Some(json!({
                 "threadId": thread_id,
+                "content": "done",
             }))
         );
     }

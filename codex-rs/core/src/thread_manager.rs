@@ -11,6 +11,8 @@ use crate::codex_thread::CodexThread;
 use crate::config::Config;
 use crate::error::CodexErr;
 use crate::error::Result as CodexResult;
+use crate::file_watcher::FileWatcher;
+use crate::file_watcher::FileWatcherEvent;
 use crate::models_manager::manager::ModelsManager;
 use crate::protocol::Event;
 use crate::protocol::EventMsg;
@@ -19,6 +21,7 @@ use crate::rollout::RolloutRecorder;
 use crate::rollout::truncation;
 use crate::skills::SkillsManager;
 use codex_protocol::ThreadId;
+use codex_protocol::config_types::CollaborationModeMask;
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::protocol::InitialHistory;
 use codex_protocol::protocol::McpServerRefreshConfig;
@@ -30,11 +33,55 @@ use std::path::PathBuf;
 use std::sync::Arc;
 #[cfg(any(test, feature = "test-support"))]
 use tempfile::TempDir;
+use tokio::runtime::Handle;
+#[cfg(any(test, feature = "test-support"))]
+use tokio::runtime::RuntimeFlavor;
 use tokio::sync::RwLock;
 use tokio::sync::broadcast;
 use tracing::warn;
 
 const THREAD_CREATED_CHANNEL_CAPACITY: usize = 1024;
+
+fn build_file_watcher(codex_home: PathBuf, skills_manager: Arc<SkillsManager>) -> Arc<FileWatcher> {
+    #[cfg(any(test, feature = "test-support"))]
+    if let Ok(handle) = Handle::try_current()
+        && handle.runtime_flavor() == RuntimeFlavor::CurrentThread
+    {
+        // The real watcher spins background tasks that can starve the
+        // current-thread test runtime and cause event waits to time out.
+        // Integration tests compile with the `test-support` feature.
+        warn!("using noop file watcher under current-thread test runtime");
+        return Arc::new(FileWatcher::noop());
+    }
+
+    let file_watcher = match FileWatcher::new(codex_home) {
+        Ok(file_watcher) => Arc::new(file_watcher),
+        Err(err) => {
+            warn!("failed to initialize file watcher: {err}");
+            Arc::new(FileWatcher::noop())
+        }
+    };
+
+    let mut rx = file_watcher.subscribe();
+    let skills_manager = Arc::clone(&skills_manager);
+    if let Ok(handle) = Handle::try_current() {
+        handle.spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(FileWatcherEvent::SkillsChanged { .. }) => {
+                        skills_manager.clear_cache();
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                }
+            }
+        });
+    } else {
+        warn!("file watcher listener skipped: no Tokio runtime available");
+    }
+
+    file_watcher
+}
 
 /// Represents a newly created Codex thread (formerly called a conversation), including the first event
 /// (which is [`EventMsg::SessionConfigured`]).
@@ -61,6 +108,7 @@ pub(crate) struct ThreadManagerState {
     auth_manager: Arc<AuthManager>,
     models_manager: Arc<ModelsManager>,
     skills_manager: Arc<SkillsManager>,
+    file_watcher: Arc<FileWatcher>,
     session_source: SessionSource,
     #[cfg(any(test, feature = "test-support"))]
     #[allow(dead_code)]
@@ -75,15 +123,15 @@ impl ThreadManager {
         session_source: SessionSource,
     ) -> Self {
         let (thread_created_tx, _) = broadcast::channel(THREAD_CREATED_CHANNEL_CAPACITY);
+        let skills_manager = Arc::new(SkillsManager::new(codex_home.clone()));
+        let file_watcher = build_file_watcher(codex_home.clone(), Arc::clone(&skills_manager));
         Self {
             state: Arc::new(ThreadManagerState {
                 threads: Arc::new(RwLock::new(HashMap::new())),
                 thread_created_tx,
-                models_manager: Arc::new(ModelsManager::new(
-                    codex_home.clone(),
-                    auth_manager.clone(),
-                )),
-                skills_manager: Arc::new(SkillsManager::new(codex_home)),
+                models_manager: Arc::new(ModelsManager::new(codex_home, auth_manager.clone())),
+                skills_manager,
+                file_watcher,
                 auth_manager,
                 session_source,
                 #[cfg(any(test, feature = "test-support"))]
@@ -115,16 +163,19 @@ impl ThreadManager {
     ) -> Self {
         let auth_manager = AuthManager::from_auth_for_testing(auth);
         let (thread_created_tx, _) = broadcast::channel(THREAD_CREATED_CHANNEL_CAPACITY);
+        let skills_manager = Arc::new(SkillsManager::new(codex_home.clone()));
+        let file_watcher = build_file_watcher(codex_home.clone(), Arc::clone(&skills_manager));
         Self {
             state: Arc::new(ThreadManagerState {
                 threads: Arc::new(RwLock::new(HashMap::new())),
                 thread_created_tx,
                 models_manager: Arc::new(ModelsManager::with_provider(
-                    codex_home.clone(),
+                    codex_home,
                     auth_manager.clone(),
                     provider,
                 )),
-                skills_manager: Arc::new(SkillsManager::new(codex_home)),
+                skills_manager,
+                file_watcher,
                 auth_manager,
                 session_source: SessionSource::Exec,
                 #[cfg(any(test, feature = "test-support"))]
@@ -142,6 +193,10 @@ impl ThreadManager {
         self.state.skills_manager.clone()
     }
 
+    pub fn subscribe_file_watcher(&self) -> broadcast::Receiver<FileWatcherEvent> {
+        self.state.file_watcher.subscribe()
+    }
+
     pub fn get_models_manager(&self) -> Arc<ModelsManager> {
         self.state.models_manager.clone()
     }
@@ -155,6 +210,10 @@ impl ThreadManager {
             .models_manager
             .list_models(config, refresh_strategy)
             .await
+    }
+
+    pub fn list_collaboration_modes(&self) -> Vec<CollaborationModeMask> {
+        self.state.models_manager.list_collaboration_modes()
     }
 
     pub async fn list_thread_ids(&self) -> Vec<ThreadId> {
@@ -191,12 +250,21 @@ impl ThreadManager {
     }
 
     pub async fn start_thread(&self, config: Config) -> CodexResult<NewThread> {
+        self.start_thread_with_tools(config, Vec::new()).await
+    }
+
+    pub async fn start_thread_with_tools(
+        &self,
+        config: Config,
+        dynamic_tools: Vec<codex_protocol::dynamic_tools::DynamicToolSpec>,
+    ) -> CodexResult<NewThread> {
         self.state
             .spawn_thread(
                 config,
                 InitialHistory::New,
                 Arc::clone(&self.state.auth_manager),
                 self.agent_control(),
+                dynamic_tools,
             )
             .await
     }
@@ -219,7 +287,13 @@ impl ThreadManager {
         auth_manager: Arc<AuthManager>,
     ) -> CodexResult<NewThread> {
         self.state
-            .spawn_thread(config, initial_history, auth_manager, self.agent_control())
+            .spawn_thread(
+                config,
+                initial_history,
+                auth_manager,
+                self.agent_control(),
+                Vec::new(),
+            )
             .await
     }
 
@@ -228,6 +302,15 @@ impl ThreadManager {
     /// Returns the thread if the thread was found and removed.
     pub async fn remove_thread(&self, thread_id: &ThreadId) -> Option<Arc<CodexThread>> {
         self.state.threads.write().await.remove(thread_id)
+    }
+
+    /// Closes all threads open in this ThreadManager
+    pub async fn remove_and_close_all_threads(&self) -> CodexResult<()> {
+        for thread in self.state.threads.read().await.values() {
+            thread.submit(Op::Shutdown).await?;
+        }
+        self.state.threads.write().await.clear();
+        Ok(())
     }
 
     /// Fork an existing thread by taking messages up to the given position (not including
@@ -248,6 +331,7 @@ impl ThreadManager {
                 history,
                 Arc::clone(&self.state.auth_manager),
                 self.agent_control(),
+                Vec::new(),
             )
             .await
     }
@@ -300,11 +384,23 @@ impl ThreadManagerState {
         config: Config,
         agent_control: AgentControl,
     ) -> CodexResult<NewThread> {
-        self.spawn_thread(
+        self.spawn_new_thread_with_source(config, agent_control, self.session_source.clone())
+            .await
+    }
+
+    pub(crate) async fn spawn_new_thread_with_source(
+        &self,
+        config: Config,
+        agent_control: AgentControl,
+        session_source: SessionSource,
+    ) -> CodexResult<NewThread> {
+        self.spawn_thread_with_source(
             config,
             InitialHistory::New,
             Arc::clone(&self.auth_manager),
             agent_control,
+            session_source,
+            Vec::new(),
         )
         .await
     }
@@ -316,7 +412,29 @@ impl ThreadManagerState {
         initial_history: InitialHistory,
         auth_manager: Arc<AuthManager>,
         agent_control: AgentControl,
+        dynamic_tools: Vec<codex_protocol::dynamic_tools::DynamicToolSpec>,
     ) -> CodexResult<NewThread> {
+        self.spawn_thread_with_source(
+            config,
+            initial_history,
+            auth_manager,
+            agent_control,
+            self.session_source.clone(),
+            dynamic_tools,
+        )
+        .await
+    }
+
+    pub(crate) async fn spawn_thread_with_source(
+        &self,
+        config: Config,
+        initial_history: InitialHistory,
+        auth_manager: Arc<AuthManager>,
+        agent_control: AgentControl,
+        session_source: SessionSource,
+        dynamic_tools: Vec<codex_protocol::dynamic_tools::DynamicToolSpec>,
+    ) -> CodexResult<NewThread> {
+        self.file_watcher.register_config(&config);
         let CodexSpawnOk {
             codex, thread_id, ..
         } = Codex::spawn(
@@ -324,9 +442,11 @@ impl ThreadManagerState {
             auth_manager,
             Arc::clone(&self.models_manager),
             Arc::clone(&self.skills_manager),
+            Arc::clone(&self.file_watcher),
             initial_history,
-            self.session_source.clone(),
+            session_source,
             agent_control,
+            dynamic_tools,
         )
         .await?;
         self.finalize_thread_spawn(codex, thread_id).await
@@ -352,7 +472,8 @@ impl ThreadManagerState {
             codex,
             session_configured.rollout_path.clone(),
         ));
-        self.threads.write().await.insert(thread_id, thread.clone());
+        let mut threads = self.threads.write().await;
+        threads.insert(thread_id, thread.clone());
 
         Ok(NewThread {
             thread_id,
@@ -396,6 +517,8 @@ mod tests {
             content: vec![ContentItem::OutputText {
                 text: text.to_string(),
             }],
+            end_turn: None,
+            phase: None,
         }
     }
     fn assistant_msg(text: &str) -> ResponseItem {
@@ -405,6 +528,8 @@ mod tests {
             content: vec![ContentItem::OutputText {
                 text: text.to_string(),
             }],
+            end_turn: None,
+            phase: None,
         }
     }
 
@@ -462,7 +587,7 @@ mod tests {
     #[tokio::test]
     async fn ignores_session_prefix_messages_when_truncating() {
         let (session, turn_context) = make_session_and_context().await;
-        let mut items = session.build_initial_context(&turn_context);
+        let mut items = session.build_initial_context(&turn_context).await;
         items.push(user_msg("feature request"));
         items.push(assistant_msg("ack"));
         items.push(user_msg("second question"));

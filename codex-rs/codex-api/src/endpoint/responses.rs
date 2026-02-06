@@ -3,10 +3,9 @@ use crate::common::Prompt as ApiPrompt;
 use crate::common::Reasoning;
 use crate::common::ResponseStream;
 use crate::common::TextControls;
-use crate::endpoint::streaming::StreamingClient;
+use crate::endpoint::session::EndpointSession;
 use crate::error::ApiError;
 use crate::provider::Provider;
-use crate::provider::WireApi;
 use crate::requests::ResponsesRequest;
 use crate::requests::ResponsesRequestBuilder;
 use crate::requests::responses::Compression;
@@ -17,12 +16,16 @@ use codex_client::RequestCompression;
 use codex_client::RequestTelemetry;
 use codex_protocol::protocol::SessionSource;
 use http::HeaderMap;
+use http::HeaderValue;
+use http::Method;
 use serde_json::Value;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use tracing::instrument;
 
 pub struct ResponsesClient<T: HttpTransport, A: AuthProvider> {
-    streaming: StreamingClient<T, A>,
+    session: EndpointSession<T, A>,
+    sse_telemetry: Option<Arc<dyn SseTelemetry>>,
 }
 
 #[derive(Default)]
@@ -36,12 +39,14 @@ pub struct ResponsesOptions {
     pub session_source: Option<SessionSource>,
     pub extra_headers: HeaderMap,
     pub compression: Compression,
+    pub turn_state: Option<Arc<OnceLock<String>>>,
 }
 
 impl<T: HttpTransport, A: AuthProvider> ResponsesClient<T, A> {
     pub fn new(transport: T, provider: Provider, auth: A) -> Self {
         Self {
-            streaming: StreamingClient::new(transport, provider, auth),
+            session: EndpointSession::new(transport, provider, auth),
+            sse_telemetry: None,
         }
     }
 
@@ -51,16 +56,23 @@ impl<T: HttpTransport, A: AuthProvider> ResponsesClient<T, A> {
         sse: Option<Arc<dyn SseTelemetry>>,
     ) -> Self {
         Self {
-            streaming: self.streaming.with_telemetry(request, sse),
+            session: self.session.with_request_telemetry(request),
+            sse_telemetry: sse,
         }
     }
 
     pub async fn stream_request(
         &self,
         request: ResponsesRequest,
+        turn_state: Option<Arc<OnceLock<String>>>,
     ) -> Result<ResponseStream, ApiError> {
-        self.stream(request.body, request.headers, request.compression)
-            .await
+        self.stream(
+            request.body,
+            request.headers,
+            request.compression,
+            turn_state,
+        )
+        .await
     }
 
     #[instrument(level = "trace", skip_all, err)]
@@ -80,6 +92,7 @@ impl<T: HttpTransport, A: AuthProvider> ResponsesClient<T, A> {
             session_source,
             extra_headers,
             compression,
+            turn_state,
         } = options;
 
         let request = ResponsesRequestBuilder::new(model, &prompt.instructions, &prompt.input)
@@ -94,16 +107,13 @@ impl<T: HttpTransport, A: AuthProvider> ResponsesClient<T, A> {
             .store_override(store_override)
             .extra_headers(extra_headers)
             .compression(compression)
-            .build(self.streaming.provider())?;
+            .build(self.session.provider())?;
 
-        self.stream_request(request).await
+        self.stream_request(request, turn_state).await
     }
 
-    fn path(&self) -> &'static str {
-        match self.streaming.provider().wire {
-            WireApi::Responses | WireApi::Compact => "responses",
-            WireApi::Chat => "chat/completions",
-        }
+    fn path() -> &'static str {
+        "responses"
     }
 
     pub async fn stream(
@@ -111,20 +121,35 @@ impl<T: HttpTransport, A: AuthProvider> ResponsesClient<T, A> {
         body: Value,
         extra_headers: HeaderMap,
         compression: Compression,
+        turn_state: Option<Arc<OnceLock<String>>>,
     ) -> Result<ResponseStream, ApiError> {
-        let compression = match compression {
+        let request_compression = match compression {
             Compression::None => RequestCompression::None,
             Compression::Zstd => RequestCompression::Zstd,
         };
 
-        self.streaming
-            .stream(
-                self.path(),
-                body,
+        let stream_response = self
+            .session
+            .stream_with(
+                Method::POST,
+                Self::path(),
                 extra_headers,
-                compression,
-                spawn_response_stream,
+                Some(body),
+                |req| {
+                    req.headers.insert(
+                        http::header::ACCEPT,
+                        HeaderValue::from_static("text/event-stream"),
+                    );
+                    req.compression = request_compression;
+                },
             )
-            .await
+            .await?;
+
+        Ok(spawn_response_stream(
+            stream_response,
+            self.session.provider().stream_idle_timeout,
+            self.sse_telemetry.clone(),
+            turn_state,
+        ))
     }
 }

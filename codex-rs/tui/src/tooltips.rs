@@ -1,5 +1,8 @@
+use crate::i18n::tr;
 use crate::i18n::tr_list;
 use codex_core::features::FEATURES;
+use codex_core::features::Feature;
+use codex_protocol::account::PlanType;
 use codex_protocol::config_types::Language;
 use lazy_static::lazy_static;
 use rand::Rng;
@@ -13,29 +16,60 @@ lazy_static! {
     static ref ALL_TOOLTIPS_EN: Vec<String> = {
         let mut tips = Vec::new();
         tips.extend(TOOLTIPS_EN.iter().cloned());
-        tips.extend(beta_tooltips().into_iter().map(str::to_string));
+        tips.extend(experimental_tooltips(Language::En));
         tips
     };
     static ref ALL_TOOLTIPS_ZH: Vec<String> = {
         let mut tips = Vec::new();
         tips.extend(TOOLTIPS_ZH.iter().cloned());
-        tips.extend(beta_tooltips().into_iter().map(str::to_string));
+        tips.extend(experimental_tooltips(Language::ZhCn));
         tips
     };
 }
-fn beta_tooltips() -> Vec<&'static str> {
+
+fn experimental_tooltips(language: Language) -> Vec<String> {
     FEATURES
         .iter()
-        .filter_map(|spec| spec.stage.beta_announcement())
+        .filter_map(|spec| {
+            spec.stage
+                .experimental_announcement()
+                .and_then(|_| experimental_tooltip(spec.id, language))
+        })
         .collect()
 }
 
+fn experimental_tooltip(feature: Feature, language: Language) -> Option<String> {
+    let key = match feature {
+        Feature::ShellSnapshot => "tooltips.experimental.shell_snapshot",
+        Feature::Collab => "tooltips.experimental.collab",
+        Feature::Apps => "tooltips.experimental.apps",
+        _ => return None,
+    };
+    Some(tr(language, key).to_string())
+}
+
 /// Pick a random tooltip to show to the user when starting Codex.
-pub(crate) fn random_tooltip(language: Language) -> Option<String> {
+pub(crate) fn get_tooltip(plan: Option<PlanType>, language: Language) -> Option<String> {
+    let mut rng = rand::rng();
+
+    // Leave small chance for a random tooltip to be shown.
+    if rng.random_ratio(8, 10) {
+        let promo_key = match plan {
+            Some(PlanType::Plus)
+            | Some(PlanType::Business)
+            | Some(PlanType::Team)
+            | Some(PlanType::Enterprise)
+            | Some(PlanType::Pro) => "tooltips.promo.paid",
+            Some(PlanType::Go) | Some(PlanType::Free) => "tooltips.promo.free_go",
+            _ => "tooltips.promo.other",
+        };
+        return Some(tr(language, promo_key).to_string());
+    }
+
     if let Some(announcement) = announcement::fetch_announcement_tip() {
         return Some(announcement);
     }
-    let mut rng = rand::rng();
+
     pick_tooltip(&mut rng, language).map(str::to_string)
 }
 
@@ -111,7 +145,12 @@ pub(crate) mod announcement {
     }
 
     fn blocking_init_announcement_tip() -> Option<String> {
-        let response = reqwest::blocking::Client::new()
+        // Avoid system proxy detection to prevent macOS system-configuration panics (#8912).
+        let client = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .build()
+            .ok()?;
+        let response = client
             .get(ANNOUNCEMENT_TIP_URL)
             .timeout(Duration::from_millis(2000))
             .send()
