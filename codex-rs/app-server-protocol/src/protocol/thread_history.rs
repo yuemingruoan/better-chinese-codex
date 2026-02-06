@@ -6,6 +6,7 @@ use crate::protocol::v2::UserInput;
 use codex_protocol::protocol::AgentReasoningEvent;
 use codex_protocol::protocol::AgentReasoningRawContentEvent;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::ItemCompletedEvent;
 use codex_protocol::protocol::ThreadRolledBackEvent;
 use codex_protocol::protocol::TurnAbortedEvent;
 use codex_protocol::protocol::UserMessageEvent;
@@ -55,6 +56,7 @@ impl ThreadHistoryBuilder {
             EventMsg::AgentReasoningRawContent(payload) => {
                 self.handle_agent_reasoning_raw_content(payload)
             }
+            EventMsg::ItemCompleted(payload) => self.handle_item_completed(payload),
             EventMsg::TokenCount(_) => {}
             EventMsg::EnteredReviewMode(_) => {}
             EventMsg::ExitedReviewMode(_) => {}
@@ -123,6 +125,19 @@ impl ThreadHistoryBuilder {
             summary: Vec::new(),
             content: vec![payload.text.clone()],
         });
+    }
+
+    fn handle_item_completed(&mut self, payload: &ItemCompletedEvent) {
+        if let codex_protocol::items::TurnItem::Plan(plan) = &payload.item {
+            if plan.text.is_empty() {
+                return;
+            }
+            let id = self.next_item_id();
+            self.ensure_turn().items.push(ThreadItem::Plan {
+                id,
+                text: plan.text.clone(),
+            });
+        }
     }
 
     fn handle_turn_aborted(&mut self, _payload: &TurnAbortedEvent) {
@@ -197,14 +212,21 @@ impl ThreadHistoryBuilder {
         if !payload.message.trim().is_empty() {
             content.push(UserInput::Text {
                 text: payload.message.clone(),
-                // TODO: Thread text element ranges into thread history. Empty keeps old behavior.
-                text_elements: Vec::new(),
+                text_elements: payload
+                    .text_elements
+                    .iter()
+                    .cloned()
+                    .map(Into::into)
+                    .collect(),
             });
         }
         if let Some(images) = &payload.images {
             for image in images {
                 content.push(UserInput::Image { url: image.clone() });
             }
+        }
+        for path in &payload.local_images {
+            content.push(UserInput::LocalImage { path: path.clone() });
         }
         content
     }

@@ -1,17 +1,22 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::RwLock;
 
 use codex_utils_absolute_path::AbsolutePathBuf;
 use toml::Value as TomlValue;
+use tracing::info;
+use tracing::warn;
 
 use crate::config::Config;
+use crate::config::types::SkillsConfig;
+use crate::config_loader::CloudRequirementsLoader;
 use crate::config_loader::LoaderOverrides;
 use crate::config_loader::load_config_layers_state;
 use crate::skills::SkillLoadOutcome;
 use crate::skills::loader::load_skills_from_roots;
-use crate::skills::loader::skill_roots_from_layer_stack;
+use crate::skills::loader::skill_roots_from_layer_stack_with_agents;
 use crate::skills::system::install_system_skills;
 
 pub struct SkillsManager {
@@ -43,16 +48,15 @@ impl SkillsManager {
             return outcome;
         }
 
-        let roots = skill_roots_from_layer_stack(&config.config_layer_stack);
-        let outcome = load_skills_from_roots(roots);
-        match self.cache_by_cwd.write() {
-            Ok(mut cache) => {
-                cache.insert(cwd.to_path_buf(), outcome.clone());
-            }
-            Err(err) => {
-                err.into_inner().insert(cwd.to_path_buf(), outcome.clone());
-            }
-        }
+        let roots =
+            skill_roots_from_layer_stack_with_agents(&config.config_layer_stack, &config.cwd);
+        let mut outcome = load_skills_from_roots(roots);
+        outcome.disabled_paths = disabled_paths_from_stack(&config.config_layer_stack);
+        let mut cache = match self.cache_by_cwd.write() {
+            Ok(cache) => cache,
+            Err(err) => err.into_inner(),
+        };
+        cache.insert(cwd.to_path_buf(), outcome.clone());
         outcome
     }
 
@@ -84,6 +88,7 @@ impl SkillsManager {
             Some(cwd_abs),
             &cli_overrides,
             LoaderOverrides::default(),
+            CloudRequirementsLoader::default(),
         )
         .await
         {
@@ -99,18 +104,64 @@ impl SkillsManager {
             }
         };
 
-        let roots = skill_roots_from_layer_stack(&config_layer_stack);
-        let outcome = load_skills_from_roots(roots);
-        match self.cache_by_cwd.write() {
-            Ok(mut cache) => {
-                cache.insert(cwd.to_path_buf(), outcome.clone());
-            }
-            Err(err) => {
-                err.into_inner().insert(cwd.to_path_buf(), outcome.clone());
-            }
-        }
+        let roots = skill_roots_from_layer_stack_with_agents(&config_layer_stack, cwd);
+        let mut outcome = load_skills_from_roots(roots);
+        outcome.disabled_paths = disabled_paths_from_stack(&config_layer_stack);
+        let mut cache = match self.cache_by_cwd.write() {
+            Ok(cache) => cache,
+            Err(err) => err.into_inner(),
+        };
+        cache.insert(cwd.to_path_buf(), outcome.clone());
         outcome
     }
+
+    pub fn clear_cache(&self) {
+        let mut cache = match self.cache_by_cwd.write() {
+            Ok(cache) => cache,
+            Err(err) => err.into_inner(),
+        };
+        let cleared = cache.len();
+        cache.clear();
+        info!("skills cache cleared ({cleared} entries)");
+    }
+}
+
+fn disabled_paths_from_stack(
+    config_layer_stack: &crate::config_loader::ConfigLayerStack,
+) -> HashSet<PathBuf> {
+    let mut disabled = HashSet::new();
+    let mut configs = HashMap::new();
+    // Skills config is user-layer only for now; higher-precedence layers are ignored.
+    let Some(user_layer) = config_layer_stack.get_user_layer() else {
+        return disabled;
+    };
+    let Some(skills_value) = user_layer.config.get("skills") else {
+        return disabled;
+    };
+    let skills: SkillsConfig = match skills_value.clone().try_into() {
+        Ok(skills) => skills,
+        Err(err) => {
+            warn!("invalid skills config: {err}");
+            return disabled;
+        }
+    };
+
+    for entry in skills.config {
+        let path = normalize_override_path(entry.path.as_path());
+        configs.insert(path, entry.enabled);
+    }
+
+    for (path, enabled) in configs {
+        if !enabled {
+            disabled.insert(path);
+        }
+    }
+
+    disabled
+}
+
+fn normalize_override_path(path: &Path) -> PathBuf {
+    dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 #[cfg(test)]

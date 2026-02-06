@@ -25,6 +25,14 @@ sdd_develop = "启动基于 SDD 的开发流程"
 skills = "使用技能提升特定任务的表现"
 status = "显示会话配置与令牌使用情况"
 test_approval = "测试审批请求"
+rename = "重命名当前会话"
+permissions = "管理审批权限"
+apps = "管理已连接的应用"
+debug_config = "显示当前生效配置"
+personality = "自定义 Codex 的交流风格"
+plan = "切换到计划模式"
+collab = "选择协作模式"
+agent = "选择代理"
 logout = "注销 Codex 登录"
 
 [tooltips]
@@ -40,6 +48,16 @@ items = [
   "按 Ctrl+V 粘贴图片以附加到下一条消息。",
   "运行 `codex resume` 可恢复之前的会话。",
 ]
+
+[tooltips.promo]
+paid = "*新功能* 试用 **Codex App**，速率限制提升至 2 倍，活动至 *4 月 2 日*。运行 'codex app' 或访问 https://chatgpt.com/codex"
+other = "*新功能* 使用 **Codex App** 提升效率。运行 'codex app' 或访问 https://chatgpt.com/codex"
+free_go = "*新功能* Codex 已包含在你的套餐中，可免费使用至 *3 月 2 日* - 一起开工吧。"
+
+[tooltips.experimental]
+shell_snapshot = "新功能：试试 Shell 快照以加速 Codex。可在 /experimental 中启用！"
+collab = "新功能：Codex 现在可以生成子代理。请在 /experimental 中启用并重启 Codex！"
+apps = "新功能：可通过 $ 提及在 Codex 中使用 ChatGPT Apps（连接器）。请在 /experimental 中启用并重启 Codex！"
 
 [prompt]
 init = '''请生成一个名为 AGENTS.md 的文件，为本仓库贡献者提供指南。
@@ -208,6 +226,7 @@ token_usage = "↑ ${input_prior} + ${input_last} tokens（${cached_prior} + ${c
 [footer.hint]
 shortcuts = " 查看快捷键"
 queue_message = " 排队发送"
+queue_short = " 排队"
 quit_again = " 再次退出"
 edit_previous_again = " 再次编辑上一条消息"
 edit_previous = " 编辑上一条消息"
@@ -215,6 +234,12 @@ edit_previous = " 编辑上一条消息"
 [footer.context]
 used = "上下文已用"
 used_suffix = "已用"
+
+[footer.mode]
+plan = "计划模式"
+pair_programming = "结对编程模式"
+execute = "执行模式"
+cycle_hint = "（Shift+Tab 切换）"
 
 [footer.shortcuts]
 commands = " 命令"
@@ -226,6 +251,7 @@ paste_image = " 粘贴图片"
 external_editor = " 用外部编辑器编辑"
 quit = " 退出"
 show_transcript = " 查看记录"
+change_mode = " 切换模式"
 
 [footer.copy]
 copied = "已复制"
@@ -307,6 +333,9 @@ account = "帐号"
 session = "会话"
 token_usage = "Token 使用"
 context_window = "上下文窗口"
+thread_name = "线程名称"
+forked_from = "分叉自"
+collaboration_mode = "协作模式"
 
 [status.note]
 visit_prefix = "访问 "
@@ -413,6 +442,7 @@ policy_failed = "设置沙盒策略失败：${error}"
 [app.session]
 fork_failed = "无法从 ${path} 分叉会话"
 fork_failed_detail = "从 ${path} 分叉会话失败：${error}"
+fork_not_ready = "分叉会话尚未就绪，请稍后再试。"
 resume_failed = "无法从 ${path} 恢复会话"
 resume_failed_detail = "从 ${path} 恢复会话失败：${error}"
 resume_hint = "继续该会话请运行 "
@@ -451,6 +481,12 @@ label = "代理（完全访问）"
 [chatwidget.approvals.read_only]
 desc = "编辑文件与运行命令需确认。"
 label = "只读"
+
+[chatwidget.collab]
+disabled = "协作模式已禁用。"
+enable_plan = "启用协作模式以使用 /plan。"
+plan_unavailable = "当前模型不可用计划模式。"
+enable_collab = "启用协作模式以使用 /collab。"
 
 [chatwidget.clean]
 deleted = "已清理剪贴板图片缓存：删除 ${deleted} 个文件。"
@@ -827,6 +863,7 @@ visit_prefix = "访问 "
 
 [history.web_search]
 searched = "已搜索"
+searching = "正在搜索"
 
 [language.name]
 en = "英语"
@@ -888,6 +925,8 @@ training_prefs = "\\u{1b}]8;;https://chatgpt.com/#settings\\u{7}训练数据偏�
 api_key = "使用自有 API 密钥"
 api_key_description = "按实际使用量付费"
 chatgpt = "使用 ChatGPT 登录"
+device_code = "使用设备码登录"
+device_code_description = "在浏览器中输入一次性验证码"
 
 [onboarding.auth.pick]
 api_key_disabled_workspace = "  此工作区已禁用 API 密钥登录。请使用 ChatGPT 登录以继续。"
@@ -933,6 +972,7 @@ select_quit = "  按 Enter 选择 • Ctrl+C 退出"
 [pager_overlay.hint]
 edit_message = "编辑消息"
 edit_prev = "编辑上一条"
+edit_next = "编辑下一条"
 jump = "跳转"
 page = "翻页"
 quit = "退出"

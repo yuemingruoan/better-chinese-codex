@@ -2,11 +2,23 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateAction {
     OpenReleasePage,
+    NpmGlobalLatest,
+    BunGlobalLatest,
+    BrewUpgrade,
 }
 
 impl UpdateAction {
     pub const RELEASE_PAGE_URL: &'static str =
         "https://github.com/yuemingruoan/better-chinese-codex/releases";
+    /// Returns the list of command-line arguments for invoking the update.
+    pub fn command_args(self) -> (&'static str, &'static [&'static str]) {
+        match self {
+            UpdateAction::NpmGlobalLatest => ("npm", &["install", "-g", "@openai/codex"]),
+            UpdateAction::BunGlobalLatest => ("bun", &["install", "-g", "@openai/codex"]),
+            UpdateAction::BrewUpgrade => ("brew", &["upgrade", "--cask", "codex"]),
+            UpdateAction::OpenReleasePage => ("", &[]),
+        }
+    }
 
     pub fn release_url(self) -> &'static str {
         Self::RELEASE_PAGE_URL

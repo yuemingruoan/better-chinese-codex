@@ -2,11 +2,17 @@
 source: tui/src/chatwidget/tests.rs
 expression: popup
 ---
-  选 择 授 权 模 式
+  Update Model Permissions
 
-› 1. 只 读  (current)    编 辑 文 件 与 运 行 命 令 需 确 认 。
-  2. 代 理               可 读 写 文 件 并 运 行 命 令 。
-  3. 代 理 （ 完 全 访 问 ）   Codex 可 编 辑 工 作 区 外 的 文 件 并 运 行 含 网 络 访 问 的 命 令 。 使 用
-                       时 请 谨 慎 。
+› 1. Read Only (current)  Codex can read files in the current workspace.
+                          Approval is required to edit files or access the
+                          internet.
+  2. Default              Codex can read and edit files in the current
+                          workspace, and run commands. Approval is required to
+                          access the internet or edit other files. (Identical
+                          to Agent mode)
+  3. Full Access          Codex can edit files outside this workspace and
+                          access the internet without asking for approval.
+                          Exercise caution when using.
 
   按  enter 确 认 ， 或  esc 返 回

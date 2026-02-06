@@ -17,7 +17,6 @@
 
 use std::io::Result;
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::chatwidget::ActiveCellTranscriptKey;
 use crate::history_cell::HistoryCell;
@@ -103,6 +102,8 @@ const KEY_SPACE: KeyBinding = key_hint::plain(KeyCode::Char(' '));
 const KEY_SHIFT_SPACE: KeyBinding = key_hint::shift(KeyCode::Char(' '));
 const KEY_HOME: KeyBinding = key_hint::plain(KeyCode::Home);
 const KEY_END: KeyBinding = key_hint::plain(KeyCode::End);
+const KEY_LEFT: KeyBinding = key_hint::plain(KeyCode::Left);
+const KEY_RIGHT: KeyBinding = key_hint::plain(KeyCode::Right);
 const KEY_CTRL_F: KeyBinding = key_hint::ctrl(KeyCode::Char('f'));
 const KEY_CTRL_D: KeyBinding = key_hint::ctrl(KeyCode::Char('d'));
 const KEY_CTRL_B: KeyBinding = key_hint::ctrl(KeyCode::Char('b'));
@@ -319,7 +320,7 @@ impl PagerView {
             }
         }
         tui.frame_requester()
-            .schedule_frame_in(Duration::from_millis(16));
+            .schedule_frame_in(crate::tui::TARGET_FRAME_INTERVAL);
         Ok(())
     }
 
@@ -662,17 +663,25 @@ impl TranscriptOverlay {
         let pager_hints = pager_key_hints(self.language);
         render_key_hints(line1, buf, &pager_hints);
 
-        let mut pairs: Vec<(&[KeyBinding], &str)> = vec![
-            (&[KEY_Q], tr(self.language, "pager_overlay.hint.quit")),
-            (
-                &[KEY_ESC],
-                tr(self.language, "pager_overlay.hint.edit_prev"),
-            ),
-        ];
+        let mut pairs: Vec<(&[KeyBinding], &str)> =
+            vec![(&[KEY_Q], tr(self.language, "pager_overlay.hint.quit"))];
         if self.highlight_cell.is_some() {
+            pairs.push((
+                &[KEY_ESC, KEY_LEFT],
+                tr(self.language, "pager_overlay.hint.edit_prev"),
+            ));
+            pairs.push((
+                &[KEY_RIGHT],
+                tr(self.language, "pager_overlay.hint.edit_next"),
+            ));
             pairs.push((
                 &[KEY_ENTER],
                 tr(self.language, "pager_overlay.hint.edit_message"),
+            ));
+        } else {
+            pairs.push((
+                &[KEY_ESC],
+                tr(self.language, "pager_overlay.hint.edit_prev"),
             ));
         }
         render_key_hints(line2, buf, &pairs);
@@ -865,21 +874,36 @@ mod tests {
             Language::ZhCn,
         );
 
-        // Render into a small buffer and assert the backtrack hint is present
-        let area = Rect::new(0, 0, 40, 10);
+        // Render into a wide buffer so the footer hints aren't truncated.
+        let area = Rect::new(0, 0, 120, 10);
         let mut buf = Buffer::empty(area);
         overlay.render(area, &mut buf);
 
-        // Flatten buffer to a string and check for the hint text
-        let mut raw = String::new();
-        for y in area.y..area.bottom() {
-            for x in area.x..area.right() {
-                raw.push(buf[(x, y)].symbol().chars().next().unwrap_or(' '));
-            }
-            raw.push('\n');
-        }
-        let s: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
+        let s = buffer_to_text(&buf, area);
         let expected = tr(Language::ZhCn, "pager_overlay.hint.edit_prev");
+        assert!(
+            s.contains(expected),
+            "expected '{expected}' hint in overlay footer, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn edit_next_hint_is_visible_when_highlighted() {
+        let mut overlay = TranscriptOverlay::new(
+            vec![Arc::new(TestCell {
+                lines: vec![Line::from("hello")],
+            })],
+            Language::ZhCn,
+        );
+        overlay.set_highlight_cell(Some(0));
+
+        // Render into a wide buffer so the footer hints aren't truncated.
+        let area = Rect::new(0, 0, 120, 10);
+        let mut buf = Buffer::empty(area);
+        overlay.render(area, &mut buf);
+
+        let s = buffer_to_text(&buf, area);
+        let expected = tr(Language::ZhCn, "pager_overlay.hint.edit_next");
         assert!(
             s.contains(expected),
             "expected '{expected}' hint in overlay footer, got: {s:?}"

@@ -41,4 +41,4 @@ expression: term.backend().vt100().screen().contents()
 
 › Summarize recent commits
 
-  0% 上下文已用 · tab 排队发送
+  tab to queue message                                       100% context left

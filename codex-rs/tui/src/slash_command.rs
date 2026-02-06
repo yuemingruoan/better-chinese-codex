@@ -17,29 +17,37 @@ pub enum SlashCommand {
     Model,
     Lang,
     Approvals,
+    Permissions,
     #[strum(serialize = "setup-elevated-sandbox")]
     ElevateSandbox,
     Experimental,
     Skills,
     Review,
+    Rename,
     New,
     Resume,
     Fork,
     Init,
     Checkpoint,
     Compact,
+    Plan,
+    Collab,
+    Agent,
     // Undo,
     Diff,
     Mention,
     Status,
     SddDevelop,
+    DebugConfig,
     Mcp,
+    Apps,
     Logout,
     Quit,
     Exit,
     Feedback,
     Rollout,
     Ps,
+    Personality,
     TestApproval,
 }
 
@@ -52,6 +60,7 @@ impl SlashCommand {
             SlashCommand::Init => tr(language, "slash_command.description.init"),
             SlashCommand::Compact => tr(language, "slash_command.description.compact"),
             SlashCommand::Review => tr(language, "slash_command.description.review"),
+            SlashCommand::Rename => tr(language, "slash_command.description.rename"),
             SlashCommand::Resume => tr(language, "slash_command.description.resume"),
             SlashCommand::Fork => tr(language, "slash_command.description.fork"),
             SlashCommand::Quit | SlashCommand::Exit => {
@@ -65,16 +74,23 @@ impl SlashCommand {
             SlashCommand::Model => tr(language, "slash_command.description.model"),
             SlashCommand::Lang => tr(language, "slash_command.description.lang"),
             SlashCommand::Approvals => tr(language, "slash_command.description.approvals"),
+            SlashCommand::Permissions => tr(language, "slash_command.description.permissions"),
             SlashCommand::ElevateSandbox => {
                 tr(language, "slash_command.description.elevate_sandbox")
             }
             SlashCommand::Experimental => tr(language, "slash_command.description.experimental"),
             SlashCommand::Mcp => tr(language, "slash_command.description.mcp"),
+            SlashCommand::Apps => tr(language, "slash_command.description.apps"),
             SlashCommand::Logout => tr(language, "slash_command.description.logout"),
             SlashCommand::Rollout => tr(language, "slash_command.description.rollout"),
             SlashCommand::TestApproval => tr(language, "slash_command.description.test_approval"),
             SlashCommand::Checkpoint => tr(language, "slash_command.description.checkpoint"),
             SlashCommand::SddDevelop => tr(language, "slash_command.description.sdd_develop"),
+            SlashCommand::DebugConfig => tr(language, "slash_command.description.debug_config"),
+            SlashCommand::Personality => tr(language, "slash_command.description.personality"),
+            SlashCommand::Plan => tr(language, "slash_command.description.plan"),
+            SlashCommand::Collab => tr(language, "slash_command.description.collab"),
+            SlashCommand::Agent => tr(language, "slash_command.description.agent"),
         }
     }
 
@@ -82,6 +98,14 @@ impl SlashCommand {
     /// existing code that expects a method named `command()`.
     pub fn command(self) -> &'static str {
         self.into()
+    }
+
+    /// Whether this command supports inline args (for example `/review ...`).
+    pub fn supports_inline_args(self) -> bool {
+        matches!(
+            self,
+            SlashCommand::Review | SlashCommand::Rename | SlashCommand::Plan
+        )
     }
 
     /// Whether this command can be run while a task is in progress.
@@ -96,22 +120,32 @@ impl SlashCommand {
             | SlashCommand::SddDevelop
             | SlashCommand::Model
             | SlashCommand::Lang
+            | SlashCommand::Personality
+            | SlashCommand::Lang
+            | SlashCommand::Personality
             | SlashCommand::Approvals
+            | SlashCommand::Permissions
             | SlashCommand::ElevateSandbox
             | SlashCommand::Experimental
             | SlashCommand::Review
+            | SlashCommand::Plan
             | SlashCommand::Logout => false,
             SlashCommand::Diff
+            | SlashCommand::Rename
             | SlashCommand::Mention
             | SlashCommand::Skills
             | SlashCommand::Status
+            | SlashCommand::DebugConfig
             | SlashCommand::Ps
             | SlashCommand::Mcp
+            | SlashCommand::Apps
             | SlashCommand::Feedback
             | SlashCommand::Quit
             | SlashCommand::Exit => true,
             SlashCommand::Rollout => true,
             SlashCommand::TestApproval => true,
+            SlashCommand::Collab => true,
+            SlashCommand::Agent => true,
         }
     }
 

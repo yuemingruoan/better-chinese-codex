@@ -105,6 +105,7 @@ async fn shell_command_interruption() -> anyhow::Result<()> {
             conversation_id,
             items: vec![codex_app_server_protocol::InputItem::Text {
                 text: "run first sleep command".to_string(),
+                text_elements: Vec::new(),
             }],
         })
         .await?;
@@ -146,7 +147,7 @@ fn create_config_toml(codex_home: &Path, server_uri: String) -> std::io::Result<
             r#"
 model = "mock-model"
 approval_policy = "never"
-sandbox_mode = "read-only"
+sandbox_mode = "danger-full-access"
 
 model_provider = "mock_provider"
 
