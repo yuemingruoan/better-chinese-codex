@@ -1,3 +1,4 @@
-# Execution policy
+# 执行策略
 
-For an overview of execution policy rules, see [this documentation](https://developers.openai.com/codex/exec-policy).
+关于执行策略规则的概览，请参考：
+https://developers.openai.com/codex/exec-policy

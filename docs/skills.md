@@ -1,3 +1,4 @@
-# Skills
+# 技能（Skills）
 
-For information about skills, refer to [this documentation](https://developers.openai.com/codex/skills).
+有关 Skills 的说明，请参考：
+https://developers.openai.com/codex/skills

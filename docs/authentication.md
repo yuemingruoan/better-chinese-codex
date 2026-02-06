@@ -1,3 +1,4 @@
-# Authentication
+# 认证
 
-For information about Codex CLI authentication, see [this documentation](https://developers.openai.com/codex/auth).
+关于 Codex CLI 认证的说明，请参考：
+https://developers.openai.com/codex/auth

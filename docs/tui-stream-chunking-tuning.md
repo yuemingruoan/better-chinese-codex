@@ -1,98 +1,96 @@
-# TUI Stream Chunking Tuning Guide
+# TUI 流式分块调参指南
 
-This document explains how to tune adaptive stream chunking constants without
-changing the underlying policy shape.
+本文说明如何在不改变底层策略形态的前提下，调整自适应流式分块常量。
 
-## Scope
+## 范围
 
-Use this guide when adjusting queue-pressure thresholds and hysteresis windows in
-`codex-rs/tui/src/streaming/chunking.rs`, and baseline commit cadence in
-`codex-rs/tui/src/app.rs`.
+在调整 `codex-rs/tui/src/streaming/chunking.rs` 中的队列压力阈值与滞回窗口，
+以及 `codex-rs/tui/src/app.rs` 中的基线提交节奏时，请使用本指南。
 
-This guide is about tuning behavior, not redesigning the policy.
+本指南关注“调参”，而不是重设计策略。
 
-## Before tuning
+## 调参前准备
 
-- Keep the baseline behavior intact:
-  - `Smooth` mode drains one line per baseline tick.
-  - `CatchUp` mode drains queued backlog immediately.
-- Capture trace logs with:
+- 保持基线行为不变：
+  - `Smooth` 模式每个基线 tick 仅 drain 一行。
+  - `CatchUp` 模式会立即 drain 队列积压。
+- 使用以下 trace 采集日志：
   - `codex_tui::streaming::commit_tick`
-- Evaluate on sustained, bursty, and mixed-output prompts.
+- 在持续输出、突发输出以及混合输出的提示词上评估。
 
-See `docs/tui-stream-chunking-validation.md` for the measurement process.
+测量流程请参考 `docs/tui-stream-chunking-validation.md`。
 
-## Tuning goals
+## 调参目标
 
-Tune for all three goals together:
+三项目标需要同时兼顾：
 
-- low visible lag under bursty output
-- low mode flapping (`Smooth <-> CatchUp` chatter)
-- stable catch-up entry/exit behavior under mixed workloads
+- 在突发输出下可见延迟低
+- 模式切换抖动低（`Smooth <-> CatchUp` chatter）
+- 在混合负载下进入/退出 catch-up 稳定
 
-## Constants and what they control
+## 常量与控制含义
 
-### Baseline commit cadence
+### 基线提交节奏
 
-- `COMMIT_ANIMATION_TICK` (`tui/src/app.rs`)
-  - Lower values increase smooth-mode update cadence and reduce steady-state lag.
-  - Higher values increase smoothing and can increase perceived lag.
-  - This should usually move after chunking thresholds/holds are in a good range.
+- `COMMIT_ANIMATION_TICK`（`tui/src/app.rs`）
+  - 数值更小：smooth 模式更新频率更高，稳态延迟更低。
+  - 数值更大：平滑度更高，但可能提升感知延迟。
+  - 一般在 chunking 阈值/保持区间稳定后再调整此项。
 
-### Enter/exit thresholds
+### 进入/退出阈值
 
-- `ENTER_QUEUE_DEPTH_LINES`, `ENTER_OLDEST_AGE`
-  - Lower values enter catch-up earlier (less lag, more mode switching risk).
-  - Higher values enter later (more lag tolerance, fewer mode switches).
-- `EXIT_QUEUE_DEPTH_LINES`, `EXIT_OLDEST_AGE`
-  - Lower values keep catch-up active longer.
-  - Higher values allow earlier exit and may increase re-entry churn.
+- `ENTER_QUEUE_DEPTH_LINES`、`ENTER_OLDEST_AGE`
+  - 数值更小：更早进入 catch-up（延迟更低，但切换风险更高）。
+  - 数值更大：更晚进入（容忍更高延迟，但切换更少）。
+- `EXIT_QUEUE_DEPTH_LINES`、`EXIT_OLDEST_AGE`
+  - 数值更小：保持 catch-up 更久。
+  - 数值更大：允许更早退出，可能增加再进入抖动。
 
-### Hysteresis holds
+### 滞回保持
 
 - `EXIT_HOLD`
-  - Longer hold reduces flip-flop exits when pressure is noisy.
-  - Too long can keep catch-up active after pressure has cleared.
+  - 延长可降低压力噪声导致的来回切换。
+  - 过长会在压力消退后仍保持 catch-up。
 - `REENTER_CATCH_UP_HOLD`
-  - Longer hold suppresses rapid re-entry after exit.
-  - Too long can delay needed catch-up for near-term bursts.
-  - Severe backlog bypasses this hold by design.
+  - 延长可抑制退出后的快速再进入。
+  - 过长会延迟近期开突发时的必要 catch-up。
+  - 严重积压会按设计绕过该保持。
 
-### Severe-backlog gates
+### 严重积压阈值
 
-- `SEVERE_QUEUE_DEPTH_LINES`, `SEVERE_OLDEST_AGE`
-  - Lower values bypass re-entry hold earlier.
-  - Higher values reserve hold bypass for only extreme pressure.
+- `SEVERE_QUEUE_DEPTH_LINES`、`SEVERE_OLDEST_AGE`
+  - 数值更小：更早绕过再进入保持。
+  - 数值更大：只在极端压力下绕过保持。
 
-## Recommended tuning order
+## 推荐调参顺序
 
-Tune in this order to keep cause/effect clear:
+按以下顺序调参，便于因果清晰：
 
-1. Entry/exit thresholds (`ENTER_*`, `EXIT_*`)
-2. Hold windows (`EXIT_HOLD`, `REENTER_CATCH_UP_HOLD`)
-3. Severe gates (`SEVERE_*`)
-4. Baseline cadence (`COMMIT_ANIMATION_TICK`)
+1. 进入/退出阈值（`ENTER_*`、`EXIT_*`）
+2. 保持窗口（`EXIT_HOLD`、`REENTER_CATCH_UP_HOLD`）
+3. 严重积压阈值（`SEVERE_*`）
+4. 基线节奏（`COMMIT_ANIMATION_TICK`）
 
-Change one logical group at a time and re-measure before the next group.
+一次只改一个逻辑组，完成度量后再进入下一组。
 
-## Symptom-driven adjustments
+## 症状驱动的调整建议
 
-- Too much lag before catch-up starts:
-  - lower `ENTER_QUEUE_DEPTH_LINES` and/or `ENTER_OLDEST_AGE`
-- Frequent `Smooth -> CatchUp -> Smooth` chatter:
-  - increase `EXIT_HOLD`
-  - increase `REENTER_CATCH_UP_HOLD`
-  - tighten exit thresholds (lower `EXIT_*`)
-- Catch-up engages too often for short bursts:
-  - increase `ENTER_QUEUE_DEPTH_LINES` and/or `ENTER_OLDEST_AGE`
-  - increase `REENTER_CATCH_UP_HOLD`
-- Catch-up engages too late:
-  - lower `ENTER_QUEUE_DEPTH_LINES` and/or `ENTER_OLDEST_AGE`
-  - lower severe gates (`SEVERE_*`) to bypass re-entry hold sooner
+- catch-up 启动前延迟过大：
+  - 下调 `ENTER_QUEUE_DEPTH_LINES` 和/或 `ENTER_OLDEST_AGE`
+- 频繁出现 `Smooth -> CatchUp -> Smooth` 抖动：
+  - 上调 `EXIT_HOLD`
+  - 上调 `REENTER_CATCH_UP_HOLD`
+  - 收紧退出阈值（下调 `EXIT_*`）
+- 短突发时 catch-up 触发过多：
+  - 上调 `ENTER_QUEUE_DEPTH_LINES` 和/或 `ENTER_OLDEST_AGE`
+  - 上调 `REENTER_CATCH_UP_HOLD`
+- catch-up 启动过晚：
+  - 下调 `ENTER_QUEUE_DEPTH_LINES` 和/或 `ENTER_OLDEST_AGE`
+  - 下调严重积压阈值（`SEVERE_*`），更早绕过再进入保持
 
-## Validation checklist after each tuning pass
+## 每轮调参后的验证清单
 
-- `cargo test -p codex-tui` passes.
-- Trace window shows bounded queue-age behavior.
-- Mode transitions are not concentrated in repeated short-interval cycles.
-- Catch-up clears backlog quickly once mode enters `CatchUp`.
+- `cargo test -p codex-tui` 通过。
+- trace 窗口显示队列年龄受控。
+- 模式切换未集中在短间隔重复周期。
+- 进入 `CatchUp` 后能快速清空积压。

@@ -1,124 +1,110 @@
-# TUI Stream Chunking
+# TUI 流式分块（Stream Chunking）
 
-This document explains how stream chunking in the TUI works and why it is
-implemented this way.
+本文说明 TUI 中流式分块的工作方式及其设计原因。
 
-## Problem
+## 问题
 
-Streaming output can arrive faster than a one-line-per-tick animation can show
-it. If commit speed stays fixed while arrival speed spikes, queued lines grow
-and visible output lags behind received output.
+流式输出可能比“一帧一行”的动画更快。如果提交速度固定而到达速度突然升高，队列会堆积，界面显示会落后于实际接收。
 
-## Design goals
+## 设计目标
 
-- Preserve existing baseline behavior under normal load.
-- Reduce display lag when backlog builds.
-- Keep output order stable.
-- Avoid abrupt single-frame flushes that look jumpy.
-- Keep policy transport-agnostic and based only on queue state.
+- 在正常负载下保持既有基线行为。
+- 当积压增加时减少显示延迟。
+- 保持输出顺序稳定。
+- 避免突兀的单帧刷空导致的跳动感。
+- 策略与传输无关，仅依赖队列状态。
 
-## Non-goals
+## 非目标
 
-- The policy does not schedule animation ticks.
-- The policy does not depend on upstream source identity.
-- The policy does not reorder queued output.
+- 策略不负责调度动画 tick。
+- 策略不依赖上游来源身份。
+- 策略不会重排序队列输出。
 
-## Where the logic lives
+## 逻辑所在位置
 
 - `codex-rs/tui/src/streaming/chunking.rs`
-  - Adaptive policy, mode transitions, and drain-plan selection.
+  - 自适应策略、模式切换与 drain 计划选择。
 - `codex-rs/tui/src/streaming/commit_tick.rs`
-  - Orchestration for each commit tick: snapshot, decide, drain, trace.
+  - 每次提交 tick 的编排：快照、决策、drain、追踪。
 - `codex-rs/tui/src/streaming/controller.rs`
-  - Queue/drain primitives used by commit-tick orchestration.
+  - commit-tick 编排使用的队列/drain 基元。
 - `codex-rs/tui/src/chatwidget.rs`
-  - Integration point that invokes commit-tick orchestration and handles UI
-    lifecycle events.
+  - 集成点：触发 commit-tick 编排并处理 UI 生命周期事件。
 
-## Runtime flow
+## 运行流程
 
-On each commit tick:
+每个 commit tick 执行：
 
-1. Build a queue snapshot across active controllers.
-   - `queued_lines`: total queued lines.
-   - `oldest_age`: max age of the oldest queued line across controllers.
-2. Ask adaptive policy for a decision.
-   - Output: current mode and a drain plan.
-3. Apply drain plan to each controller.
-4. Emit drained `HistoryCell`s for insertion by the caller.
-5. Emit trace logs for observability.
+1. 构建跨 controller 的队列快照。
+   - `queued_lines`：总排队行数。
+   - `oldest_age`：各 controller 中最老队列行的最大年龄。
+2. 询问自适应策略决策。
+   - 输出：当前模式与 drain 计划。
+3. 将 drain 计划应用到每个 controller。
+4. 输出被 drain 的 `HistoryCell` 供调用方插入。
+5. 输出追踪日志以便观测。
 
-In `CatchUpOnly` scope, policy state still advances, but draining is skipped
-unless mode is currently `CatchUp`.
+在 `CatchUpOnly` 范围内，策略状态仍会推进，但除非当前模式是 `CatchUp`，否则跳过 draining。
 
-## Modes and transitions
+## 模式与切换
 
-Two modes are used:
+两种模式：
 
 - `Smooth`
-  - Baseline behavior: one line drained per baseline commit tick.
-  - Baseline tick interval currently comes from
-    `tui/src/app.rs:COMMIT_ANIMATION_TICK` (~8.3ms, ~120fps).
+  - 基线行为：每个基线提交 tick drain 一行。
+  - 基线 tick 间隔当前来自 `tui/src/app.rs:COMMIT_ANIMATION_TICK`（约 8.3ms，约 120fps）。
 - `CatchUp`
-  - Drain current queued backlog per tick via `Batch(queued_lines)`.
+  - 每个 tick 通过 `Batch(queued_lines)` drain 当前积压队列。
 
-Entry and exit use hysteresis:
+进入与退出使用滞回：
 
-- Enter `CatchUp` when queue depth or queue age exceeds enter thresholds.
-- Exit requires both depth and age to be below exit thresholds for a hold
-  window (`EXIT_HOLD`).
+- 当队列深度或队列年龄超过进入阈值时进入 `CatchUp`。
+- 退出需要深度与年龄同时低于退出阈值，并持续一个保持窗口（`EXIT_HOLD`）。
 
-This prevents oscillation when load hovers near thresholds.
+这可避免负载在阈值附近振荡导致频繁切换。
 
-## Current experimental tuning values
+## 当前实验性调参值
 
-These are the current values in `streaming/chunking.rs` plus the baseline
-commit tick in `tui/src/app.rs`. They are
-experimental and may change as we gather more trace data.
+以下是 `streaming/chunking.rs` 及 `tui/src/app.rs` 中的当前数值，属实验性，可能会随追踪数据调整。
 
-- Baseline commit tick: `~8.3ms` (`COMMIT_ANIMATION_TICK` in `app.rs`)
-- Enter catch-up:
-  - `queued_lines >= 8` OR `oldest_age >= 120ms`
-- Exit catch-up eligibility:
-  - `queued_lines <= 2` AND `oldest_age <= 40ms`
-- Exit hold (`CatchUp -> Smooth`): `250ms`
-- Re-entry hold after catch-up exit: `250ms`
-- Severe backlog thresholds:
-  - `queued_lines >= 64` OR `oldest_age >= 300ms`
+- 基线 commit tick：`~8.3ms`（`app.rs` 中的 `COMMIT_ANIMATION_TICK`）
+- 进入 catch-up：
+  - `queued_lines >= 8` 或 `oldest_age >= 120ms`
+- 退出 catch-up 条件：
+  - `queued_lines <= 2` 且 `oldest_age <= 40ms`
+- 退出保持（`CatchUp -> Smooth`）：`250ms`
+- 退出后再进入保持：`250ms`
+- 严重积压阈值：
+  - `queued_lines >= 64` 或 `oldest_age >= 300ms`
 
-## Drain planning
+## Drain 规划
 
-In `Smooth`, plan is always `Single`.
+在 `Smooth` 模式下，计划始终为 `Single`。
 
-In `CatchUp`, plan is `Batch(queued_lines)`, which drains the currently queued
-backlog for immediate convergence.
+在 `CatchUp` 模式下，计划为 `Batch(queued_lines)`，即 drain 当前积压队列以快速收敛。
 
-## Why this design
+## 设计原因
 
-This keeps normal animation semantics intact, while making backlog behavior
-adaptive:
+该设计既保持了正常动画语义，又让积压行为更具自适应性：
 
-- Under normal load, behavior stays familiar and stable.
-- Under pressure, queue age is reduced quickly without sacrificing ordering.
-- Hysteresis avoids rapid mode flapping.
+- 正常负载下，行为熟悉且稳定。
+- 压力升高时，队列年龄快速下降且不牺牲顺序。
+- 滞回避免频繁模式抖动。
 
-## Invariants
+## 不变量
 
-- Queue order is preserved.
-- Empty queue resets policy back to `Smooth`.
-- `CatchUp` exits only after sustained low pressure.
-- Catch-up drains are immediate while in `CatchUp`.
+- 队列顺序保持不变。
+- 队列清空时，策略重置回 `Smooth`。
+- `CatchUp` 只有在持续低压后才退出。
+- 在 `CatchUp` 中 drain 会立即生效。
 
-## Observability
+## 可观测性
 
-Trace events are emitted from commit-tick orchestration:
+commit-tick 编排会输出 trace 事件：
 
 - `stream chunking commit tick`
-  - `mode`, `queued_lines`, `oldest_queued_age_ms`, `drain_plan`,
-    `has_controller`, `all_idle`
+  - `mode`、`queued_lines`、`oldest_queued_age_ms`、`drain_plan`、`has_controller`、`all_idle`
 - `stream chunking mode transition`
-  - `prior_mode`, `new_mode`, `queued_lines`, `oldest_queued_age_ms`,
-    `entered_catch_up`
+  - `prior_mode`、`new_mode`、`queued_lines`、`oldest_queued_age_ms`、`entered_catch_up`
 
-These events are intended to explain display lag by showing queue pressure,
-selected drain behavior, and mode transitions over time.
+这些事件旨在解释显示延迟：通过展示队列压力、选定的 drain 行为和模式切换随时间的变化。

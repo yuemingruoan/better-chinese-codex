@@ -1,3 +1,3 @@
-## License
+## 许可协议
 
-This repository is licensed under the [Apache-2.0 License](../LICENSE).
+本仓库遵循 [Apache-2.0 License](../LICENSE)。

@@ -1,41 +1,33 @@
-# Request user input overlay (TUI)
+# 请求用户输入浮层（TUI）
 
-This note documents the TUI overlay used to gather answers for
-`RequestUserInputEvent`.
+本文说明用于收集 `RequestUserInputEvent` 的 TUI 浮层。
 
-## Overview
+## 概览
 
-The overlay renders one question at a time and collects:
+该浮层一次渲染一个问题，并收集：
 
-- A single selected option (when options exist).
-- Freeform notes (always available).
+- 单选项（当存在选项时）。
+- 自由备注（始终可用）。
 
-When options are present, notes are stored per selected option and the first
-option is selected by default, so every option question has an answer. If a
-question has no options and no notes are provided, the answer is submitted as
-`skipped`.
+当有选项时，备注按所选项分别存储，且默认选择第一个选项，因此每个选项问题都有答案。如果问题无选项且未填写备注，则回答为 `skipped`。
 
-## Focus and input routing
+## 焦点与输入路由
 
-The overlay tracks a small focus state:
+浮层维护一个简单的焦点状态：
 
-- **Options**: Up/Down move the selection and Space selects.
-- **Notes**: Text input edits notes for the currently selected option.
+- **选项**：上下键移动选择，空格确认选择。
+- **备注**：文本输入会编辑当前选项对应的备注。
 
-Typing while focused on options switches into notes automatically to reduce
-friction for freeform input.
+当焦点在选项时输入文字，会自动切换到备注以降低输入成本。
 
-## Navigation
+## 导航
 
-- Enter advances to the next question.
-- Enter on the last question submits all answers.
-- PageUp/PageDown navigate across questions (when multiple are present).
-- Esc interrupts the run in option selection mode.
-- When notes are open for an option question, Tab or Esc clears notes and returns
-  to option selection.
+- Enter 进入下一个问题。
+- 在最后一个问题按 Enter 会提交所有答案。
+- PageUp/PageDown 在问题间切换（当有多个问题时）。
+- 在选项选择模式下，Esc 会中断本次流程。
+- 当某个选项问题的备注已打开时，Tab 或 Esc 会清空备注并返回选项选择。
 
-## Layout priorities
+## 布局优先级
 
-The layout prefers to keep the question and all options visible. Notes and
-footer hints collapse as space shrinks, with notes falling back to a single-line
-"Notes: ..." input in tight terminals.
+布局优先保证问题与全部选项可见。随着空间变小，备注区和页脚提示会折叠；在终端高度非常紧张时，备注会退化为单行的 “Notes: ...” 输入。

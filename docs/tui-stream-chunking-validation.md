@@ -1,107 +1,97 @@
-# TUI Stream Chunking Validation Process
+# TUI 流式分块验证流程
 
-This document records the process used to validate adaptive stream chunking
-and anti-flap behavior.
+本文记录用于验证自适应流式分块与防抖行为的流程。
 
-## Scope
+## 范围
 
-The goal is to verify two properties from runtime traces:
+目标是在运行时 trace 中验证两项性质：
 
-- display lag is reduced when queue pressure rises
-- mode transitions remain stable instead of rapidly flapping
+- 队列压力上升时显示延迟下降。
+- 模式切换保持稳定，避免快速抖动。
 
-## Trace targets
+## Trace 目标
 
-Chunking observability is emitted by:
+分块观测由以下 trace 输出：
 
 - `codex_tui::streaming::commit_tick`
 
-Two trace messages are used:
+使用两条 trace 消息：
 
 - `stream chunking commit tick`
 - `stream chunking mode transition`
 
-## Runtime command
+## 运行命令
 
-Run Codex with chunking traces enabled:
+启用 chunking trace 运行 Codex：
 
 ```bash
 RUST_LOG='codex_tui::streaming::commit_tick=trace,codex_tui=info,codex_core=info,codex_rmcp_client=info' \
   just codex --enable=responses_websockets
 ```
 
-## Log capture process
+## 日志采集流程
 
-Tip: for one-off measurements, run with `-c log_dir=...` to direct logs to a fresh directory and avoid mixing sessions.
+提示：单次测量可用 `-c log_dir=...` 指向新目录，避免与历史会话混淆。
 
-1. Record the current size of `~/.codex/log/codex-tui.log` as a start offset.
-2. Run an interactive prompt that produces sustained streamed output.
-3. Stop the run.
-4. Parse only log bytes written after the recorded offset.
+1. 记录 `~/.codex/log/codex-tui.log` 当前大小作为起始偏移。
+2. 运行产生持续流式输出的交互提示词。
+3. 结束运行。
+4. 仅解析起始偏移之后写入的日志字节。
 
-This avoids mixing earlier sessions with the current measurement window.
+这样可避免混入早期会话数据。
 
-## Metrics reviewed
+## 评估指标
 
-For each measured window:
+对每个测量窗口统计：
 
 - `commit_ticks`
 - `mode_transitions`
 - `smooth_ticks`
 - `catchup_ticks`
-- drain-plan distribution (`Single`, `Batch(n)`)
-- queue depth (`max`, `p95`, `p99`)
-- oldest queued age (`max`, `p95`, `p99`)
-- rapid re-entry count:
-  - number of `Smooth -> CatchUp` transitions within 1 second of a
-    `CatchUp -> Smooth` transition
+- drain 计划分布（`Single`、`Batch(n)`）
+- 队列深度（`max`、`p95`、`p99`）
+- 最老队列年龄（`max`、`p95`、`p99`）
+- 快速再进入计数：
+  - 在 1 秒内出现 `Smooth -> CatchUp` 且紧随 `CatchUp -> Smooth` 的次数
 
-## Interpretation
+## 结果解读
 
-- Healthy behavior:
-  - queue age remains bounded while backlog is drained
-  - transition count is low relative to total ticks
-  - rapid re-entry events are infrequent and localized to burst boundaries
-- Regressed behavior:
-  - repeated short-interval mode toggles across an extended window
-  - persistent queue-age growth while in smooth mode
-  - long catch-up runs without backlog reduction
+- 健康行为：
+  - 积压被 drain 时队列年龄保持受控
+  - 模式切换次数相对总 tick 数较低
+  - 快速再进入事件少且集中在突发边界
+- 回归表现：
+  - 长时间窗口内频繁短间隔模式切换
+  - smooth 模式下队列年龄持续增长
+  - 长时间 catch-up 但积压未减少
 
-## Experiment history
+## 实验历史
 
-This section captures the major tuning passes so future work can build on
-what has already been tried.
+本节记录主要调参历程，便于后续在既有基础上继续演进。
 
-- Baseline
-  - One-line smooth draining with a 50ms commit tick.
-  - This preserved familiar pacing but could feel laggy under sustained
-    backlog.
-- Pass 1: instant catch-up, baseline tick unchanged
-  - Kept smooth-mode semantics but made catch-up drain the full queued
-    backlog each catch-up tick.
-  - Result: queue lag dropped faster, but perceived motion could still feel
-    stepped because smooth-mode cadence remained coarse.
-- Pass 2: faster baseline tick (25ms)
-  - Improved smooth-mode cadence and reduced visible stepping.
-  - Result: better, but still not aligned with draw cadence.
-- Pass 3: frame-aligned baseline tick (~16.7ms)
-  - Set baseline commit cadence to approximately 60fps.
-  - Result: smoother perceived progression while retaining hysteresis and
-    fast backlog convergence.
-- Pass 4: higher frame-aligned baseline tick (~8.3ms)
-  - Set baseline commit cadence to approximately 120fps.
-  - Result: further reduced smooth-mode stepping while preserving the same
-    adaptive catch-up policy shape.
+- 基线
+  - 50ms 提交 tick + smooth 模式单行 drain。
+  - 保留了熟悉节奏，但持续积压时感觉迟滞。
+- Pass 1：即时 catch-up，基线 tick 不变
+  - 保持 smooth 语义，但在 catch-up 中每个 tick drain 全部积压。
+  - 结果：队列延迟下降更快，但 smooth 频率较低导致观感仍有台阶。
+- Pass 2：更快的基线 tick（25ms）
+  - 提升 smooth 频率，减轻台阶感。
+  - 结果：更好，但仍未与绘制节奏对齐。
+- Pass 3：帧对齐基线 tick（约 16.7ms）
+  - 将基线提交节奏设为约 60fps。
+  - 结果：更平滑，同时保留滞回与快速收敛。
+- Pass 4：更高帧对齐基线 tick（约 8.3ms）
+  - 将基线提交节奏设为约 120fps。
+  - 结果：进一步减少 smooth 模式台阶，同时保持相同的自适应策略形状。
 
-Current state combines:
+当前状态包含：
 
-- instant catch-up draining in `CatchUp`
-- hysteresis for mode-entry/exit stability
-- frame-aligned smooth-mode commit cadence (~8.3ms)
+- `CatchUp` 中即时 drain
+- 模式进入/退出的滞回稳定性
+- 帧对齐的 smooth 模式提交节奏（约 8.3ms）
 
-## Notes
+## 备注
 
-- Validation is source-agnostic and does not rely on naming any specific
-  upstream provider.
-- This process intentionally preserves existing baseline smooth behavior and
-  focuses on burst/backlog handling behavior.
+- 验证与上游来源无关，不依赖具体 provider 名称。
+- 该流程刻意保留既有 smooth 基线行为，聚焦突发/积压处理表现。
