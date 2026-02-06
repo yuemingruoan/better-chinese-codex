@@ -6,7 +6,8 @@
 
 - Assets and docs follow upstream changes; do not keep deleted upstream assets.
 - Localized prompt files (提示词) do not follow upstream; keep existing Chinese prompts.
-- GitHub workflows remain deleted when syncing from upstream, except `.github/workflows/build-platform-binaries.yml`; do not sync other upstream automation workflows.
+- GitHub workflows remain deleted when syncing from upstream, except `.github/workflows/build-platform-binaries.yml` and `.github/workflows/release.yml`; do not sync other upstream automation workflows.
+- Release workflow 必须保留，不得删除或覆盖。
 - Docs (except README) should match upstream official content and be localized to Chinese.
 - README stays as the fork's current version; do not merge upstream README changes.
 - 新增/变更的人机交互文本必须做 i18n（至少中英文），遵循现有翻译工具与语言枚举。
