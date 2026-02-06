@@ -111,6 +111,8 @@ async fn run_remote_compact_task_inner_impl(
                 id: None,
                 role: "user".to_string(),
                 content: vec![codex_protocol::models::ContentItem::InputText { text: message }],
+                end_turn: None,
+                phase: None,
             });
         }
     }

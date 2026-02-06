@@ -262,6 +262,47 @@ scroll = " 滚动"
 jump = " 跳转"
 copy_selection = " 复制选区"
 
+[request_user_input.placeholder]
+notes = "添加备注"
+answer = "输入你的答案（可选）"
+select_option = "选择一个选项以添加备注"
+
+[request_user_input.other_option]
+label = "以上都不是"
+description = "可选：在备注中补充细节（Tab）。"
+
+[request_user_input.confirm_unanswered]
+title = "仍有未回答的问题，继续提交？"
+subtitle = "还有 ${count} 个未回答问题"
+go_back = "返回"
+go_back_desc = "返回到第一个未回答的问题。"
+submit = "继续"
+submit_desc_singular = "问题"
+submit_desc_plural = "问题"
+submit_with_count = "提交时仍有 ${count} 个问题未回答。"
+
+[request_user_input.footer]
+tab_add_notes = "按 Tab 添加备注"
+tab_or_esc_clear_notes = "按 Tab 或 Esc 清空备注"
+enter_submit_answer = "按 Enter 提交答案"
+enter_submit_all = "按 Enter 提交全部"
+ctrl_n_first_question = "Ctrl + n 回到第一题"
+ctrl_n_next_question = "Ctrl + n 下一题"
+esc_interrupt = "Esc 中断"
+option_count = "选项 ${selected}/${total}"
+
+[request_user_input.progress]
+question = "问题 ${index}/${total}"
+unanswered = "（${count} 未回答）"
+none = "没有问题"
+
+[request_user_input.empty]
+choices = "没有可选项"
+options = "没有选项"
+
+[request_user_input.hint]
+answer_questions = "请先回答问题后继续。"
+
 [popup.hint]
 press = "按 "
 confirm_or = " 确认，或 "

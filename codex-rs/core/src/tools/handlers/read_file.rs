@@ -43,7 +43,6 @@ struct ReadFileArgs {
 
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-#[derive(Default)]
 enum ReadMode {
     #[default]
     Slice,

@@ -3357,7 +3357,7 @@ mod handlers {
         match resolve_review_request(
             review_request,
             turn_context.cwd.as_path(),
-            turn_context.client.config().language,
+            turn_context.config.language,
         ) {
             Ok(resolved) => {
                 spawn_review_thread(

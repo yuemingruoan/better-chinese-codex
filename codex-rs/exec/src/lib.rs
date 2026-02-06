@@ -157,6 +157,36 @@ pub async fn run_main(cli: Cli, codex_linux_sandbox_exe: Option<PathBuf>) -> any
         Some(path) => AbsolutePathBuf::from_absolute_path(path.canonicalize()?)?,
         None => AbsolutePathBuf::current_dir()?,
     };
+    let cli_base_instructions = (|| -> std::io::Result<Option<String>> {
+        let Some(path) = cli_kv_overrides.iter().find_map(|(key, value)| {
+            if key == "model_instructions_file" {
+                value.as_str().map(str::to_string)
+            } else {
+                None
+            }
+        }) else {
+            return Ok(None);
+        };
+
+        let path = AbsolutePathBuf::resolve_path_against_base(path, config_cwd.as_path())?;
+        let contents = std::fs::read_to_string(&path).map_err(|e| {
+            let path_display = path.display();
+            std::io::Error::new(
+                e.kind(),
+                format!("failed to read model instructions file {path_display}: {e}"),
+            )
+        })?;
+        let trimmed = contents.trim().to_string();
+        if trimmed.is_empty() {
+            let path_display = path.display();
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("model instructions file is empty: {path_display}"),
+            ))
+        } else {
+            Ok(Some(trimmed))
+        }
+    })()?;
 
     // we load config.toml here to determine project state.
     #[allow(clippy::print_stderr)]
@@ -247,7 +277,7 @@ pub async fn run_main(cli: Cli, codex_linux_sandbox_exe: Option<PathBuf>) -> any
         cwd: resolved_cwd,
         model_provider: model_provider.clone(),
         codex_linux_sandbox_exe,
-        base_instructions: None,
+        base_instructions: cli_base_instructions,
         developer_instructions: None,
         personality: None,
         compact_prompt: None,

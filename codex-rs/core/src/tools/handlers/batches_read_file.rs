@@ -19,6 +19,7 @@ use crate::tools::handlers::read_file::read_slice;
 use crate::tools::registry::ToolHandler;
 use crate::tools::registry::ToolKind;
 use codex_protocol::config_types::Language;
+use codex_protocol::models::FunctionCallOutputBody;
 
 const DEFAULT_LIMIT: usize = 2000;
 const DEFAULT_OFFSET: usize = 1;
@@ -127,7 +128,7 @@ impl ToolHandler for BatchesReadFileHandler {
 
     async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, FunctionCallError> {
         let ToolInvocation { payload, turn, .. } = invocation;
-        let language = turn.client.config().language;
+        let language = turn.config.language;
 
         let arguments = match payload {
             ToolPayload::Function { arguments } => arguments,
@@ -178,8 +179,7 @@ impl ToolHandler for BatchesReadFileHandler {
         })?;
 
         Ok(ToolOutput::Function {
-            content,
-            content_items: None,
+            body: FunctionCallOutputBody::Text(content),
             success: Some(success),
         })
     }

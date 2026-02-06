@@ -69,9 +69,12 @@ async fn sdd_git_action_create_branch_dispatches() -> Result<()> {
             cwd: Some(repo.path().to_path_buf()),
             approval_policy: None,
             sandbox_policy: None,
+            windows_sandbox_level: None,
             model: None,
             effort: None,
             summary: None,
+            collaboration_mode: None,
+            personality: None,
         })
         .await?;
 
@@ -115,9 +118,12 @@ async fn sdd_git_action_create_branch_uses_non_default_base() -> Result<()> {
             cwd: Some(repo.path().to_path_buf()),
             approval_policy: None,
             sandbox_policy: None,
+            windows_sandbox_level: None,
             model: None,
             effort: None,
             summary: None,
+            collaboration_mode: None,
+            personality: None,
         })
         .await?;
 

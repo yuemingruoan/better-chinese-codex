@@ -377,6 +377,13 @@
         }
       ]
     },
+    "Language": {
+      "enum": [
+        "en",
+        "zh-cn"
+      ],
+      "type": "string"
+    },
     "ModeKind": {
       "description": "Initial collaboration mode to use when the TUI starts.",
       "enum": [
@@ -1327,6 +1334,14 @@
     "instructions": {
       "description": "System instructions.",
       "type": "string"
+    },
+    "language": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/Language"
+        }
+      ],
+      "description": "Preferred UI language."
     },
     "log_dir": {
       "allOf": [

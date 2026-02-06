@@ -532,12 +532,6 @@ pub const FEATURES: &[FeatureSpec] = &[
         default_enabled: false,
     },
     FeatureSpec {
-        id: Feature::Tui2,
-        key: "tui2",
-        stage: Stage::Experimental,
-        default_enabled: true,
-    },
-    FeatureSpec {
         id: Feature::Apps,
         key: "apps",
         stage: Stage::Experimental {

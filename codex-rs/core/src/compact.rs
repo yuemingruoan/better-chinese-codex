@@ -411,6 +411,8 @@ fn build_compacted_history_with_limit(
             content: vec![ContentItem::InputText {
                 text: task_md_message.to_string(),
             }],
+            end_turn: None,
+            phase: None,
         });
     }
 
@@ -596,6 +598,8 @@ mod tests {
                 content: vec![ContentItem::InputText {
                     text: format!("{TASK_MD_PREFIX_LINE}# Task\n- [ ] A"),
                 }],
+                end_turn: None,
+                phase: None,
             },
             ResponseItem::Message {
                 id: None,
@@ -603,6 +607,8 @@ mod tests {
                 content: vec![ContentItem::InputText {
                     text: "keep me".to_string(),
                 }],
+                end_turn: None,
+                phase: None,
             },
         ];
 
