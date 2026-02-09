@@ -192,12 +192,13 @@ sdd_execute_parallels = '''你是 `/sdd-develop-parallels` 的主 Agent，需统
 - **TDD 优先**：缺测先补测，再实现。
 - **进度可追踪**：`.codex/task.md` 为单一事实源，完成即勾选。
 - **分支/工作区提示词驱动**：创建/切换/合并分支需按仓库实际流程灵活执行，不使用固定硬编码指令路径。
+- **优先唤醒调度**：存在多个活跃子 Agent 时，优先使用 `wait_agents(mode=any)`，让先完成者尽快触发下一轮编排。
 
 执行流程
 1. 先检查前置：仓库根目录、`.codex/task.md`、collab experimental 特性。
 2. 公布主计划：任务顺序、分支/工作区策略、各 Sub Agent 分配。
 3. 派发子任务（spawn/send_input），明确验收标准与验证命令。
-4. 回收结果（wait/close_agent），处理冲突与重叠改动，完成集成。
+4. 使用批量工具回收结果（`wait_agents`/`close_agents`），优先 `wait_agents(mode=any)` 做并行唤醒，再处理冲突与重叠改动并完成集成。
 5. 统一执行格式化与测试，更新 `.codex/task.md`，输出风险与回滚提示。
 
 汇报节奏
@@ -741,6 +742,26 @@ unprotected = "Windows 沙盒无法保护对 Everyone 可写文件夹的写入�
 [chatwidget.world_writable.policy]
 agent = "代理模式"
 read_only = "代理模式"
+
+[chatwidget.collab]
+spawn_begin = "正在为调用 `${call_id}` 启动子 Agent。"
+spawn_end_with_agent = "`${receiver_id}` 启动完成，状态为 `${status}`。"
+spawn_end_without_agent = "子 Agent 启动流程结束，状态为 `${status}`。"
+interaction_begin = "正在向 `${receiver_id}` 派发任务。"
+interaction_end = "与 `${receiver_id}` 的交互结束，状态为 `${status}`。"
+waiting_begin = "正在等待 `${receiver_id}`。"
+waiting_end = "等待 `${receiver_id}` 结束，状态为 `${status}`。"
+close_begin = "正在关闭 `${receiver_id}`。"
+close_end = "`${receiver_id}` 关闭结束，状态为 `${status}`。"
+
+[chatwidget.collab.status]
+pending_init = "初始化中"
+running = "运行中"
+completed = "已完成"
+errored = "出错"
+timed_out = "超时"
+shutdown = "已关闭"
+not_found = "未找到"
 
 [command_popup]
 send_saved_prompt = "发送已保存的提示词"

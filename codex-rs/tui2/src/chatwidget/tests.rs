@@ -9,6 +9,7 @@ use crate::app_event::AppEvent;
 use crate::app_event::ExitMode;
 use crate::app_event_sender::AppEventSender;
 use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::test_backend::VT100Backend;
 use crate::tui::FrameRequester;
 use assert_matches::assert_matches;
@@ -25,8 +26,11 @@ use codex_core::protocol::AgentMessageDeltaEvent;
 use codex_core::protocol::AgentMessageEvent;
 use codex_core::protocol::AgentReasoningDeltaEvent;
 use codex_core::protocol::AgentReasoningEvent;
+use codex_core::protocol::AgentStatus;
 use codex_core::protocol::ApplyPatchApprovalRequestEvent;
 use codex_core::protocol::BackgroundEventEvent;
+use codex_core::protocol::CollabAgentSpawnBeginEvent;
+use codex_core::protocol::CollabWaitingEndEvent;
 use codex_core::protocol::CreditsSnapshot;
 use codex_core::protocol::Event;
 use codex_core::protocol::EventMsg;
@@ -170,6 +174,55 @@ async fn resumed_initial_messages_render_history() {
         text_blob.contains("assistant reply"),
         "expected replayed agent message",
     );
+}
+
+#[tokio::test]
+async fn collab_events_emit_history_lines() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(None).await;
+    let sender_thread_id = ThreadId::new();
+    let receiver_thread_id = ThreadId::new();
+
+    chat.handle_codex_event(Event {
+        id: "collab-spawn-begin".into(),
+        msg: EventMsg::CollabAgentSpawnBegin(CollabAgentSpawnBeginEvent {
+            call_id: "call-1".to_string(),
+            sender_thread_id,
+            prompt: String::new(),
+        }),
+    });
+    let cells = drain_insert_history(&mut rx);
+    assert_eq!(cells.len(), 1, "expected one collab history cell");
+    let text = lines_to_single_string(cells.last().expect("collab cell"));
+    let expected_spawn = tr_args(
+        chat.config.language,
+        "chatwidget.collab.spawn_begin",
+        &[("call_id", "call-1")],
+    );
+    assert!(text.contains(&expected_spawn));
+
+    chat.handle_codex_event(Event {
+        id: "collab-wait-end".into(),
+        msg: EventMsg::CollabWaitingEnd(CollabWaitingEndEvent {
+            sender_thread_id,
+            receiver_thread_id,
+            call_id: "call-2".to_string(),
+            status: AgentStatus::Completed(Some("done".to_string())),
+        }),
+    });
+    let cells = drain_insert_history(&mut rx);
+    assert_eq!(cells.len(), 1, "expected one collab history cell");
+    let text = lines_to_single_string(cells.last().expect("collab wait cell"));
+    let status = tr(chat.config.language, "chatwidget.collab.status.completed").to_string();
+    let receiver_id = receiver_thread_id.to_string();
+    let expected_wait = tr_args(
+        chat.config.language,
+        "chatwidget.collab.waiting_end",
+        &[
+            ("receiver_id", receiver_id.as_str()),
+            ("status", status.as_str()),
+        ],
+    );
+    assert!(text.contains(&expected_wait));
 }
 
 /// Entering review mode uses the hint provided by the review request.
