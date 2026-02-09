@@ -4,6 +4,10 @@ use crate::codex::TurnContext;
 use crate::config::Config;
 use crate::error::CodexErr;
 use crate::function_tool::FunctionCallError;
+use crate::models_manager::manager::RefreshStrategy;
+use crate::protocol::AskForApproval;
+use crate::protocol::SandboxPolicy;
+use crate::thread_manager::AgentSpawnMetadata;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
@@ -12,6 +16,9 @@ use crate::tools::registry::ToolHandler;
 use crate::tools::registry::ToolKind;
 use async_trait::async_trait;
 use codex_protocol::ThreadId;
+use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
+use codex_protocol::config_types::SandboxMode;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::CollabAgentInteractionBeginEvent;
 use codex_protocol::protocol::CollabAgentInteractionEndEvent;
 use codex_protocol::protocol::CollabAgentSpawnBeginEvent;
@@ -25,12 +32,21 @@ use serde::Serialize;
 
 pub struct CollabHandler;
 
-pub(crate) const DEFAULT_WAIT_TIMEOUT_MS: i64 = 30_000;
+pub(crate) const DEFAULT_WAIT_TIMEOUT_MS: i64 = crate::config::DEFAULT_COLLAB_WAIT_TIMEOUT_MS;
 pub(crate) const MAX_WAIT_TIMEOUT_MS: i64 = 300_000;
 
 #[derive(Debug, Deserialize)]
 struct CloseAgentArgs {
     id: String,
+}
+
+#[derive(Debug, Default)]
+struct SpawnConfigOverrides {
+    model: Option<String>,
+    reasoning_effort: Option<ReasoningEffort>,
+    reasoning_summary: Option<ReasoningSummaryConfig>,
+    approval_policy: Option<AskForApproval>,
+    sandbox_mode: Option<SandboxMode>,
 }
 
 #[async_trait]
@@ -66,7 +82,10 @@ impl ToolHandler for CollabHandler {
             "spawn_agent" => spawn::handle(session, turn, call_id, arguments).await,
             "send_input" => send_input::handle(session, turn, call_id, arguments).await,
             "wait" => wait::handle(session, turn, call_id, arguments).await,
+            "wait_agents" => wait_agents::handle(session, turn, call_id, arguments).await,
+            "list_agents" => list_agents::handle(session, call_id, arguments).await,
             "close_agent" => close_agent::handle(session, turn, call_id, arguments).await,
+            "close_agents" => close_agents::handle(session, turn, call_id, arguments).await,
             other => Err(FunctionCallError::RespondToModel(format!(
                 "unsupported collab tool {other}"
             ))),
@@ -81,6 +100,15 @@ mod spawn {
     #[derive(Debug, Deserialize)]
     struct SpawnAgentArgs {
         message: String,
+        label: Option<String>,
+        acceptance_criteria: Option<Vec<String>>,
+        test_commands: Option<Vec<String>>,
+        allow_nested_agents: Option<bool>,
+        model: Option<String>,
+        reasoning_effort: Option<ReasoningEffort>,
+        reasoning_summary: Option<ReasoningSummaryConfig>,
+        approval_policy: Option<AskForApproval>,
+        sandbox_mode: Option<SandboxMode>,
     }
 
     #[derive(Debug, Serialize)]
@@ -101,6 +129,12 @@ mod spawn {
                 "Empty message can't be sent to an agent".to_string(),
             ));
         }
+        validate_spawn_limits(
+            session.as_ref(),
+            session.conversation_id,
+            turn.client.config().as_ref(),
+        )
+        .await?;
         session
             .send_event(
                 &turn,
@@ -112,11 +146,26 @@ mod spawn {
                 .into(),
             )
             .await;
-        let config = build_agent_spawn_config(turn.as_ref())?;
+        let overrides = SpawnConfigOverrides {
+            model: args.model,
+            reasoning_effort: args.reasoning_effort,
+            reasoning_summary: args.reasoning_summary,
+            approval_policy: args.approval_policy,
+            sandbox_mode: args.sandbox_mode,
+        };
+        let config = build_agent_spawn_config(session.as_ref(), turn.as_ref(), &overrides).await?;
+        let metadata = AgentSpawnMetadata {
+            creator_thread_id: Some(session.conversation_id),
+            label: args.label,
+            goal: prompt.clone(),
+            acceptance_criteria: args.acceptance_criteria.unwrap_or_default(),
+            test_commands: args.test_commands.unwrap_or_default(),
+            allow_nested_agents: args.allow_nested_agents.unwrap_or(false),
+        };
         let result = session
             .services
             .agent_control
-            .spawn_agent(config, prompt.clone())
+            .spawn_agent_with_metadata(config, prompt.clone(), metadata)
             .await
             .map_err(collab_spawn_error);
         let (new_thread_id, status) = match &result {
@@ -265,15 +314,10 @@ mod wait {
         let receiver_thread_id = agent_id(&args.id)?;
 
         // Validate timeout.
-        let timeout_ms = args.timeout_ms.unwrap_or(DEFAULT_WAIT_TIMEOUT_MS);
-        let timeout_ms = match timeout_ms {
-            ms if ms <= 0 => {
-                return Err(FunctionCallError::RespondToModel(
-                    "timeout_ms must be greater than zero".to_owned(),
-                ));
-            }
-            ms => ms.min(MAX_WAIT_TIMEOUT_MS),
-        };
+        let timeout_ms = resolve_wait_timeout_ms(
+            args.timeout_ms,
+            turn.client.config().default_wait_timeout_ms,
+        )?;
 
         session
             .send_event(
@@ -382,6 +426,355 @@ mod wait {
     }
 }
 
+mod wait_agents {
+    use super::*;
+    use crate::agent::status::is_final;
+    use std::collections::HashSet;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::time::Instant;
+    use tokio::time::sleep_until;
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    enum WaitAgentsMode {
+        Any,
+        All,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct WaitAgentsArgs {
+        ids: Option<Vec<String>>,
+        mode: Option<WaitAgentsMode>,
+        timeout_ms: Option<i64>,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct AgentStatusSnapshot {
+        id: String,
+        status: AgentStatus,
+    }
+
+    #[derive(Debug, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    enum WaitAgentsWakeupReason {
+        AnyCompleted,
+        AllCompleted,
+        Timeout,
+        NoTargets,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct WaitAgentsResult {
+        statuses: Vec<AgentStatusSnapshot>,
+        completed_ids: Vec<String>,
+        timed_out: bool,
+        wakeup_reason: WaitAgentsWakeupReason,
+    }
+
+    pub async fn handle(
+        session: Arc<Session>,
+        turn: Arc<TurnContext>,
+        call_id: String,
+        arguments: String,
+    ) -> Result<ToolOutput, FunctionCallError> {
+        let args: WaitAgentsArgs = parse_arguments(&arguments)?;
+        let timeout_ms = resolve_wait_timeout_ms(
+            args.timeout_ms,
+            turn.client.config().default_wait_timeout_ms,
+        )?;
+        let mode = args.mode.unwrap_or(WaitAgentsMode::Any);
+        let target_ids =
+            resolve_target_ids(session.as_ref(), args.ids, session.conversation_id).await?;
+
+        for receiver_thread_id in &target_ids {
+            session
+                .send_event(
+                    &turn,
+                    CollabWaitingBeginEvent {
+                        sender_thread_id: session.conversation_id,
+                        receiver_thread_id: *receiver_thread_id,
+                        call_id: call_id.clone(),
+                    }
+                    .into(),
+                )
+                .await;
+        }
+
+        let result = wait_for_agents(session.as_ref(), &target_ids, mode, timeout_ms).await?;
+
+        for snapshot in &result.statuses {
+            let receiver_thread_id = ThreadId::from_string(&snapshot.id).map_err(|err| {
+                FunctionCallError::Fatal(format!(
+                    "failed to deserialize wait_agents snapshot id {}: {err:?}",
+                    snapshot.id
+                ))
+            })?;
+            session
+                .send_event(
+                    &turn,
+                    CollabWaitingEndEvent {
+                        sender_thread_id: session.conversation_id,
+                        receiver_thread_id,
+                        call_id: call_id.clone(),
+                        status: snapshot.status.clone(),
+                    }
+                    .into(),
+                )
+                .await;
+        }
+
+        let content = serde_json::to_string(&result).map_err(|err| {
+            FunctionCallError::Fatal(format!("failed to serialize wait_agents result: {err}"))
+        })?;
+        let success = !result.timed_out
+            && result
+                .statuses
+                .iter()
+                .all(|snapshot| !matches!(snapshot.status, AgentStatus::Errored(_)));
+
+        Ok(ToolOutput::Function {
+            content,
+            success: Some(success),
+            content_items: None,
+        })
+    }
+
+    async fn resolve_target_ids(
+        session: &Session,
+        ids: Option<Vec<String>>,
+        current_thread_id: ThreadId,
+    ) -> Result<Vec<ThreadId>, FunctionCallError> {
+        let use_explicit_ids = ids.as_ref().is_some_and(|agent_ids| !agent_ids.is_empty());
+        let mut seen = HashSet::new();
+        let parsed_ids = if let Some(ids) = ids
+            && !ids.is_empty()
+        {
+            ids.into_iter()
+                .map(|id| agent_id(&id))
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            let agents = session
+                .services
+                .agent_control
+                .list_agents()
+                .await
+                .map_err(collab_spawn_error)?;
+            agents
+                .into_iter()
+                .filter_map(|agent| {
+                    if agent.creator_thread_id == Some(current_thread_id) {
+                        Some(agent.agent_id)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        };
+
+        let mut unique_ids = Vec::new();
+        for id in parsed_ids {
+            if id == current_thread_id {
+                continue;
+            }
+            if seen.insert(id) {
+                unique_ids.push(id);
+            }
+        }
+
+        if use_explicit_ids {
+            return Ok(unique_ids);
+        }
+
+        let mut active_ids = Vec::new();
+        for id in unique_ids {
+            let status = session.services.agent_control.get_status(id).await;
+            if !is_final(&status) {
+                active_ids.push(id);
+            }
+        }
+        Ok(active_ids)
+    }
+
+    async fn wait_for_agents(
+        session: &Session,
+        ids: &[ThreadId],
+        mode: WaitAgentsMode,
+        timeout_ms: i64,
+    ) -> Result<WaitAgentsResult, FunctionCallError> {
+        if ids.is_empty() {
+            return Ok(WaitAgentsResult {
+                statuses: Vec::new(),
+                completed_ids: Vec::new(),
+                timed_out: false,
+                wakeup_reason: WaitAgentsWakeupReason::NoTargets,
+            });
+        }
+
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms as u64);
+        loop {
+            let statuses = collect_statuses(session, ids).await;
+            let completed_ids = statuses
+                .iter()
+                .filter(|snapshot| is_final(&snapshot.status))
+                .map(|snapshot| snapshot.id.clone())
+                .collect::<Vec<_>>();
+            let all_done = completed_ids.len() == statuses.len();
+            let any_done = !completed_ids.is_empty();
+            let wakeup_reason = match mode {
+                WaitAgentsMode::Any if any_done => Some(WaitAgentsWakeupReason::AnyCompleted),
+                WaitAgentsMode::All if all_done => Some(WaitAgentsWakeupReason::AllCompleted),
+                _ => None,
+            };
+            if let Some(wakeup_reason) = wakeup_reason {
+                return Ok(WaitAgentsResult {
+                    statuses,
+                    completed_ids,
+                    timed_out: false,
+                    wakeup_reason,
+                });
+            }
+
+            let now = Instant::now();
+            if now >= deadline {
+                return Ok(WaitAgentsResult {
+                    statuses,
+                    completed_ids,
+                    timed_out: true,
+                    wakeup_reason: WaitAgentsWakeupReason::Timeout,
+                });
+            }
+
+            let next_tick = std::cmp::min(now + Duration::from_millis(50), deadline);
+            sleep_until(next_tick).await;
+        }
+    }
+
+    async fn collect_statuses(session: &Session, ids: &[ThreadId]) -> Vec<AgentStatusSnapshot> {
+        let mut statuses = Vec::with_capacity(ids.len());
+        for id in ids {
+            statuses.push(AgentStatusSnapshot {
+                id: id.to_string(),
+                status: session.services.agent_control.get_status(*id).await,
+            });
+        }
+        statuses
+    }
+}
+
+mod list_agents {
+    use super::*;
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    enum AgentStatusKind {
+        PendingInit,
+        Running,
+        Completed,
+        Errored,
+        Shutdown,
+        NotFound,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct ListAgentsArgs {
+        creator_id: Option<String>,
+        statuses: Option<Vec<AgentStatusKind>>,
+        include_closed: Option<bool>,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct ListAgentItem {
+        id: String,
+        creator_id: Option<String>,
+        label: Option<String>,
+        goal: String,
+        acceptance_criteria: Vec<String>,
+        test_commands: Vec<String>,
+        allow_nested_agents: bool,
+        created_at_ms: i64,
+        updated_at_ms: i64,
+        status: AgentStatus,
+        closed: bool,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct ListAgentsResult {
+        agents: Vec<ListAgentItem>,
+    }
+
+    pub async fn handle(
+        session: Arc<Session>,
+        _call_id: String,
+        arguments: String,
+    ) -> Result<ToolOutput, FunctionCallError> {
+        let args: ListAgentsArgs = parse_arguments(&arguments)?;
+        let creator_id = args.creator_id.as_deref().map(agent_id).transpose()?;
+        let status_filters = args
+            .statuses
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let include_closed = args.include_closed.unwrap_or(false);
+
+        let agents = session
+            .services
+            .agent_control
+            .list_agents()
+            .await
+            .map_err(collab_spawn_error)?;
+        let mut items = Vec::new();
+        for agent in agents {
+            if !include_closed && agent.closed {
+                continue;
+            }
+            if let Some(creator_id) = creator_id
+                && agent.creator_thread_id != Some(creator_id)
+            {
+                continue;
+            }
+            if !status_filters.is_empty() && !status_filters.contains(&status_kind(&agent.status)) {
+                continue;
+            }
+            items.push(ListAgentItem {
+                id: agent.agent_id.to_string(),
+                creator_id: agent.creator_thread_id.map(|id| id.to_string()),
+                label: agent.label,
+                goal: agent.goal,
+                acceptance_criteria: agent.acceptance_criteria,
+                test_commands: agent.test_commands,
+                allow_nested_agents: agent.allow_nested_agents,
+                created_at_ms: agent.created_at_ms,
+                updated_at_ms: agent.updated_at_ms,
+                status: agent.status,
+                closed: agent.closed,
+            });
+        }
+        let content =
+            serde_json::to_string(&ListAgentsResult { agents: items }).map_err(|err| {
+                FunctionCallError::Fatal(format!("failed to serialize list_agents result: {err}"))
+            })?;
+        Ok(ToolOutput::Function {
+            content,
+            success: Some(true),
+            content_items: None,
+        })
+    }
+
+    fn status_kind(status: &AgentStatus) -> AgentStatusKind {
+        match status {
+            AgentStatus::PendingInit => AgentStatusKind::PendingInit,
+            AgentStatus::Running => AgentStatusKind::Running,
+            AgentStatus::Completed(_) => AgentStatusKind::Completed,
+            AgentStatus::Errored(_) => AgentStatusKind::Errored,
+            AgentStatus::Shutdown => AgentStatusKind::Shutdown,
+            AgentStatus::NotFound => AgentStatusKind::NotFound,
+        }
+    }
+}
+
 pub mod close_agent {
     use super::*;
     use std::sync::Arc;
@@ -438,7 +831,10 @@ pub mod close_agent {
             session
                 .services
                 .agent_control
-                .shutdown_agent(agent_id)
+                .shutdown_agent_with_descendants(
+                    agent_id,
+                    turn.client.config().auto_close_on_parent_shutdown,
+                )
                 .await
                 .map_err(|err| collab_agent_error(agent_id, err))
                 .map(|_| ())
@@ -466,6 +862,141 @@ pub mod close_agent {
         Ok(ToolOutput::Function {
             content,
             success: Some(true),
+            content_items: None,
+        })
+    }
+}
+
+mod close_agents {
+    use super::*;
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    #[derive(Debug, Deserialize)]
+    struct CloseAgentsArgs {
+        ids: Vec<String>,
+        ignore_missing: Option<bool>,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct CloseAgentItemResult {
+        id: String,
+        status: AgentStatus,
+        closed: bool,
+        error: Option<String>,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct CloseAgentsResult {
+        results: Vec<CloseAgentItemResult>,
+    }
+
+    pub async fn handle(
+        session: Arc<Session>,
+        turn: Arc<TurnContext>,
+        call_id: String,
+        arguments: String,
+    ) -> Result<ToolOutput, FunctionCallError> {
+        let args: CloseAgentsArgs = parse_arguments(&arguments)?;
+        if args.ids.is_empty() {
+            return Err(FunctionCallError::RespondToModel(
+                "ids must not be empty".to_string(),
+            ));
+        }
+        let ignore_missing = args.ignore_missing.unwrap_or(false);
+        let mut seen = HashSet::new();
+        let mut agent_ids = Vec::new();
+        for id in args.ids {
+            let agent_id = agent_id(&id)?;
+            if seen.insert(agent_id) {
+                agent_ids.push(agent_id);
+            }
+        }
+
+        let mut results = Vec::with_capacity(agent_ids.len());
+        for agent_id in agent_ids {
+            session
+                .send_event(
+                    &turn,
+                    CollabCloseBeginEvent {
+                        call_id: call_id.clone(),
+                        sender_thread_id: session.conversation_id,
+                        receiver_thread_id: agent_id,
+                    }
+                    .into(),
+                )
+                .await;
+
+            let status_before = session.services.agent_control.get_status(agent_id).await;
+            if matches!(status_before, AgentStatus::NotFound) {
+                session
+                    .send_event(
+                        &turn,
+                        CollabCloseEndEvent {
+                            call_id: call_id.clone(),
+                            sender_thread_id: session.conversation_id,
+                            receiver_thread_id: agent_id,
+                            status: AgentStatus::NotFound,
+                        }
+                        .into(),
+                    )
+                    .await;
+                let error = if ignore_missing {
+                    None
+                } else {
+                    Some(format!("agent with id {agent_id} not found"))
+                };
+                results.push(CloseAgentItemResult {
+                    id: agent_id.to_string(),
+                    status: AgentStatus::NotFound,
+                    closed: false,
+                    error,
+                });
+                continue;
+            }
+
+            let close_result = session
+                .services
+                .agent_control
+                .shutdown_agent_with_descendants(
+                    agent_id,
+                    turn.client.config().auto_close_on_parent_shutdown,
+                )
+                .await;
+            let status = if close_result.is_ok() {
+                AgentStatus::Shutdown
+            } else {
+                session.services.agent_control.get_status(agent_id).await
+            };
+            session
+                .send_event(
+                    &turn,
+                    CollabCloseEndEvent {
+                        call_id: call_id.clone(),
+                        sender_thread_id: session.conversation_id,
+                        receiver_thread_id: agent_id,
+                        status: status.clone(),
+                    }
+                    .into(),
+                )
+                .await;
+            results.push(CloseAgentItemResult {
+                id: agent_id.to_string(),
+                status,
+                closed: close_result.is_ok(),
+                error: close_result
+                    .err()
+                    .map(|err| format!("collab close failed: {err}")),
+            });
+        }
+
+        let success = results.iter().all(|result| result.error.is_none());
+        let content = serde_json::to_string(&CloseAgentsResult { results }).map_err(|err| {
+            FunctionCallError::Fatal(format!("failed to serialize close_agents result: {err}"))
+        })?;
+        Ok(ToolOutput::Function {
+            content,
+            success: Some(success),
             content_items: None,
         })
     }
@@ -500,7 +1031,97 @@ fn collab_agent_error(agent_id: ThreadId, err: CodexErr) -> FunctionCallError {
     }
 }
 
-fn build_agent_spawn_config(turn: &TurnContext) -> Result<Config, FunctionCallError> {
+fn resolve_wait_timeout_ms(
+    timeout_ms: Option<i64>,
+    default_timeout_ms: i64,
+) -> Result<i64, FunctionCallError> {
+    let timeout_ms = timeout_ms.unwrap_or(default_timeout_ms);
+    match timeout_ms {
+        ms if ms <= 0 => Err(FunctionCallError::RespondToModel(
+            "timeout_ms must be greater than zero".to_owned(),
+        )),
+        ms => Ok(ms.min(MAX_WAIT_TIMEOUT_MS)),
+    }
+}
+
+async fn validate_spawn_limits(
+    session: &Session,
+    creator_thread_id: ThreadId,
+    config: &Config,
+) -> Result<(), FunctionCallError> {
+    if let Some(parent) = session
+        .services
+        .agent_control
+        .get_agent_record(creator_thread_id)
+        .await
+        .map_err(collab_spawn_error)?
+        && !parent.allow_nested_agents
+    {
+        return Err(FunctionCallError::RespondToModel(
+            "nested agent spawning is disabled for this agent".to_string(),
+        ));
+    }
+
+    let depth = spawn_depth(session, creator_thread_id).await?;
+    if depth >= config.max_spawn_depth {
+        return Err(FunctionCallError::RespondToModel(format!(
+            "maximum spawn depth ({}) reached",
+            config.max_spawn_depth
+        )));
+    }
+
+    let active_subagent_count = session
+        .services
+        .agent_control
+        .list_agents()
+        .await
+        .map_err(collab_spawn_error)?
+        .into_iter()
+        .filter(|agent| {
+            agent.creator_thread_id == Some(creator_thread_id)
+                && !agent.closed
+                && matches!(
+                    agent.status,
+                    AgentStatus::PendingInit | AgentStatus::Running
+                )
+        })
+        .count();
+    if active_subagent_count >= config.max_active_subagents_per_thread {
+        return Err(FunctionCallError::RespondToModel(format!(
+            "maximum active sub-agents per thread ({}) reached",
+            config.max_active_subagents_per_thread
+        )));
+    }
+
+    Ok(())
+}
+
+async fn spawn_depth(
+    session: &Session,
+    mut thread_id: ThreadId,
+) -> Result<usize, FunctionCallError> {
+    let mut depth = 0;
+    while let Some(record) = session
+        .services
+        .agent_control
+        .get_agent_record(thread_id)
+        .await
+        .map_err(collab_spawn_error)?
+    {
+        let Some(parent_thread_id) = record.creator_thread_id else {
+            break;
+        };
+        depth += 1;
+        thread_id = parent_thread_id;
+    }
+    Ok(depth)
+}
+
+async fn build_agent_spawn_config(
+    session: &Session,
+    turn: &TurnContext,
+    overrides: &SpawnConfigOverrides,
+) -> Result<Config, FunctionCallError> {
     let base_config = turn.client.config();
     let mut config = (*base_config).clone();
     config.model = Some(turn.client.get_model());
@@ -526,7 +1147,175 @@ fn build_agent_spawn_config(turn: &TurnContext) -> Result<Config, FunctionCallEr
         .map_err(|err| {
             FunctionCallError::RespondToModel(format!("sandbox_policy is invalid: {err}"))
         })?;
+
+    apply_spawn_model_overrides(session, turn, &mut config, overrides).await?;
+    let allow_subagent_permission_escalation = config.allow_subagent_permission_escalation;
+    apply_spawn_permission_overrides(
+        turn,
+        &mut config,
+        overrides,
+        allow_subagent_permission_escalation,
+    )?;
+
     Ok(config)
+}
+
+async fn apply_spawn_model_overrides(
+    session: &Session,
+    turn: &TurnContext,
+    config: &mut Config,
+    overrides: &SpawnConfigOverrides,
+) -> Result<(), FunctionCallError> {
+    if let Some(model) = overrides.model.as_deref() {
+        let model = model.trim();
+        if model.is_empty() {
+            return Err(FunctionCallError::RespondToModel(
+                "model must not be empty".to_string(),
+            ));
+        }
+        validate_spawn_model_override(session, config, &turn.client.get_model(), model).await?;
+        config.model = Some(model.to_string());
+    }
+
+    if let Some(reasoning_effort) = overrides.reasoning_effort {
+        config.model_reasoning_effort = Some(reasoning_effort);
+    }
+    if let Some(reasoning_summary) = overrides.reasoning_summary {
+        config.model_reasoning_summary = reasoning_summary;
+    }
+
+    let model = config
+        .model
+        .clone()
+        .unwrap_or_else(|| turn.client.get_model());
+    if let Some(reasoning_effort) = config.model_reasoning_effort {
+        let model_info = session
+            .services
+            .models_manager
+            .get_model_info(&model, config)
+            .await;
+        if !model_info
+            .supported_reasoning_levels
+            .iter()
+            .any(|preset| preset.effort == reasoning_effort)
+        {
+            let supported = model_info
+                .supported_reasoning_levels
+                .iter()
+                .map(|preset| preset.effort.to_string())
+                .collect::<Vec<_>>();
+            let supported = if supported.is_empty() {
+                "none".to_string()
+            } else {
+                supported.join(", ")
+            };
+            return Err(FunctionCallError::RespondToModel(format!(
+                "reasoning_effort {reasoning_effort} is not supported by model {model}; supported values: {supported}"
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+async fn validate_spawn_model_override(
+    session: &Session,
+    config: &Config,
+    current_model: &str,
+    requested_model: &str,
+) -> Result<(), FunctionCallError> {
+    if requested_model == current_model {
+        return Ok(());
+    }
+
+    let available_models = session
+        .services
+        .models_manager
+        .list_models(config, RefreshStrategy::Offline)
+        .await;
+    if available_models
+        .iter()
+        .any(|preset| preset.model == requested_model)
+    {
+        return Ok(());
+    }
+
+    Err(FunctionCallError::RespondToModel(format!(
+        "model {requested_model} is not available"
+    )))
+}
+
+fn apply_spawn_permission_overrides(
+    turn: &TurnContext,
+    config: &mut Config,
+    overrides: &SpawnConfigOverrides,
+    allow_subagent_permission_escalation: bool,
+) -> Result<(), FunctionCallError> {
+    if let Some(approval_policy) = overrides.approval_policy {
+        if !allow_subagent_permission_escalation
+            && approval_policy_level(approval_policy) > approval_policy_level(turn.approval_policy)
+        {
+            return Err(FunctionCallError::RespondToModel(format!(
+                "approval_policy {approval_policy} is not allowed because it is more permissive than parent policy {}",
+                turn.approval_policy
+            )));
+        }
+        config.approval_policy.set(approval_policy).map_err(|err| {
+            FunctionCallError::RespondToModel(format!("approval_policy is invalid: {err}"))
+        })?;
+    }
+
+    if let Some(sandbox_mode) = overrides.sandbox_mode {
+        let sandbox_policy = sandbox_policy_from_mode(sandbox_mode);
+        if !allow_subagent_permission_escalation
+            && sandbox_policy_level(&sandbox_policy) > sandbox_policy_level(&turn.sandbox_policy)
+        {
+            return Err(FunctionCallError::RespondToModel(format!(
+                "sandbox_mode {sandbox_mode} is not allowed because it is more permissive than parent mode {}",
+                sandbox_mode_from_policy(&turn.sandbox_policy)
+            )));
+        }
+        config.sandbox_policy.set(sandbox_policy).map_err(|err| {
+            FunctionCallError::RespondToModel(format!("sandbox_policy is invalid: {err}"))
+        })?;
+    }
+
+    Ok(())
+}
+
+fn approval_policy_level(policy: AskForApproval) -> u8 {
+    match policy {
+        AskForApproval::Never => 0,
+        AskForApproval::UnlessTrusted => 1,
+        AskForApproval::OnRequest => 2,
+        AskForApproval::OnFailure => 3,
+    }
+}
+
+fn sandbox_policy_level(policy: &SandboxPolicy) -> u8 {
+    match policy {
+        SandboxPolicy::ReadOnly => 0,
+        SandboxPolicy::WorkspaceWrite { .. } => 1,
+        SandboxPolicy::DangerFullAccess | SandboxPolicy::ExternalSandbox { .. } => 2,
+    }
+}
+
+fn sandbox_policy_from_mode(mode: SandboxMode) -> SandboxPolicy {
+    match mode {
+        SandboxMode::ReadOnly => SandboxPolicy::new_read_only_policy(),
+        SandboxMode::WorkspaceWrite => SandboxPolicy::new_workspace_write_policy(),
+        SandboxMode::DangerFullAccess => SandboxPolicy::DangerFullAccess,
+    }
+}
+
+fn sandbox_mode_from_policy(policy: &SandboxPolicy) -> SandboxMode {
+    match policy {
+        SandboxPolicy::ReadOnly => SandboxMode::ReadOnly,
+        SandboxPolicy::WorkspaceWrite { .. } => SandboxMode::WorkspaceWrite,
+        SandboxPolicy::DangerFullAccess | SandboxPolicy::ExternalSandbox { .. } => {
+            SandboxMode::DangerFullAccess
+        }
+    }
 }
 
 #[cfg(test)]
@@ -535,7 +1324,9 @@ mod tests {
     use crate::CodexAuth;
     use crate::ThreadManager;
     use crate::built_in_model_providers;
+    use crate::client::ModelClient;
     use crate::codex::make_session_and_context;
+    use crate::config::Config;
     use crate::config::types::ShellEnvironmentPolicy;
     use crate::function_tool::FunctionCallError;
     use crate::protocol::AskForApproval;
@@ -578,6 +1369,33 @@ mod tests {
             CodexAuth::from_api_key("dummy"),
             built_in_model_providers()["openai"].clone(),
         )
+    }
+
+    fn overwrite_turn_config(
+        turn: &mut TurnContext,
+        conversation_id: ThreadId,
+        mutate: impl FnOnce(&mut Config),
+    ) {
+        let auth_manager = turn.client.get_auth_manager();
+        let model_info = turn.client.get_model_info();
+        let otel_manager = turn.client.get_otel_manager();
+        let provider = turn.client.get_provider();
+        let reasoning_effort = turn.client.get_reasoning_effort();
+        let reasoning_summary = turn.client.get_reasoning_summary();
+        let session_source = turn.client.get_session_source();
+        let mut config = (*turn.client.config()).clone();
+        mutate(&mut config);
+        turn.client = ModelClient::new(
+            Arc::new(config),
+            auth_manager,
+            model_info,
+            otel_manager,
+            provider,
+            reasoning_effort,
+            reasoning_summary,
+            conversation_id,
+            session_source,
+        );
     }
 
     #[tokio::test]
@@ -656,6 +1474,398 @@ mod tests {
             err,
             FunctionCallError::RespondToModel("collab manager unavailable".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_rejects_unknown_model_override() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({"message": "hello", "model": "not-a-real-model"})),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("unknown model should be rejected");
+        };
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(
+                "model not-a-real-model is not available".to_string()
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_rejects_invalid_reasoning_effort_value() {
+        let (session, turn) = make_session_and_context().await;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({"message": "hello", "reasoning_effort": "invalid"})),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("invalid reasoning_effort should be rejected");
+        };
+        let FunctionCallError::RespondToModel(msg) = err else {
+            panic!("expected respond-to-model error");
+        };
+        assert!(msg.starts_with("failed to parse function arguments:"));
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_rejects_unsupported_reasoning_effort_for_model() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let config = turn.client.config();
+        let model = turn.client.get_model();
+        let model_info = session
+            .services
+            .models_manager
+            .get_model_info(&model, config.as_ref())
+            .await;
+        let unsupported_effort = [
+            ReasoningEffort::None,
+            ReasoningEffort::Minimal,
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High,
+            ReasoningEffort::XHigh,
+        ]
+        .into_iter()
+        .find(|effort| {
+            !model_info
+                .supported_reasoning_levels
+                .iter()
+                .any(|preset| preset.effort == *effort)
+        })
+        .expect("expected at least one unsupported effort for the default model");
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({
+                "message": "hello",
+                "reasoning_effort": unsupported_effort.to_string(),
+            })),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("unsupported effort should be rejected");
+        };
+        let FunctionCallError::RespondToModel(msg) = err else {
+            panic!("expected respond-to-model error");
+        };
+        assert!(msg.contains("reasoning_effort"));
+        assert!(msg.contains("is not supported by model"));
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_rejects_nested_spawn_when_parent_disallows_it() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        let control = manager.agent_control();
+        session.services.agent_control = control.clone();
+        let root_thread_id = session.conversation_id;
+        let config = turn.client.config().as_ref().clone();
+        let child_id = control
+            .spawn_agent_with_metadata(
+                config,
+                "child".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(root_thread_id),
+                    allow_nested_agents: false,
+                    ..AgentSpawnMetadata::default()
+                },
+            )
+            .await
+            .expect("spawn child");
+        session.conversation_id = child_id;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({"message": "grandchild"})),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("nested spawn should be rejected");
+        };
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(
+                "nested agent spawning is disabled for this agent".to_string()
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_rejects_when_spawn_depth_limit_is_reached() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        let control = manager.agent_control();
+        session.services.agent_control = control.clone();
+        let root_thread_id = session.conversation_id;
+        let config = turn.client.config().as_ref().clone();
+        let child_id = control
+            .spawn_agent_with_metadata(
+                config,
+                "child".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(root_thread_id),
+                    allow_nested_agents: true,
+                    ..AgentSpawnMetadata::default()
+                },
+            )
+            .await
+            .expect("spawn child");
+        session.conversation_id = child_id;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({"message": "grandchild"})),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("spawn depth limit should reject");
+        };
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(format!(
+                "maximum spawn depth ({}) reached",
+                crate::config::DEFAULT_COLLAB_MAX_SPAWN_DEPTH
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_allows_when_spawn_depth_limit_is_raised() {
+        let (mut session, mut turn) = make_session_and_context().await;
+        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+            config.max_spawn_depth = 2;
+        });
+        let manager = thread_manager();
+        let control = manager.agent_control();
+        session.services.agent_control = control.clone();
+        let root_thread_id = session.conversation_id;
+        let config = turn.client.config().as_ref().clone();
+        let child_id = control
+            .spawn_agent_with_metadata(
+                config,
+                "child".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(root_thread_id),
+                    allow_nested_agents: true,
+                    ..AgentSpawnMetadata::default()
+                },
+            )
+            .await
+            .expect("spawn child");
+        session.conversation_id = child_id;
+        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+            config.max_spawn_depth = 2;
+        });
+
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({"message": "grandchild"})),
+        );
+        let output = CollabHandler
+            .handle(invocation)
+            .await
+            .expect("spawn should succeed");
+        let ToolOutput::Function {
+            content, success, ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        let grandchild_id = value
+            .get("agent_id")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|id| ThreadId::from_string(id).ok())
+            .expect("grandchild id should be present");
+        assert_eq!(success, Some(true));
+
+        let _ = control.shutdown_agent(grandchild_id).await;
+        let _ = control.shutdown_agent(child_id).await;
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_rejects_when_active_subagent_limit_is_reached() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        let control = manager.agent_control();
+        session.services.agent_control = control.clone();
+        let root_thread_id = session.conversation_id;
+        let config = turn.client.config().as_ref().clone();
+        for i in 0..crate::config::DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD {
+            let _ = control
+                .spawn_agent_with_metadata(
+                    config.clone(),
+                    format!("child-{i}"),
+                    AgentSpawnMetadata {
+                        creator_thread_id: Some(root_thread_id),
+                        ..AgentSpawnMetadata::default()
+                    },
+                )
+                .await
+                .expect("spawn child");
+        }
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({"message": "one more child"})),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("active subagent limit should reject");
+        };
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(format!(
+                "maximum active sub-agents per thread ({}) reached",
+                crate::config::DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_rejects_when_configured_active_subagent_limit_is_reached() {
+        let (mut session, mut turn) = make_session_and_context().await;
+        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+            config.max_active_subagents_per_thread = 1;
+        });
+        let manager = thread_manager();
+        let control = manager.agent_control();
+        session.services.agent_control = control.clone();
+        let root_thread_id = session.conversation_id;
+        let config = turn.client.config().as_ref().clone();
+        let _ = control
+            .spawn_agent_with_metadata(
+                config,
+                "child-0".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(root_thread_id),
+                    ..AgentSpawnMetadata::default()
+                },
+            )
+            .await
+            .expect("spawn child");
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({"message": "one more child"})),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("active subagent limit should reject");
+        };
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(
+                "maximum active sub-agents per thread (1) reached".to_string()
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn list_agents_filters_by_creator_status_and_closed() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        let control = manager.agent_control();
+        session.services.agent_control = control.clone();
+        let config = turn.client.config().as_ref().clone();
+        let creator_id = ThreadId::new();
+        let metadata = AgentSpawnMetadata {
+            creator_thread_id: Some(creator_id),
+            label: Some("worker-a".to_string()),
+            goal: "run checks".to_string(),
+            acceptance_criteria: vec!["all tests pass".to_string()],
+            test_commands: vec!["cargo test -p codex-core".to_string()],
+            allow_nested_agents: false,
+        };
+        let agent_id = control
+            .spawn_agent_with_metadata(config, "do work".to_string(), metadata)
+            .await
+            .expect("spawn agent");
+        control
+            .shutdown_agent(agent_id)
+            .await
+            .expect("shutdown should succeed");
+
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "list_agents",
+            function_payload(json!({
+                "creator_id": creator_id.to_string(),
+                "statuses": ["shutdown"],
+                "include_closed": true
+            })),
+        );
+        let output = CollabHandler
+            .handle(invocation)
+            .await
+            .expect("list_agents should succeed");
+        let ToolOutput::Function {
+            content, success, ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        let agents = value
+            .get("agents")
+            .and_then(serde_json::Value::as_array)
+            .expect("agents array");
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].get("id"), Some(&json!(agent_id.to_string())));
+        assert_eq!(agents[0].get("label"), Some(&json!("worker-a")));
+        assert_eq!(agents[0].get("status"), Some(&json!("shutdown")));
+        assert_eq!(agents[0].get("closed"), Some(&json!(true)));
+        assert_eq!(success, Some(true));
+    }
+
+    #[tokio::test]
+    async fn list_agents_excludes_closed_by_default() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        let control = manager.agent_control();
+        session.services.agent_control = control.clone();
+        let config = turn.client.config().as_ref().clone();
+        let agent_id = control
+            .spawn_agent_with_metadata(config, "do work".to_string(), AgentSpawnMetadata::default())
+            .await
+            .expect("spawn agent");
+        control
+            .shutdown_agent(agent_id)
+            .await
+            .expect("shutdown should succeed");
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "list_agents",
+            function_payload(json!({})),
+        );
+        let output = CollabHandler
+            .handle(invocation)
+            .await
+            .expect("list_agents should succeed");
+        let ToolOutput::Function { content, .. } = output else {
+            panic!("expected function output");
+        };
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        let agents = value
+            .get("agents")
+            .and_then(serde_json::Value::as_array)
+            .expect("agents array");
+        assert_eq!(agents.len(), 0);
     }
 
     #[tokio::test]
@@ -831,6 +2041,281 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn wait_uses_configured_default_timeout_when_timeout_is_omitted() {
+        let (mut session, mut turn) = make_session_and_context().await;
+        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+            config.default_wait_timeout_ms = 10;
+        });
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let config = turn.client.config().as_ref().clone();
+        let thread = manager.start_thread(config).await.expect("start thread");
+        let agent_id = thread.thread_id;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "wait",
+            function_payload(json!({"id": agent_id.to_string()})),
+        );
+        let output = timeout(Duration::from_secs(1), CollabHandler.handle(invocation))
+            .await
+            .expect("wait should return using configured timeout")
+            .expect("wait should succeed");
+        let ToolOutput::Function { content, .. } = output else {
+            panic!("expected function output");
+        };
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        assert_eq!(value.get("timed_out"), Some(&json!(true)));
+
+        let _ = thread
+            .thread
+            .submit(Op::Shutdown {})
+            .await
+            .expect("shutdown should submit");
+    }
+
+    #[tokio::test]
+    async fn wait_agents_any_returns_when_first_agent_finishes() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let config = turn.client.config().as_ref().clone();
+        let thread1 = manager
+            .start_thread(config.clone())
+            .await
+            .expect("start thread 1");
+        let thread2 = manager.start_thread(config).await.expect("start thread 2");
+        let agent1 = thread1.thread_id;
+        let agent2 = thread2.thread_id;
+        let mut status_rx = manager
+            .agent_control()
+            .subscribe_status(agent1)
+            .await
+            .expect("subscribe should succeed");
+
+        let _ = thread1
+            .thread
+            .submit(Op::Shutdown {})
+            .await
+            .expect("shutdown should submit");
+        let _ = timeout(Duration::from_secs(1), status_rx.changed())
+            .await
+            .expect("shutdown status should arrive");
+
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "wait_agents",
+            function_payload(
+                json!({"ids": [agent1.to_string(), agent2.to_string()], "mode": "any", "timeout_ms": 1000}),
+            ),
+        );
+        let output = CollabHandler
+            .handle(invocation)
+            .await
+            .expect("wait_agents should succeed");
+        let ToolOutput::Function {
+            content, success, ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        let completed_ids = value
+            .get("completed_ids")
+            .and_then(serde_json::Value::as_array)
+            .expect("completed_ids array");
+        assert_eq!(value.get("timed_out"), Some(&json!(false)));
+        assert_eq!(value.get("wakeup_reason"), Some(&json!("any_completed")));
+        assert!(completed_ids.contains(&json!(agent1.to_string())));
+        assert_eq!(success, Some(true));
+    }
+
+    #[tokio::test]
+    async fn wait_agents_all_waits_for_every_agent() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let config = turn.client.config().as_ref().clone();
+        let thread1 = manager
+            .start_thread(config.clone())
+            .await
+            .expect("start thread 1");
+        let thread2 = manager.start_thread(config).await.expect("start thread 2");
+        let agent1 = thread1.thread_id;
+        let agent2 = thread2.thread_id;
+        let mut status_rx1 = manager
+            .agent_control()
+            .subscribe_status(agent1)
+            .await
+            .expect("subscribe should succeed");
+        let thread2_task = thread2.thread.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(80)).await;
+            let _ = thread2_task.submit(Op::Shutdown {}).await;
+        });
+
+        let _ = thread1
+            .thread
+            .submit(Op::Shutdown {})
+            .await
+            .expect("shutdown should submit");
+        let _ = timeout(Duration::from_secs(1), status_rx1.changed())
+            .await
+            .expect("shutdown status should arrive");
+        let started_at = tokio::time::Instant::now();
+
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "wait_agents",
+            function_payload(
+                json!({"ids": [agent1.to_string(), agent2.to_string()], "mode": "all", "timeout_ms": 2000}),
+            ),
+        );
+        let output = CollabHandler
+            .handle(invocation)
+            .await
+            .expect("wait_agents should succeed");
+        let elapsed = started_at.elapsed();
+        let ToolOutput::Function {
+            content, success, ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        let completed_ids = value
+            .get("completed_ids")
+            .and_then(serde_json::Value::as_array)
+            .expect("completed_ids array");
+        assert_eq!(value.get("timed_out"), Some(&json!(false)));
+        assert_eq!(value.get("wakeup_reason"), Some(&json!("all_completed")));
+        assert!(completed_ids.contains(&json!(agent1.to_string())));
+        assert!(completed_ids.contains(&json!(agent2.to_string())));
+        assert!(elapsed >= Duration::from_millis(50));
+        assert_eq!(success, Some(true));
+    }
+
+    #[tokio::test]
+    async fn wait_agents_times_out_when_targets_are_not_final() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let config = turn.client.config().as_ref().clone();
+        let thread = manager.start_thread(config).await.expect("start thread");
+        let agent_id = thread.thread_id;
+
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "wait_agents",
+            function_payload(
+                json!({"ids": [agent_id.to_string()], "mode": "any", "timeout_ms": 20}),
+            ),
+        );
+        let output = CollabHandler
+            .handle(invocation)
+            .await
+            .expect("wait_agents should succeed");
+        let ToolOutput::Function {
+            content, success, ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        assert_eq!(value.get("timed_out"), Some(&json!(true)));
+        assert_eq!(value.get("wakeup_reason"), Some(&json!("timeout")));
+        assert_eq!(success, Some(false));
+
+        let _ = thread
+            .thread
+            .submit(Op::Shutdown {})
+            .await
+            .expect("shutdown should submit");
+    }
+
+    #[tokio::test]
+    async fn wait_agents_without_ids_waits_only_on_active_children() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let config = turn.client.config().as_ref().clone();
+        let control = manager.agent_control();
+        let closed_agent_id = control
+            .spawn_agent_with_metadata(
+                config.clone(),
+                "closed child".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(session.conversation_id),
+                    goal: "closed child".to_string(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("spawn closed child");
+        let running_agent_id = control
+            .spawn_agent_with_metadata(
+                config.clone(),
+                "running child".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(session.conversation_id),
+                    goal: "running child".to_string(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("spawn running child");
+        let _unrelated_thread = manager
+            .start_thread(config)
+            .await
+            .expect("start unrelated running thread");
+
+        let mut closed_status_rx = control
+            .subscribe_status(closed_agent_id)
+            .await
+            .expect("subscribe should succeed");
+        let _ = control
+            .shutdown_agent(closed_agent_id)
+            .await
+            .expect("shutdown should submit");
+        let _ = timeout(Duration::from_secs(1), closed_status_rx.changed()).await;
+
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "wait_agents",
+            function_payload(json!({"mode": "any", "timeout_ms": 20})),
+        );
+        let output = CollabHandler
+            .handle(invocation)
+            .await
+            .expect("wait_agents should succeed");
+        let ToolOutput::Function {
+            content, success, ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        let statuses = value
+            .get("statuses")
+            .and_then(serde_json::Value::as_array)
+            .expect("statuses array");
+        assert_eq!(value.get("timed_out"), Some(&json!(true)));
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(
+            statuses[0].get("id"),
+            Some(&serde_json::Value::String(running_agent_id.to_string()))
+        );
+        assert_eq!(success, Some(false));
+        assert_eq!(value.get("wakeup_reason"), Some(&json!("timeout")));
+
+        let _ = control.shutdown_agent(running_agent_id).await;
+    }
+
+    #[tokio::test]
     async fn close_agent_submits_shutdown_and_returns_status() {
         let (mut session, turn) = make_session_and_context().await;
         let manager = thread_manager();
@@ -872,8 +2357,151 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn close_agent_does_not_auto_close_descendants_when_disabled_in_config() {
+        let (mut session, mut turn) = make_session_and_context().await;
+        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+            config.auto_close_on_parent_shutdown = false;
+        });
+        let manager = thread_manager();
+        let control = manager.agent_control();
+        session.services.agent_control = control.clone();
+        let config = turn.client.config().as_ref().clone();
+        let parent_id = control
+            .spawn_agent_with_metadata(
+                config.clone(),
+                "parent".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(session.conversation_id),
+                    allow_nested_agents: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("spawn parent");
+        let child_id = control
+            .spawn_agent_with_metadata(
+                config,
+                "child".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(parent_id),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("spawn child");
+
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "close_agent",
+            function_payload(json!({"id": parent_id.to_string()})),
+        );
+        let output = CollabHandler
+            .handle(invocation)
+            .await
+            .expect("close_agent should succeed");
+        let ToolOutput::Function { success, .. } = output else {
+            panic!("expected function output");
+        };
+        assert_eq!(success, Some(true));
+        assert_eq!(control.get_status(parent_id).await, AgentStatus::NotFound);
+        assert_ne!(control.get_status(child_id).await, AgentStatus::NotFound);
+
+        let child_record = control
+            .get_agent_record(child_id)
+            .await
+            .expect("load child record")
+            .expect("child record should exist");
+        assert!(!child_record.closed);
+
+        let _ = control.shutdown_agent(child_id).await;
+    }
+
+    #[tokio::test]
+    async fn close_agents_handles_missing_and_duplicates() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let config = turn.client.config().as_ref().clone();
+        let thread = manager.start_thread(config).await.expect("start thread");
+        let agent_id = thread.thread_id;
+        let missing_id = ThreadId::new();
+
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "close_agents",
+            function_payload(json!({
+                "ids": [agent_id.to_string(), agent_id.to_string(), missing_id.to_string()],
+                "ignore_missing": true
+            })),
+        );
+        let output = CollabHandler
+            .handle(invocation)
+            .await
+            .expect("close_agents should succeed");
+        let ToolOutput::Function {
+            content, success, ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        let results = value
+            .get("results")
+            .and_then(serde_json::Value::as_array)
+            .expect("results array");
+        assert_eq!(results.len(), 2);
+        assert_eq!(success, Some(true));
+
+        let shutdown_ops = manager
+            .captured_ops()
+            .into_iter()
+            .filter(|(id, op)| *id == agent_id && matches!(op, Op::Shutdown))
+            .count();
+        assert_eq!(shutdown_ops, 1);
+    }
+
+    #[tokio::test]
+    async fn close_agents_reports_missing_when_not_ignored() {
+        let (session, turn) = make_session_and_context().await;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "close_agents",
+            function_payload(json!({
+                "ids": [ThreadId::new().to_string()],
+                "ignore_missing": false
+            })),
+        );
+        let output = CollabHandler
+            .handle(invocation)
+            .await
+            .expect("close_agents should succeed");
+        let ToolOutput::Function {
+            content, success, ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        let results = value
+            .get("results")
+            .and_then(serde_json::Value::as_array)
+            .expect("results array");
+        assert_eq!(results.len(), 1);
+        assert!(
+            results[0]
+                .get("error")
+                .and_then(serde_json::Value::as_str)
+                .is_some()
+        );
+        assert_eq!(success, Some(false));
+    }
+
+    #[tokio::test]
     async fn build_agent_spawn_config_uses_turn_context_values() {
-        let (_session, mut turn) = make_session_and_context().await;
+        let (session, mut turn) = make_session_and_context().await;
         turn.developer_instructions = Some("dev".to_string());
         turn.base_instructions = Some("base".to_string());
         turn.compact_prompt = Some("compact".to_string());
@@ -888,7 +2516,9 @@ mod tests {
         turn.approval_policy = AskForApproval::Never;
         turn.sandbox_policy = SandboxPolicy::DangerFullAccess;
 
-        let config = build_agent_spawn_config(&turn).expect("spawn config");
+        let config = build_agent_spawn_config(&session, &turn, &SpawnConfigOverrides::default())
+            .await
+            .expect("spawn config");
         let mut expected = (*turn.client.config()).clone();
         expected.model = Some(turn.client.get_model());
         expected.model_provider = turn.client.get_provider();
@@ -910,5 +2540,139 @@ mod tests {
             .set(turn.sandbox_policy)
             .expect("sandbox policy set");
         assert_eq!(config, expected);
+    }
+
+    #[tokio::test]
+    async fn build_agent_spawn_config_applies_model_reasoning_overrides() {
+        let (session, turn) = make_session_and_context().await;
+        let current_model = turn.client.get_model();
+        let available_models = session
+            .services
+            .models_manager
+            .list_models(turn.client.config().as_ref(), RefreshStrategy::Offline)
+            .await;
+        let model = available_models
+            .iter()
+            .map(|preset| preset.model.clone())
+            .find(|candidate| candidate != &current_model)
+            .unwrap_or(current_model.clone());
+        let model_info = session
+            .services
+            .models_manager
+            .get_model_info(&model, turn.client.config().as_ref())
+            .await;
+        let effort = model_info
+            .supported_reasoning_levels
+            .first()
+            .map(|preset| preset.effort)
+            .unwrap_or(ReasoningEffort::Medium);
+
+        let overrides = SpawnConfigOverrides {
+            model: Some(model.clone()),
+            reasoning_effort: Some(effort),
+            reasoning_summary: Some(ReasoningSummaryConfig::Detailed),
+            approval_policy: None,
+            sandbox_mode: None,
+        };
+        let config = build_agent_spawn_config(&session, &turn, &overrides)
+            .await
+            .expect("spawn config");
+
+        assert_eq!(config.model, Some(model));
+        assert_eq!(config.model_reasoning_effort, Some(effort));
+        assert_eq!(
+            config.model_reasoning_summary,
+            ReasoningSummaryConfig::Detailed
+        );
+    }
+
+    #[tokio::test]
+    async fn build_agent_spawn_config_allows_permission_downscope() {
+        let (session, mut turn) = make_session_and_context().await;
+        turn.approval_policy = AskForApproval::OnFailure;
+        turn.sandbox_policy = SandboxPolicy::DangerFullAccess;
+        let overrides = SpawnConfigOverrides {
+            model: None,
+            reasoning_effort: None,
+            reasoning_summary: None,
+            approval_policy: Some(AskForApproval::Never),
+            sandbox_mode: Some(SandboxMode::ReadOnly),
+        };
+        let config = build_agent_spawn_config(&session, &turn, &overrides)
+            .await
+            .expect("spawn config");
+
+        assert_eq!(config.approval_policy.value(), AskForApproval::Never);
+        assert_eq!(config.sandbox_policy.get(), &SandboxPolicy::ReadOnly);
+    }
+
+    #[tokio::test]
+    async fn build_agent_spawn_config_rejects_approval_policy_escalation() {
+        let (session, mut turn) = make_session_and_context().await;
+        turn.approval_policy = AskForApproval::Never;
+        let overrides = SpawnConfigOverrides {
+            model: None,
+            reasoning_effort: None,
+            reasoning_summary: None,
+            approval_policy: Some(AskForApproval::OnRequest),
+            sandbox_mode: None,
+        };
+        let err = build_agent_spawn_config(&session, &turn, &overrides)
+            .await
+            .expect_err("escalation should be rejected");
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(
+                "approval_policy on-request is not allowed because it is more permissive than parent policy never".to_string()
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn build_agent_spawn_config_rejects_sandbox_mode_escalation() {
+        let (session, mut turn) = make_session_and_context().await;
+        turn.sandbox_policy = SandboxPolicy::ReadOnly;
+        let overrides = SpawnConfigOverrides {
+            model: None,
+            reasoning_effort: None,
+            reasoning_summary: None,
+            approval_policy: None,
+            sandbox_mode: Some(SandboxMode::WorkspaceWrite),
+        };
+        let err = build_agent_spawn_config(&session, &turn, &overrides)
+            .await
+            .expect_err("escalation should be rejected");
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(
+                "sandbox_mode workspace-write is not allowed because it is more permissive than parent mode read-only".to_string()
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn build_agent_spawn_config_allows_permission_escalation_when_enabled() {
+        let (session, mut turn) = make_session_and_context().await;
+        turn.approval_policy = AskForApproval::Never;
+        turn.sandbox_policy = SandboxPolicy::ReadOnly;
+        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+            config.allow_subagent_permission_escalation = true;
+        });
+        let overrides = SpawnConfigOverrides {
+            model: None,
+            reasoning_effort: None,
+            reasoning_summary: None,
+            approval_policy: Some(AskForApproval::OnRequest),
+            sandbox_mode: Some(SandboxMode::WorkspaceWrite),
+        };
+        let config = build_agent_spawn_config(&session, &turn, &overrides)
+            .await
+            .expect("escalation should be allowed when enabled");
+
+        assert_eq!(config.approval_policy.value(), AskForApproval::OnRequest);
+        assert!(matches!(
+            config.sandbox_policy.get(),
+            SandboxPolicy::WorkspaceWrite { .. }
+        ));
     }
 }
