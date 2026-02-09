@@ -277,7 +277,7 @@ pub async fn run_main(cli: Cli, codex_linux_sandbox_exe: Option<PathBuf>) -> any
         cwd: resolved_cwd,
         model_provider: model_provider.clone(),
         codex_linux_sandbox_exe,
-        base_instructions: cli_base_instructions,
+        base_instructions: cli_base_instructions.clone(),
         developer_instructions: None,
         personality: None,
         compact_prompt: None,
@@ -288,12 +288,17 @@ pub async fn run_main(cli: Cli, codex_linux_sandbox_exe: Option<PathBuf>) -> any
         additional_writable_roots: add_dir,
     };
 
-    let config = ConfigBuilder::default()
+    let mut config = ConfigBuilder::default()
         .cli_overrides(cli_kv_overrides)
         .harness_overrides(overrides)
         .cloud_requirements(cloud_requirements)
         .build()
         .await?;
+    if let Some(cli_base_instructions) = cli_base_instructions {
+        // Keep `-c model_instructions_file=...` authoritative in exec mode even if
+        // downstream config merging changes precedence.
+        config.base_instructions = Some(cli_base_instructions);
+    }
     set_default_client_residency_requirement(config.enforce_residency.value());
 
     if let Err(err) = enforce_login_restrictions(&config) {

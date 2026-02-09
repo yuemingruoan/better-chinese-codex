@@ -94,7 +94,7 @@ fn gpt_52_codex() -> ModelPreset {
             ),
             effort(
                 ReasoningEffort::XHigh,
-                "Extra high reasoning for complex problems",
+                "Extra high reasoning depth for complex problems",
             ),
         ],
         supports_personality: false,
@@ -244,7 +244,7 @@ fn gpt_5_3() -> ModelPreset {
             ),
             effort(
                 ReasoningEffort::XHigh,
-                "Extra high reasoning depth for complex problems",
+                "Extra high reasoning for complex problems",
             ),
         ],
         supports_personality: false,

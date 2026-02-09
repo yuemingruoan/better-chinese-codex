@@ -6,6 +6,8 @@ use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_message_item_added;
 use core_test_support::responses::ev_output_text_delta;
 use core_test_support::responses::ev_response_created;
+use core_test_support::responses::mount_sse_sequence;
+use core_test_support::responses::sse;
 use core_test_support::streaming_sse::StreamingSseChunk;
 use core_test_support::streaming_sse::start_streaming_sse_server;
 use core_test_support::test_codex::test_codex;
@@ -13,6 +15,7 @@ use core_test_support::wait_for_event;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use tokio::sync::oneshot;
+use wiremock::MockServer;
 
 fn ev_message_item_done(id: &str, text: &str) -> Value {
     serde_json::json!({
@@ -21,6 +24,19 @@ fn ev_message_item_done(id: &str, text: &str) -> Value {
             "type": "message",
             "role": "assistant",
             "id": id,
+            "content": [{"type": "output_text", "text": text}]
+        }
+    })
+}
+
+fn ev_message_item_done_with_phase(id: &str, text: &str, phase: &str) -> Value {
+    serde_json::json!({
+        "type": "response.output_item.done",
+        "item": {
+            "type": "message",
+            "role": "assistant",
+            "id": id,
+            "phase": phase,
             "content": [{"type": "output_text", "text": text}]
         }
     })
@@ -147,4 +163,64 @@ async fn injected_user_input_triggers_follow_up_request_with_deltas() {
     assert!(second_texts.iter().any(|text| text == "second prompt"));
 
     server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn commentary_only_response_triggers_follow_up_request() {
+    let server = MockServer::start().await;
+    let response_log = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-1"),
+                ev_message_item_done_with_phase(
+                    "msg-1",
+                    "I will compare the branch divergence before syncing.",
+                    "commentary",
+                ),
+                ev_completed("resp-1"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-2"),
+                ev_message_item_done_with_phase("msg-2", "Sync is complete.", "final_answer"),
+                ev_completed("resp-2"),
+            ]),
+        ],
+    )
+    .await;
+
+    let codex = test_codex()
+        .with_model("gpt-5.1")
+        .build(&server)
+        .await
+        .expect("build codex")
+        .codex;
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "Please sync from main".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+        })
+        .await
+        .expect("submit user input");
+
+    let turn_complete =
+        wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+    let EventMsg::TurnComplete(turn_complete) = turn_complete else {
+        panic!("expected TurnComplete event");
+    };
+    assert_eq!(
+        turn_complete.last_agent_message,
+        Some("Sync is complete.".to_string())
+    );
+
+    let requests = response_log.requests();
+    assert_eq!(
+        requests.len(),
+        2,
+        "commentary should trigger follow-up request"
+    );
 }
