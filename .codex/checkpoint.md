@@ -148,3 +148,31 @@
 
 - 当前待办：
   - 等待用户确认更新后的计划或补充需求。
+## 2026-02-09 01:55:10 CST
+- 实现 `/sdd-develop-parallels`（tui/tui2）：新增命令入口、`SddWorkflow` 分流、collab experimental 门禁、并行流程计划/执行/合并提示词接入。
+- parallels 路径去硬编码 Git 动作：计划批准后不再触发 `CreateBranch`，合并阶段不再触发 `FinalizeMerge`（tui2）；改为提示词引导主 Agent 编排。
+- 新增中英文 i18n：`prompt.sdd_*_parallels`、`chatwidget.sdd.*parallels`、`slash_command.description.sdd_develop_parallels`，并增强现有 `sdd_execute` 协作说明。
+- 补充回归测试（tui/tui2）：collab 门禁、计划批准不触发 `SddGitAction::CreateBranch`、parallels 合并不走硬编码 Git 路径。
+- 同步提示词镜像文档：更新 `prompt_for_sdd_execute*.md` 协作原则，新增 plan/execute/merge parallels 中英文文档（tui 与 tui2）。
+- 已执行：`just fmt`、`just fix -p codex-tui`、`just fix -p codex-tui2`、`cargo test -p codex-core i18n::tests::catalogs_share_keys`、`cargo test -p codex-tui --lib`、`cargo test -p codex-tui2 --lib`；并接受 2 处 slash popup 快照更新。
+
+- 当前待办：
+  - `cargo test -p codex-core` 全量仍有既有环境/二进制依赖失败（`codex` / `test_stdio_server` 缺失等），需按项目测试环境补齐后二次确认。
+  - `cargo test -p codex-tui` 与 `cargo test -p codex-tui2` 的 integration 测试会因缺少 `codex` 二进制失败；lib 测试已全部通过。
+
+## 2026-02-09 02:05:54 CST
+- 完成收口复检：`just fmt`、`cargo test -p codex-tui`、`cargo test -p codex-tui2` 均通过（含 `tests/all.rs`）。
+- 为 core 集成测试补齐依赖：执行 `cargo build -p codex-rmcp-client --bin test_stdio_server` 后，`rmcp_client/truncation` 相关失败已消除。
+- `cargo test -p codex-core` 仍剩 2 个失败：`suite::model_tools::model_selects_expected_tools`、`suite::prompt_caching::prompt_tools_are_consistent_across_requests`（均为工具列表期望未包含 `batches_read_file`）。
+- 已确认无未处理快照：`.snap.new` 文件为 0；`.codex/task.md` 的 T9 保持未完成并记录阻塞。
+
+- 当前待办：
+  - 评估并修复 `codex-core` 两个既有断言（工具列表期望）后，复跑 `cargo test -p codex-core` 并更新 T9 状态。
+
+## 2026-02-09 02:35:34 CST
+- 修复 `codex-core` 断言：更新 `core/tests/suite/model_tools.rs` 与 `core/tests/suite/prompt_caching.rs`，为默认工具列表补齐 `batches_read_file` 期望。
+- 执行 `just fmt` 后复跑 `cargo test -p codex-core`，全量通过（单元 + `tests/all.rs` + 其余测试集）。
+- 已完成 SDD 收尾：`.codex/task.md` 中 T9 由 `[ ]` 更新为 `[x]`；并确认无 `.snap.new` 残留。
+
+- 当前待办：
+  - 无
