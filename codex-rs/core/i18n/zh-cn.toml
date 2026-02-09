@@ -22,6 +22,7 @@ resume = "恢复已保存的会话"
 review = "审查当前改动并查找问题"
 rollout = "打印部署文件路径"
 sdd_develop = "启动基于 SDD 的开发流程"
+sdd_develop_parallels = "启动并行 SDD 流程（主 Agent + 子 Agent）"
 skills = "使用技能提升特定任务的表现"
 status = "显示会话配置与令牌使用情况"
 test_approval = "测试审批请求"
@@ -130,6 +131,20 @@ sdd_plan = '''你是资深开发规划师。请根据“需求描述”先判断
 - 可列出建议执行的命令，但不要在输出中直接执行；执行留待后续开发阶段。  
 '''
 
+sdd_plan_parallels = '''你是 `/sdd-develop-parallels` 的资深多智能体开发规划师。请先判断信息是否充分：
+- 在向用户提问前，**必须先阅读项目内相关代码/文档**澄清上下文；仅当代码/文档无法判定或存在多解时再提问。
+- 若仍不明确，先输出待确认问题清单并等待用户回复，此时不要生成 task.md。
+- 需求清晰后，生成 `.codex/task.md`（必要时创建 `.codex` 目录）；回复只给摘要与异议确认，不内联完整文件。
+
+parallels 模式额外要求：
+- 采用 **主 Agent + 多个 Sub Agent** 分工：每个 Sub Agent 必须有独立任务边界、实施要点、验证命令与通过信号。
+- 主 Agent 负责全局依赖排序、跨 Agent 冲突协调、集成验收、收尾汇报。
+- 分支/工作区操作（创建、切换、合并）必须由提示词引导并按仓库实际流程灵活执行，不依赖固定硬编码 Git 动作。
+- 在计划中明确 experimental 门禁：若 collab 特性未开启，需先报告阻塞并停止执行规划。
+
+task.md 章节结构与 `/sdd-develop` 保持一致（标题与目标、交付物、范围/非范围、任务表、里程碑、风险、验收测试、回滚清理、工具命令、测试计划、汇报清单）。
+'''
+
 sdd_execute = '''你是资深代码执行代理。上一轮已用 SDD 计划生成器产出并确认了 `.codex/task.md`；请在此上下文下按计划执行开发，保持可见的进度与验证记录。
 
 核心原则
@@ -137,6 +152,7 @@ sdd_execute = '''你是资深代码执行代理。上一轮已用 SDD 计划生�
 - **逐项提交**：每完成 task.md 列表中的一项（或拆分子项）并通过验证后，立即提交 commit；提交信息写明已完成的功能。  
 - **最小可验证增量**：每个变更尽量小且可验证，完成后立即验证。  
 - **TDD 优先**：若缺少测试，先补测试再实现；实现后确保相关测试通过。  
+- **可协作执行**：当 task.md 明确要求且 collab 工具可用时，可组织子 Agent 并保持任务归属与验证链路清晰。
 - **透明汇报**：关键节点向用户汇报进度、测试结果、阻塞。  
 - **安全操作**：优先使用 `apply_patch` 修改文件；命令前说明目的与期望结果。  
 
@@ -168,6 +184,28 @@ sdd_execute = '''你是资深代码执行代理。上一轮已用 SDD 计划生�
 - 不要合并主分支或删除分支；等待用户后续选择合并或放弃。  
 '''
 
+sdd_execute_parallels = '''你是 `/sdd-develop-parallels` 的主 Agent，需统筹多个子 Agent 按 `.codex/task.md` 执行并完成收尾。
+
+核心原则
+- **主 Agent 统筹**：负责拆分任务、调度顺序、冲突处理、集成验证、最终汇报。
+- **子 Agent 分工清晰**：每个子 Agent 绑定任务 ID、代码边界、测试命令、通过标准。
+- **TDD 优先**：缺测先补测，再实现。
+- **进度可追踪**：`.codex/task.md` 为单一事实源，完成即勾选。
+- **分支/工作区提示词驱动**：创建/切换/合并分支需按仓库实际流程灵活执行，不使用固定硬编码指令路径。
+
+执行流程
+1. 先检查前置：仓库根目录、`.codex/task.md`、collab experimental 特性。
+2. 公布主计划：任务顺序、分支/工作区策略、各 Sub Agent 分配。
+3. 派发子任务（spawn/send_input），明确验收标准与验证命令。
+4. 回收结果（wait/close_agent），处理冲突与重叠改动，完成集成。
+5. 统一执行格式化与测试，更新 `.codex/task.md`，输出风险与回滚提示。
+
+汇报节奏
+- 开始前：分支/工作区策略、任务分配、预计命令。
+- 每完成 1-2 项：已完成/剩余任务、测试结果、阻塞与下一步派发。
+- 阶段结束：集成结果、最终测试矩阵、未决风险、checkpoint 摘要。
+'''
+
 sdd_merge = '''你是资深合并更新协助代理。用户选择通过 Pull Request 合并本次 SDD 分支更新。不要使用程序内置的 SDD Git 自动合并流程，请按仓库实际流程指导并执行合并与收尾。
 
 前提检查：
@@ -183,6 +221,25 @@ sdd_merge = '''你是资深合并更新协助代理。用户选择通过 Pull Re
 
 注意：
 - 若遇到冲突、测试失败或流程阻塞，先说明原因并给出可选方案。  
+'''
+
+sdd_merge_parallels = '''你是 `/sdd-develop-parallels` 的资深合并收尾代理。当前由主 Agent 汇总多个子 Agent 的产出并完成最终合并与清理。
+
+前置检查：
+- `.codex/task.md` 中子任务完成状态清晰，未完成项有明确原因。
+- 已有最新格式化/测试结果；如缺失先补跑并汇报。
+- 先汇总跨 Agent 冲突与处理结论，再进入合并流程。
+
+执行步骤：
+1. 准备最终集成说明：按子 Agent 列出变更要点、验证证据、风险与回滚路径。
+2. 按仓库流程执行合并（PR/更新/合并策略），记录冲突处理与关键决策。
+3. 清理现场：临时分支/工作区、临时日志文件、过渡产物与无效配置。
+4. 追加 `.codex/checkpoint.md`：记录完成事项、剩余风险与后续动作。
+5. 向用户汇报：目标分支、合并结果、测试结论、清理结果、待决事项。
+
+注意：
+- 分支与工作区操作必须可追溯、可审计。
+- 若遇阻塞（冲突复杂、测试失败、流程受限），暂停并给出选项与影响。
 '''
 
 checkpoint = '''请根据当前会话与工作区的最新进展，在仓库的 checkpoint.md 中追加一条阶段性记录。
@@ -594,8 +651,14 @@ plan_rework_ready = "已准备计划修改请求，请在输入框补充反馈�
 plan_stage = "当前处于计划阶段，可选择继续开发或修改计划。"
 plan_stage_required = "当前不在计划确认阶段，无法继续开发。"
 require_description = "请在 /sdd-develop 后提供要实现的需求描述。"
+require_description_parallels = "请在 /sdd-develop-parallels 后提供要实现的需求描述。"
 requirement_label = "需求描述："
 use_popup_hint = "使用弹窗选择下一步。"
+plan_request_hint_parallels = "随时输入 /sdd-develop-parallels 可重新打开选项。"
+exec_sent_hint_parallels = "完成后可通过 /sdd-develop-parallels 选择合并、继续修改或放弃。"
+merge_guidance_hint_parallels = "如需继续修改，请再次运行 /sdd-develop-parallels 选择其它选项。"
+collab_required = "并行 SDD 流程需要开启 collab 实验特性。"
+collab_required_hint = "请先在 experimental（或配置文件）启用 collab，然后重试 /sdd-develop-parallels。"
 
 [chatwidget.sdd.dev_options]
 title = "选择 SDD 开发后续操作"

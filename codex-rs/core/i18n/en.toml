@@ -23,6 +23,7 @@ resume = "resume a saved chat"
 review = "review my current changes and find issues"
 rollout = "print the rollout file path"
 sdd_develop = "start the SDD development workflow"
+sdd_develop_parallels = "start the parallel SDD workflow (main agent + sub agents)"
 skills = "use skills to improve how Codex performs specific tasks"
 status = "show current session configuration and token usage"
 test_approval = "test approval request"
@@ -133,6 +134,21 @@ sdd_plan = '''You are a senior development planner. Based on the "Requirement de
 - You may suggest commands, but do not execute them in the response; execution is for the development phase.
 '''
 
+sdd_plan_parallels = '''You are a senior multi-agent development planner for `/sdd-develop-parallels`. First decide whether the information is sufficient:
+- Before asking the user, **you must read relevant project code/docs** to clarify context; only ask when code/docs cannot disambiguate.
+- If anything is unclear and **cannot be confirmed in code/docs or has multiple plausible interpretations**, list clarification questions and stop. Do not generate task.md yet.
+- Once clear, generate `.codex/task.md` (create `.codex` if needed). Do not inline the full file in chat; only provide a concise summary and ask for objections.
+
+Additional requirements for parallels mode:
+- Use a **Main Agent + Sub Agents** structure. The Main Agent must assign each Sub Agent an independent scope, implementation notes, and verification commands.
+- Ensure every work item has explicit owner, dependencies, and validation signals; prefer TDD (tests first when missing).
+- The Main Agent must own global dependency ordering, cross-agent conflict handling, final integration checks, and final reporting.
+- Branch/worktree operations (create/switch/merge) must be **prompt-guided and adaptive** to repository workflow. Do not assume fixed hardcoded git actions.
+- This flow requires the collab experimental feature. If unavailable, report the blocker clearly and stop execution planning.
+
+task.md sections are the same as `/sdd-develop` (Title/Goal, Deliverables, Scope/Non-scope, Work table, Milestones, Risks, Acceptance/Testing, Rollback/Cleanup, Tools/Commands, Test Plan, Reporting Checklist).
+'''
+
 sdd_execute = '''You are a senior execution agent. The previous round already used the SDD planner to produce and confirm `.codex/task.md`; execute the plan in this context and keep visible progress and verification logs.
 
 Core principles
@@ -140,6 +156,7 @@ Core principles
 - **Commit per item**: After each task.md item (or sub-item) is completed and verified, commit immediately; the commit message should describe the completed functionality.
 - **Small, verifiable increments**: Keep each change small and verifiable; validate immediately after completing it.
 - **TDD first**: If tests are missing, add tests before implementation; ensure relevant tests pass after implementation.
+- **Collaboration-ready**: If task.md requires multi-agent work and collab tools are available, split ownership clearly and keep verification explicit per owner.
 - **Transparent reporting**: Report progress, test results, and blockers at key checkpoints.
 - **Safe operations**: Prefer `apply_patch` for file edits; explain the purpose and expected outcome before running commands.
 
@@ -171,6 +188,28 @@ Additional notes
 - Do not merge into main or delete branches; wait for user direction.
 '''
 
+sdd_execute_parallels = '''You are the Main Agent for `/sdd-develop-parallels`. `.codex/task.md` is already confirmed. Execute with multi-agent orchestration and strict verification.
+
+Core principles
+- **Main-agent ownership**: You own decomposition, sequencing, conflict resolution, integration, and final wrap-up.
+- **Sub-agent ownership**: Each Sub Agent gets a bounded task scope (task IDs), concrete implementation notes, and dedicated verification commands.
+- **TDD first**: Add/adjust tests before implementation when coverage is missing.
+- **Traceable progress**: `.codex/task.md` is the single source of truth; update completion checkboxes as tasks finish.
+- **Prompt-guided git/worktree strategy**: Create/switch/merge branches based on current repository state and workflow. Do not rely on fixed hardcoded git actions.
+
+Execution loop
+1. Validate prerequisites: repo root exists, `.codex/task.md` exists, and collab experimental feature is enabled.
+2. Publish execution plan: branch/worktree strategy, task order, and which Sub Agent handles each task.
+3. Dispatch Sub Agents (spawn/send_input) with explicit acceptance criteria and test commands.
+4. Collect results (wait/close_agent), review outputs, and resolve conflicts or overlap before merge/integration.
+5. Run integration formatting/tests, then update `.codex/task.md` statuses and summarize remaining risks.
+
+Reporting cadence
+- Before start: branch/worktree plan, task IDs, and expected commands.
+- Every 1-2 tasks: completed tasks, pending tasks, test results, blockers, and next dispatch.
+- Phase end: merged outputs, final test matrix, unresolved risks, rollback notes, and checkpoint summary.
+'''
+
 sdd_merge = '''You are a senior merge-update assistant. The user chose to merge the SDD branch updates via Pull Request. Do not rely on the built-in SDD Git auto-merge flow; follow the repo workflow and execute the merge and cleanup.
 
 Pre-checks:
@@ -186,6 +225,25 @@ Execution steps:
 
 Notes:
 - If conflicts, test failures, or blockers occur, explain and provide options.  
+'''
+
+sdd_merge_parallels = '''You are a senior merge/finalization assistant for `/sdd-develop-parallels`. The Main Agent now performs final integration and cleanup for all Sub Agent outputs.
+
+Pre-checks:
+- Confirm all sub-tasks in `.codex/task.md` are completed or explicitly deferred with reasons.
+- Confirm latest formatting/tests passed for integrated changes; if missing, run them first and report.
+- Summarize cross-agent conflict resolutions before merging.
+
+Execution steps:
+1. Prepare final integration summary: per-sub-agent contributions, key file changes, test evidence, and residual risks.
+2. Execute merge workflow via repository process (PR/update/merge strategy) with explicit conflict notes and rollback hints.
+3. Perform cleanup: temporary branches/worktrees, transient logs/files, `.codex/task.md` (when workflow requires), and stale artifacts.
+4. Append `.codex/checkpoint.md` with completed work, unresolved items, and next actions.
+5. Report final state: target branch, merge result, tests, cleanup result, and pending risks/decisions.
+
+Notes:
+- Keep branch/worktree operations prompt-guided and auditable.
+- If blocked (conflicts/tests/process limits), pause and provide options with impact.
 '''
 
 checkpoint = '''Append a checkpoint entry to checkpoint.md based on the latest progress in the current session and workspace.
@@ -597,8 +655,14 @@ plan_rework_ready = "Plan revision request prepared. Add feedback in the input a
 plan_stage = "You are in the planning stage; you can continue development or revise the plan."
 plan_stage_required = "You are not in the plan confirmation stage, so you can't continue."
 require_description = "Provide the requirement description after /sdd-develop."
+require_description_parallels = "Provide the requirement description after /sdd-develop-parallels."
 requirement_label = "Requirement description:"
 use_popup_hint = "Use the popup to choose the next step."
+plan_request_hint_parallels = "You can type /sdd-develop-parallels at any time to reopen the options."
+exec_sent_hint_parallels = "When it's done, use /sdd-develop-parallels to merge, continue changes, or abandon."
+merge_guidance_hint_parallels = "If you need more changes, run /sdd-develop-parallels again to choose another option."
+collab_required = "The parallel SDD flow requires the collab experimental feature."
+collab_required_hint = "Enable collab in experimental features (or config) and retry /sdd-develop-parallels."
 
 [chatwidget.sdd.dev_options]
 title = "Choose next SDD development action"

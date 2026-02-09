@@ -33,6 +33,7 @@ pub enum SlashCommand {
     Mention,
     Status,
     SddDevelop,
+    SddDevelopParallels,
     Mcp,
     Logout,
     Quit,
@@ -75,6 +76,9 @@ impl SlashCommand {
             SlashCommand::TestApproval => tr(language, "slash_command.description.test_approval"),
             SlashCommand::Checkpoint => tr(language, "slash_command.description.checkpoint"),
             SlashCommand::SddDevelop => tr(language, "slash_command.description.sdd_develop"),
+            SlashCommand::SddDevelopParallels => {
+                tr(language, "slash_command.description.sdd_develop_parallels")
+            }
         }
     }
 
@@ -94,6 +98,7 @@ impl SlashCommand {
             | SlashCommand::Checkpoint
             | SlashCommand::Compact
             | SlashCommand::SddDevelop
+            | SlashCommand::SddDevelopParallels
             | SlashCommand::Model
             | SlashCommand::Lang
             | SlashCommand::Approvals

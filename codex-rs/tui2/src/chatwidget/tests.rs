@@ -8,6 +8,7 @@ use super::*;
 use crate::app_event::AppEvent;
 use crate::app_event::ExitMode;
 use crate::app_event_sender::AppEventSender;
+use crate::i18n::tr;
 use crate::test_backend::VT100Backend;
 use crate::tui::FrameRequester;
 use assert_matches::assert_matches;
@@ -18,7 +19,6 @@ use codex_core::ThreadManager;
 use codex_core::config::Config;
 use codex_core::config::ConfigBuilder;
 use codex_core::config::Constrained;
-#[cfg(target_os = "windows")]
 use codex_core::features::Feature;
 use codex_core::models_manager::manager::ModelsManager;
 use codex_core::protocol::AgentMessageDeltaEvent;
@@ -46,6 +46,7 @@ use codex_core::protocol::PatchApplyEndEvent;
 use codex_core::protocol::RateLimitWindow;
 use codex_core::protocol::ReviewRequest;
 use codex_core::protocol::ReviewTarget;
+use codex_core::protocol::SddGitAction;
 use codex_core::protocol::StreamErrorEvent;
 use codex_core::protocol::TokenCountEvent;
 use codex_core::protocol::TokenUsage;
@@ -65,6 +66,7 @@ use codex_protocol::plan_tool::PlanItemArg;
 use codex_protocol::plan_tool::StepStatus;
 use codex_protocol::plan_tool::UpdatePlanArgs;
 use codex_protocol::protocol::CodexErrorInfo;
+use codex_protocol::user_input::UserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -485,6 +487,25 @@ fn lines_to_single_string(lines: &[ratatui::text::Line<'static>]) -> String {
         s.push('\n');
     }
     s
+}
+
+fn drain_ops(op_rx: &mut tokio::sync::mpsc::UnboundedReceiver<Op>) -> Vec<Op> {
+    let mut ops = Vec::new();
+    while let Ok(op) = op_rx.try_recv() {
+        ops.push(op);
+    }
+    ops
+}
+
+fn find_text_input(op: &Op) -> Option<&str> {
+    if let Op::UserInput { items, .. } = op {
+        items.iter().find_map(|item| match item {
+            UserInput::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+    } else {
+        None
+    }
 }
 
 fn make_token_info(total_tokens: i64, context_window: i64) -> TokenUsageInfo {
@@ -1423,6 +1444,129 @@ async fn slash_rollout_handles_missing_path() {
     assert!(
         rendered.contains("not available"),
         "expected missing rollout path message: {rendered}"
+    );
+}
+
+#[tokio::test]
+async fn slash_sdd_develop_parallels_requires_collab_feature() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(None).await;
+
+    chat.dispatch_command_with_args(
+        SlashCommand::SddDevelopParallels,
+        "implement parallels workflow".to_string(),
+    );
+
+    let cells = drain_insert_history(&mut rx);
+    assert_eq!(cells.len(), 1, "expected one gatekeeping info message");
+    let rendered = lines_to_single_string(&cells[0]);
+    assert!(
+        rendered.contains(tr(chat.config.language, "chatwidget.sdd.collab_required")),
+        "expected collab-required message: {rendered}"
+    );
+    assert!(
+        rendered.contains(tr(
+            chat.config.language,
+            "chatwidget.sdd.collab_required_hint"
+        )),
+        "expected collab-required hint: {rendered}"
+    );
+    assert!(
+        chat.sdd_state.is_none(),
+        "workflow should not start when blocked"
+    );
+    assert!(
+        op_rx.try_recv().is_err(),
+        "blocked command should not emit codex ops"
+    );
+}
+
+#[tokio::test]
+async fn sdd_develop_parallels_plan_approval_sends_execute_prompt_without_create_branch() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(None).await;
+    chat.config.features.enable(Feature::Collab);
+
+    chat.dispatch_command_with_args(
+        SlashCommand::SddDevelopParallels,
+        "implement parallels workflow".to_string(),
+    );
+    let initial_ops = drain_ops(&mut op_rx);
+    let plan_prompt = initial_ops
+        .iter()
+        .find_map(find_text_input)
+        .expect("plan request should emit user input");
+    let plan_prefix = tr(chat.config.language, "prompt.sdd_plan_parallels")
+        .lines()
+        .next()
+        .expect("plan template should have first line");
+    assert!(
+        plan_prompt.contains(plan_prefix),
+        "expected parallels plan prompt, got: {plan_prompt}"
+    );
+
+    chat.on_sdd_plan_approved().await;
+    let approval_ops = drain_ops(&mut op_rx);
+    let exec_prompt = approval_ops
+        .iter()
+        .find_map(find_text_input)
+        .expect("plan approval should emit execute prompt");
+    let exec_prefix = tr(chat.config.language, "prompt.sdd_execute_parallels")
+        .lines()
+        .next()
+        .expect("execute template should have first line");
+    assert!(
+        exec_prompt.contains(exec_prefix),
+        "expected parallels execute prompt, got: {exec_prompt}"
+    );
+    assert!(
+        !approval_ops.iter().any(|op| {
+            matches!(
+                op,
+                Op::SddGitAction {
+                    action: SddGitAction::CreateBranch { .. }
+                }
+            )
+        }),
+        "parallels approval should not trigger create-branch git action"
+    );
+}
+
+#[tokio::test]
+async fn sdd_develop_parallels_merge_sends_prompt_without_finalize_merge() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(None).await;
+    chat.config.features.enable(Feature::Collab);
+
+    chat.dispatch_command_with_args(
+        SlashCommand::SddDevelopParallels,
+        "implement parallels workflow".to_string(),
+    );
+    let _ = drain_ops(&mut op_rx);
+    chat.on_sdd_plan_approved().await;
+    let _ = drain_ops(&mut op_rx);
+
+    chat.on_sdd_merge_branch();
+    let merge_ops = drain_ops(&mut op_rx);
+    let merge_prompt = merge_ops
+        .iter()
+        .find_map(find_text_input)
+        .expect("merge should emit user input guidance");
+    let merge_prefix = tr(chat.config.language, "prompt.sdd_merge_parallels")
+        .lines()
+        .next()
+        .expect("merge template should have first line");
+    assert!(
+        merge_prompt.contains(merge_prefix),
+        "expected parallels merge prompt, got: {merge_prompt}"
+    );
+    assert!(
+        !merge_ops.iter().any(|op| {
+            matches!(
+                op,
+                Op::SddGitAction {
+                    action: SddGitAction::FinalizeMerge { .. }
+                }
+            )
+        }),
+        "parallels merge should not trigger finalize-merge git action"
     );
 }
 
