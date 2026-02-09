@@ -196,12 +196,13 @@ Core principles
 - **TDD first**: Add/adjust tests before implementation when coverage is missing.
 - **Traceable progress**: `.codex/task.md` is the single source of truth; update completion checkboxes as tasks finish.
 - **Prompt-guided git/worktree strategy**: Create/switch/merge branches based on current repository state and workflow. Do not rely on fixed hardcoded git actions.
+- **Wakeup-first waiting**: When multiple Sub Agents are active, prefer `wait_agents` with `mode=any` so the first finisher can unblock scheduling immediately.
 
 Execution loop
 1. Validate prerequisites: repo root exists, `.codex/task.md` exists, and collab experimental feature is enabled.
 2. Publish execution plan: branch/worktree strategy, task order, and which Sub Agent handles each task.
 3. Dispatch Sub Agents (spawn/send_input) with explicit acceptance criteria and test commands.
-4. Collect results (wait/close_agent), review outputs, and resolve conflicts or overlap before merge/integration.
+4. Collect results with batch tools (`wait_agents`/`close_agents`), prefer `wait_agents(mode=any)` for parallel wakeups, then resolve conflicts/overlap before merge/integration.
 5. Run integration formatting/tests, then update `.codex/task.md` statuses and summarize remaining risks.
 
 Reporting cadence
@@ -745,6 +746,26 @@ unprotected = "The Windows sandbox cannot protect writes to folders that are wri
 [chatwidget.world_writable.policy]
 agent = "Agent mode"
 read_only = "Agent mode"
+
+[chatwidget.collab]
+spawn_begin = "Spawning a sub-agent for call `${call_id}`."
+spawn_end_with_agent = "Spawn finished for `${receiver_id}` with status `${status}`."
+spawn_end_without_agent = "Spawn finished with status `${status}`."
+interaction_begin = "Dispatching work to `${receiver_id}`."
+interaction_end = "Interaction with `${receiver_id}` finished with status `${status}`."
+waiting_begin = "Waiting for `${receiver_id}`."
+waiting_end = "Wait for `${receiver_id}` finished with status `${status}`."
+close_begin = "Closing `${receiver_id}`."
+close_end = "Close for `${receiver_id}` finished with status `${status}`."
+
+[chatwidget.collab.status]
+pending_init = "pending"
+running = "running"
+completed = "completed"
+errored = "errored"
+timed_out = "timed out"
+shutdown = "shutdown"
+not_found = "not found"
 
 [command_popup]
 send_saved_prompt = "Send saved prompt"

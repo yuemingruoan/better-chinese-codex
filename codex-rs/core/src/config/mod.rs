@@ -84,6 +84,11 @@ pub use codex_git::GhostSnapshotConfig;
 /// files are *silently truncated* to this size so we do not take up too much of
 /// the context window.
 pub(crate) const PROJECT_DOC_MAX_BYTES: usize = 32 * 1024; // 32 KiB
+pub const DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD: usize = 8;
+pub const DEFAULT_COLLAB_MAX_SPAWN_DEPTH: usize = 1;
+pub const DEFAULT_COLLAB_WAIT_TIMEOUT_MS: i64 = 30_000;
+pub const DEFAULT_COLLAB_AUTO_CLOSE_ON_PARENT_SHUTDOWN: bool = true;
+pub const DEFAULT_COLLAB_ALLOW_SUBAGENT_PERMISSION_ESCALATION: bool = false;
 
 pub const CONFIG_TOML_FILE: &str = "config.toml";
 
@@ -127,6 +132,21 @@ pub struct Config {
     pub approval_policy: Constrained<AskForApproval>,
 
     pub sandbox_policy: Constrained<SandboxPolicy>,
+
+    /// Maximum active direct sub-agents that a thread can own at one time.
+    pub max_active_subagents_per_thread: usize,
+
+    /// Maximum nested spawn depth for sub-agents (root thread depth is 0).
+    pub max_spawn_depth: usize,
+
+    /// Default timeout used by collab wait tools when no explicit timeout is passed.
+    pub default_wait_timeout_ms: i64,
+
+    /// Whether closing a parent agent should also close its active descendants.
+    pub auto_close_on_parent_shutdown: bool,
+
+    /// Whether sub-agents are allowed to request more permissive approval/sandbox policies.
+    pub allow_subagent_permission_escalation: bool,
 
     /// True if the user passed in an override or set a value in config.toml
     /// for either of approval_policy or sandbox_mode.
@@ -797,6 +817,21 @@ pub struct ConfigToml {
     /// Sandbox mode to use.
     pub sandbox_mode: Option<SandboxMode>,
 
+    /// Maximum active direct sub-agents that a thread can own at one time.
+    pub max_active_subagents_per_thread: Option<usize>,
+
+    /// Maximum nested spawn depth for sub-agents (root thread depth is 0).
+    pub max_spawn_depth: Option<usize>,
+
+    /// Default timeout used by collab wait tools when no explicit timeout is passed.
+    pub default_wait_timeout_ms: Option<i64>,
+
+    /// Whether closing a parent agent should also close its active descendants.
+    pub auto_close_on_parent_shutdown: Option<bool>,
+
+    /// Whether sub-agents can request more permissive approval/sandbox policies.
+    pub allow_subagent_permission_escalation: Option<bool>,
+
     /// Sandbox configuration to apply if `sandbox` is `WorkspaceWrite`.
     pub sandbox_workspace_write: Option<SandboxWorkspaceWrite>,
 
@@ -1343,6 +1378,23 @@ impl Config {
             || config_profile.sandbox_mode.is_some()
             || cfg.sandbox_mode.is_some();
 
+        let max_active_subagents_per_thread = cfg
+            .max_active_subagents_per_thread
+            .unwrap_or(DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD);
+        let max_spawn_depth = cfg
+            .max_spawn_depth
+            .unwrap_or(DEFAULT_COLLAB_MAX_SPAWN_DEPTH);
+        let default_wait_timeout_ms = cfg
+            .default_wait_timeout_ms
+            .filter(|timeout_ms| *timeout_ms > 0)
+            .unwrap_or(DEFAULT_COLLAB_WAIT_TIMEOUT_MS);
+        let auto_close_on_parent_shutdown = cfg
+            .auto_close_on_parent_shutdown
+            .unwrap_or(DEFAULT_COLLAB_AUTO_CLOSE_ON_PARENT_SHUTDOWN);
+        let allow_subagent_permission_escalation = cfg
+            .allow_subagent_permission_escalation
+            .unwrap_or(DEFAULT_COLLAB_ALLOW_SUBAGENT_PERMISSION_ESCALATION);
+
         let mut model_providers = built_in_model_providers();
         // Merge user-defined providers into the built-in list.
         for (key, provider) in cfg.model_providers.into_iter() {
@@ -1474,6 +1526,11 @@ impl Config {
             cwd: resolved_cwd,
             approval_policy: constrained_approval_policy,
             sandbox_policy: constrained_sandbox_policy,
+            max_active_subagents_per_thread,
+            max_spawn_depth,
+            default_wait_timeout_ms,
+            auto_close_on_parent_shutdown,
+            allow_subagent_permission_escalation,
             did_user_set_custom_approval_policy_or_sandbox_mode,
             forced_auto_mode_downgraded_on_windows,
             shell_environment_policy,
@@ -3557,6 +3614,12 @@ model_verbosity = "high"
                 model_provider: fixture.openai_provider.clone(),
                 approval_policy: Constrained::allow_any(AskForApproval::Never),
                 sandbox_policy: Constrained::allow_any(SandboxPolicy::new_read_only_policy()),
+                max_active_subagents_per_thread: DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD,
+                max_spawn_depth: DEFAULT_COLLAB_MAX_SPAWN_DEPTH,
+                default_wait_timeout_ms: DEFAULT_COLLAB_WAIT_TIMEOUT_MS,
+                auto_close_on_parent_shutdown: DEFAULT_COLLAB_AUTO_CLOSE_ON_PARENT_SHUTDOWN,
+                allow_subagent_permission_escalation:
+                    DEFAULT_COLLAB_ALLOW_SUBAGENT_PERMISSION_ESCALATION,
                 did_user_set_custom_approval_policy_or_sandbox_mode: true,
                 forced_auto_mode_downgraded_on_windows: false,
                 shell_environment_policy: ShellEnvironmentPolicy::default(),
@@ -3645,6 +3708,12 @@ model_verbosity = "high"
             model_provider: fixture.openai_chat_completions_provider.clone(),
             approval_policy: Constrained::allow_any(AskForApproval::UnlessTrusted),
             sandbox_policy: Constrained::allow_any(SandboxPolicy::new_read_only_policy()),
+            max_active_subagents_per_thread: DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD,
+            max_spawn_depth: DEFAULT_COLLAB_MAX_SPAWN_DEPTH,
+            default_wait_timeout_ms: DEFAULT_COLLAB_WAIT_TIMEOUT_MS,
+            auto_close_on_parent_shutdown: DEFAULT_COLLAB_AUTO_CLOSE_ON_PARENT_SHUTDOWN,
+            allow_subagent_permission_escalation:
+                DEFAULT_COLLAB_ALLOW_SUBAGENT_PERMISSION_ESCALATION,
             did_user_set_custom_approval_policy_or_sandbox_mode: true,
             forced_auto_mode_downgraded_on_windows: false,
             shell_environment_policy: ShellEnvironmentPolicy::default(),
@@ -3748,6 +3817,12 @@ model_verbosity = "high"
             model_provider: fixture.openai_provider.clone(),
             approval_policy: Constrained::allow_any(AskForApproval::OnFailure),
             sandbox_policy: Constrained::allow_any(SandboxPolicy::new_read_only_policy()),
+            max_active_subagents_per_thread: DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD,
+            max_spawn_depth: DEFAULT_COLLAB_MAX_SPAWN_DEPTH,
+            default_wait_timeout_ms: DEFAULT_COLLAB_WAIT_TIMEOUT_MS,
+            auto_close_on_parent_shutdown: DEFAULT_COLLAB_AUTO_CLOSE_ON_PARENT_SHUTDOWN,
+            allow_subagent_permission_escalation:
+                DEFAULT_COLLAB_ALLOW_SUBAGENT_PERMISSION_ESCALATION,
             did_user_set_custom_approval_policy_or_sandbox_mode: true,
             forced_auto_mode_downgraded_on_windows: false,
             shell_environment_policy: ShellEnvironmentPolicy::default(),
@@ -3837,6 +3912,12 @@ model_verbosity = "high"
             model_provider: fixture.openai_provider.clone(),
             approval_policy: Constrained::allow_any(AskForApproval::OnFailure),
             sandbox_policy: Constrained::allow_any(SandboxPolicy::new_read_only_policy()),
+            max_active_subagents_per_thread: DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD,
+            max_spawn_depth: DEFAULT_COLLAB_MAX_SPAWN_DEPTH,
+            default_wait_timeout_ms: DEFAULT_COLLAB_WAIT_TIMEOUT_MS,
+            auto_close_on_parent_shutdown: DEFAULT_COLLAB_AUTO_CLOSE_ON_PARENT_SHUTDOWN,
+            allow_subagent_permission_escalation:
+                DEFAULT_COLLAB_ALLOW_SUBAGENT_PERMISSION_ESCALATION,
             did_user_set_custom_approval_policy_or_sandbox_mode: true,
             forced_auto_mode_downgraded_on_windows: false,
             shell_environment_policy: ShellEnvironmentPolicy::default(),
