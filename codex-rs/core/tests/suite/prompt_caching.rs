@@ -133,6 +133,7 @@ async fn prompt_tools_are_consistent_across_requests() -> anyhow::Result<()> {
         "read_mcp_resource",
         "update_plan",
         "apply_patch",
+        "batches_read_file",
         "web_search",
         "view_image",
     ];
