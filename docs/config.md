@@ -15,6 +15,11 @@ Codex 可以连接配置在 `~/.codex/config.toml` 中的 MCP 服务器。最新
 
 - https://developers.openai.com/codex/config-reference
 
+## Apps（连接器）
+
+在输入框中使用 `$` 可插入 ChatGPT 连接器；弹出列表会显示可访问的应用。`/apps`
+命令会列出可用与已安装的应用。已连接的应用会排在前面并标记为已连接，其他则标记为可安装。
+
 ## 通知
 
 Codex 可以在代理完成一个回合后运行通知钩子。最新通知设置请参考配置参考文档：

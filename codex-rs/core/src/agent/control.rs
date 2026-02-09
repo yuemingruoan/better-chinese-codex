@@ -1,4 +1,5 @@
 use crate::agent::AgentStatus;
+use crate::agent::guards::Guards;
 use crate::error::CodexErr;
 use crate::error::Result as CodexResult;
 use crate::thread_manager::AgentRegistryRecord;
@@ -16,18 +17,25 @@ use tokio::sync::watch;
 /// Control-plane handle for multi-agent operations.
 /// `AgentControl` is held by each session (via `SessionServices`). It provides capability to
 /// spawn new agents and the inter-agent communication layer.
+/// An `AgentControl` instance is shared per "user session" which means the same `AgentControl`
+/// is used for every sub-agent spawned by Codex. By doing so, we make sure the guards are
+/// scoped to a user session.
 #[derive(Clone, Default)]
 pub(crate) struct AgentControl {
     /// Weak handle back to the global thread registry/state.
     /// This is `Weak` to avoid reference cycles and shadow persistence of the form
     /// `ThreadManagerState -> CodexThread -> Session -> SessionServices -> ThreadManagerState`.
     manager: Weak<ThreadManagerState>,
+    state: Arc<Guards>,
 }
 
 impl AgentControl {
     /// Construct a new `AgentControl` that can spawn/message agents via the given manager state.
     pub(crate) fn new(manager: Weak<ThreadManagerState>) -> Self {
-        Self { manager }
+        Self {
+            manager,
+            ..Default::default()
+        }
     }
 
     #[allow(dead_code)] // Kept for compatibility with existing call sites/tests.
@@ -36,6 +44,7 @@ impl AgentControl {
         &self,
         config: crate::config::Config,
         prompt: String,
+        session_source: Option<codex_protocol::protocol::SessionSource>,
     ) -> CodexResult<ThreadId> {
         self.spawn_agent_with_metadata(config, prompt, AgentSpawnMetadata::default())
             .await
@@ -49,7 +58,18 @@ impl AgentControl {
         metadata: AgentSpawnMetadata,
     ) -> CodexResult<ThreadId> {
         let state = self.upgrade()?;
-        let new_thread = state.spawn_new_thread(config, self.clone()).await?;
+        let reservation = self.state.reserve_spawn_slot(config.agent_max_threads)?;
+
+        // The same `AgentControl` is sent to spawn the thread.
+        let new_thread = match session_source {
+            Some(session_source) => {
+                state
+                    .spawn_new_thread_with_source(config, self.clone(), session_source)
+                    .await?
+            }
+            None => state.spawn_new_thread(config, self.clone()).await?,
+        };
+        reservation.commit(new_thread.thread_id);
 
         // Notify a new thread has been created. This notification will be processed by clients
         // to subscribe or drain this newly created thread.
@@ -75,7 +95,7 @@ impl AgentControl {
                 Op::UserInput {
                     items: vec![UserInput::Text {
                         text: prompt,
-                        // Plain text conversion has no UI element ranges.
+                        // Agent control prompts are plain text with no UI text elements.
                         text_elements: Vec::new(),
                     }],
                     final_output_json_schema: None,
@@ -84,6 +104,7 @@ impl AgentControl {
             .await;
         if matches!(result, Err(CodexErr::InternalAgentDied)) {
             let _ = state.remove_thread(&agent_id).await;
+            self.state.release_spawned_thread(agent_id);
         }
         result
     }
@@ -108,7 +129,6 @@ impl AgentControl {
         self.shutdown_agent_only(agent_id).await
     }
 
-    #[allow(dead_code)] // Will be used for collab tools.
     /// Fetch the last known status for `agent_id`, returning `NotFound` when unavailable.
     pub(crate) async fn get_status(&self, agent_id: ThreadId) -> AgentStatus {
         let Ok(state) = self.upgrade() else {
@@ -211,6 +231,7 @@ mod tests {
     use crate::config::Config;
     use crate::config::ConfigBuilder;
     use assert_matches::assert_matches;
+    use codex_protocol::config_types::ModeKind;
     use codex_protocol::protocol::ErrorEvent;
     use codex_protocol::protocol::EventMsg;
     use codex_protocol::protocol::TurnAbortReason;
@@ -219,15 +240,23 @@ mod tests {
     use codex_protocol::protocol::TurnStartedEvent;
     use pretty_assertions::assert_eq;
     use tempfile::TempDir;
+    use toml::Value as TomlValue;
 
-    async fn test_config() -> (TempDir, Config) {
+    async fn test_config_with_cli_overrides(
+        cli_overrides: Vec<(String, TomlValue)>,
+    ) -> (TempDir, Config) {
         let home = TempDir::new().expect("create temp dir");
         let config = ConfigBuilder::default()
             .codex_home(home.path().to_path_buf())
+            .cli_overrides(cli_overrides)
             .build()
             .await
             .expect("load default test config");
         (home, config)
+    }
+
+    async fn test_config() -> (TempDir, Config) {
+        test_config_with_cli_overrides(Vec::new()).await
     }
 
     struct AgentControlHarness {
@@ -288,6 +317,7 @@ mod tests {
     async fn on_event_updates_status_from_task_started() {
         let status = agent_status_from_event(&EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: ModeKind::Default,
         }));
         assert_eq!(status, Some(AgentStatus::Running));
     }
@@ -333,7 +363,7 @@ mod tests {
         let control = AgentControl::default();
         let (_home, config) = test_config().await;
         let err = control
-            .spawn_agent(config, "hello".to_string())
+            .spawn_agent(config, "hello".to_string(), None)
             .await
             .expect_err("spawn_agent should fail without a manager");
         assert_eq!(
@@ -435,7 +465,7 @@ mod tests {
         let harness = AgentControlHarness::new().await;
         let thread_id = harness
             .control
-            .spawn_agent(harness.config.clone(), "spawned".to_string())
+            .spawn_agent(harness.config.clone(), "spawned".to_string(), None)
             .await
             .expect("spawn_agent should succeed");
         let _thread = harness

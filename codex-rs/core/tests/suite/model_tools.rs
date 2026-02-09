@@ -1,15 +1,11 @@
 #![allow(clippy::unwrap_used)]
 
+use codex_core::features::Feature;
 use codex_protocol::config_types::WebSearchMode;
-use core_test_support::load_sse_fixture_with_id;
 use core_test_support::responses;
 use core_test_support::responses::start_mock_server;
 use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::test_codex;
-
-fn sse_completed(id: &str) -> String {
-    load_sse_fixture_with_id("../fixtures/completed_template.json", id)
-}
 
 #[allow(clippy::expect_used)]
 fn tool_identifiers(body: &serde_json::Value) -> Vec<String> {
@@ -30,13 +26,19 @@ fn tool_identifiers(body: &serde_json::Value) -> Vec<String> {
 #[allow(clippy::expect_used)]
 async fn collect_tool_identifiers_for_model(model: &str) -> Vec<String> {
     let server = start_mock_server().await;
-    let sse = sse_completed(model);
+    let sse = responses::sse(vec![
+        responses::ev_response_created(model),
+        responses::ev_completed(model),
+    ]);
     let resp_mock = responses::mount_sse_once(&server, sse).await;
 
     let mut builder = test_codex()
         .with_model(model)
         // Keep tool expectations stable when the default web_search mode changes.
-        .with_config(|config| config.web_search_mode = WebSearchMode::Cached);
+        .with_config(|config| {
+            config.web_search_mode = Some(WebSearchMode::Cached);
+            config.features.enable(Feature::CollaborationModes);
+        });
     let test = builder
         .build(&server)
         .await
@@ -46,6 +48,16 @@ async fn collect_tool_identifiers_for_model(model: &str) -> Vec<String> {
 
     let body = resp_mock.single_request().body_json();
     tool_identifiers(&body)
+}
+
+fn expected_default_tools(shell_tool: &str, tail: &[&str]) -> Vec<String> {
+    let mut tools = if cfg!(windows) {
+        vec![shell_tool.to_string()]
+    } else {
+        vec!["exec_command".to_string(), "write_stdin".to_string()]
+    };
+    tools.extend(tail.iter().map(|tool| (*tool).to_string()));
+    tools
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -145,6 +157,7 @@ async fn model_selects_expected_tools() {
             "list_mcp_resource_templates".to_string(),
             "read_mcp_resource".to_string(),
             "update_plan".to_string(),
+            "request_user_input".to_string(),
             "apply_patch".to_string(),
             "batches_read_file".to_string(),
             "web_search".to_string(),

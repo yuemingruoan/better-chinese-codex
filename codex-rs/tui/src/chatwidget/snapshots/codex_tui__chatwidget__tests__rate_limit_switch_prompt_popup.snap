@@ -2,12 +2,12 @@
 source: tui/src/chatwidget/tests.rs
 expression: popup
 ---
-  接 近 速 率 限 制
-  切 换 到  gpt-5.1-codex-mini 以 降 低 额 度 消 耗 ？
+  接近速率限制
+  切换到 gpt-5.1-codex-mini 以降低额度消耗？
 
-› 1. 切 换 到  gpt-5.1-codex-mini  Optimized for codex. Cheaper, faster, but less
+› 1. 切换到 gpt-5.1-codex-mini  Optimized for codex. Cheaper, faster, but less
                                 capable.
-  2. 保 持 当 前 模 型
-  3. 保 持 当 前 模 型 （ 不 再 提 示 ）    不 再 提 示 切 换 模 型 的 额 度 提 醒 。
+  2. 保持当前模型
+  3. 保持当前模型（不再提示）   不再提示切换模型的额度提醒。
 
-  按  enter 确 认 ， 或  esc 返 回
+  按 enter 确认，或 esc 返回

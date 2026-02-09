@@ -1,0 +1,8 @@
+---
+source: tui/src/chatwidget/tests.rs
+expression: combined
+---
+↳ 与后台终端交互 · cargo test -p codex-core
+  └ （等待）
+
+• Streaming response.

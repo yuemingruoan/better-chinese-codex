@@ -107,6 +107,12 @@
 - 当前待办：
   - 无
 
+## 2026-01-17 22:08:09 CST
+- 合并 `develop-main` 到 `main`，PR 标题为 “patch”，内容为 “fix sdd-develop workflow”。
+- `main` 已包含 SDD 修复与对应测试变更。
+
+- 当前待办：
+  - 无
 ## 2026-02-01 13:44:30 CST
 - 新增 `/sdd-develop` 基线分支改为当前分支的任务规划 `.codex/task.md`。
 - 记录范围：UI 记录基线、core SDD Git 动态基线、测试与 i18n 同步。

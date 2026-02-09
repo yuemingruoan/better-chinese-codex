@@ -14,11 +14,9 @@ use codex_cli::login::run_login_status;
 use codex_cli::login::run_login_with_api_key;
 use codex_cli::login::run_login_with_chatgpt;
 use codex_cli::login::run_login_with_device_code;
-use codex_cli::login::run_login_with_device_code_fallback_to_browser;
 use codex_cli::login::run_logout;
 use codex_cloud_tasks::Cli as CloudTasksCli;
 use codex_common::CliConfigOverrides;
-use codex_core::env::is_headless_environment;
 use codex_exec::Cli as ExecCli;
 use codex_exec::Command as ExecCommand;
 use codex_exec::ReviewArgs;
@@ -28,11 +26,15 @@ use codex_tui::AppExitInfo;
 use codex_tui::Cli as TuiCli;
 use codex_tui::ExitReason;
 use codex_tui::update_action::UpdateAction;
-use codex_tui2 as tui2;
 use owo_colors::OwoColorize;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use supports_color::Stream;
 
+#[cfg(target_os = "macos")]
+mod app_cmd;
+#[cfg(target_os = "macos")]
+mod desktop_app;
 mod mcp_cmd;
 #[cfg(not(windows))]
 mod wsl_paths;
@@ -41,13 +43,11 @@ use crate::mcp_cmd::McpCli;
 
 use codex_core::config::Config;
 use codex_core::config::ConfigOverrides;
+use codex_core::config::edit::ConfigEditsBuilder;
 use codex_core::config::find_codex_home;
-use codex_core::config::load_config_as_toml_with_cli_overrides;
-use codex_core::features::Feature;
-use codex_core::features::FeatureOverrides;
-use codex_core::features::Features;
+use codex_core::features::Stage;
 use codex_core::features::is_known_feature_key;
-use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_core::terminal::TerminalName;
 
 /// Codex 命令行工具
 ///
@@ -102,12 +102,18 @@ enum Subcommand {
     /// 【实验特性】运行应用服务器或相关工具。
     AppServer(AppServerCommand),
 
+    /// 启动 Codex 桌面应用（若缺失会自动下载 macOS 安装包）。
+    #[cfg(target_os = "macos")]
+    App(app_cmd::AppCommand),
+
     /// 生成 shell 补全脚本。
     Completion(CompletionCommand),
 
     /// 在 Codex 提供的沙箱中运行命令。
-    #[clap(visible_alias = "debug")]
     Sandbox(SandboxArgs),
+
+    /// 调试工具。
+    Debug(DebugCommand),
 
     /// Execpolicy 工具。
     #[clap(hide = true)]
@@ -147,14 +153,44 @@ struct CompletionCommand {
 }
 
 #[derive(Debug, Parser)]
+struct DebugCommand {
+    #[command(subcommand)]
+    subcommand: DebugSubcommand,
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum DebugSubcommand {
+    /// Tooling: helps debug the app server.
+    AppServer(DebugAppServerCommand),
+}
+
+#[derive(Debug, Parser)]
+struct DebugAppServerCommand {
+    #[command(subcommand)]
+    subcommand: DebugAppServerSubcommand,
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum DebugAppServerSubcommand {
+    // Send message to app server V2.
+    SendMessageV2(DebugAppServerSendMessageV2Command),
+}
+
+#[derive(Debug, Parser)]
+struct DebugAppServerSendMessageV2Command {
+    #[arg(value_name = "USER_MESSAGE", required = true)]
+    user_message: String,
+}
+
+#[derive(Debug, Parser)]
 struct ResumeCommand {
-    /// 会话 ID（UUID）。提供后将恢复该会话。
+    /// 会话 ID（UUID）或线程名。若可解析为 UUID，则优先按 UUID 处理。
     /// 如省略，可配合 --last 选择最近的记录。
     #[arg(value_name = "SESSION_ID")]
     session_id: Option<String>,
 
     /// 直接继续最近的会话，而不显示选择器。
-    #[arg(long = "last", default_value_t = false, conflicts_with = "session_id")]
+    #[arg(long = "last", default_value_t = false)]
     last: bool,
 
     /// 显示所有会话（禁用 cwd 过滤并显示 CWD 列）。
@@ -307,6 +343,10 @@ struct GenerateTsCommand {
     /// 可选的 Prettier 可执行文件路径，用于格式化生成文件。
     #[arg(short = 'p', long = "prettier", value_name = "PRETTIER_BIN")]
     prettier: Option<PathBuf>,
+
+    /// Include experimental methods and fields in the generated output
+    #[arg(long = "experimental", default_value_t = false)]
+    experimental: bool,
 }
 
 #[derive(Debug, Args)]
@@ -314,6 +354,10 @@ struct GenerateJsonSchemaCommand {
     /// schema 打包文件的输出目录。
     #[arg(short = 'o', long = "out", value_name = "DIR")]
     out_dir: PathBuf,
+
+    /// Include experimental methods and fields in the generated output
+    #[arg(long = "experimental", default_value_t = false)]
+    experimental: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -327,6 +371,7 @@ fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<Stri
     let AppExitInfo {
         token_usage,
         thread_id: conversation_id,
+        thread_name,
         ..
     } = exit_info;
 
@@ -339,8 +384,9 @@ fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<Stri
         codex_core::protocol::FinalOutput::from(token_usage)
     )];
 
-    if let Some(session_id) = conversation_id {
-        let resume_cmd = format!("codex resume {session_id}");
+    if let Some(resume_cmd) =
+        codex_core::util::resume_command(thread_name.as_deref(), conversation_id)
+    {
         let command = if color_enabled {
             resume_cmd.cyan().to_string()
         } else {
@@ -384,11 +430,21 @@ fn run_update_action(action: UpdateAction) -> anyhow::Result<()> {
         Ok(_) => println!("已尝试在默认浏览器中打开该页面，如未自动打开请手动访问。"),
         Err(err) => println!("自动打开浏览器失败：{err}。请手动在浏览器中访问上述链接。"),
     }
+    println!("\n🎉 更新已完成，请重启 Codex。");
     Ok(())
 }
 
 fn run_execpolicycheck(cmd: ExecPolicyCheckCommand) -> anyhow::Result<()> {
     cmd.run()
+}
+
+fn run_debug_app_server_command(cmd: DebugAppServerCommand) -> anyhow::Result<()> {
+    match cmd.subcommand {
+        DebugAppServerSubcommand::SendMessageV2(cmd) => {
+            let codex_bin = std::env::current_exe()?;
+            codex_app_server_test_client::send_message_v2(&codex_bin, &[], cmd.user_message, &None)
+        }
+    }
 }
 
 #[derive(Debug, Default, Parser, Clone)]
@@ -435,13 +491,23 @@ struct FeaturesCli {
 enum FeaturesSubcommand {
     /// 列出所有功能及其阶段与当前状态。
     List,
+    /// Enable a feature in config.toml.
+    Enable(FeatureSetArgs),
+    /// Disable a feature in config.toml.
+    Disable(FeatureSetArgs),
+}
+
+#[derive(Debug, Parser)]
+struct FeatureSetArgs {
+    /// Feature key to update (for example: unified_exec).
+    feature: String,
 }
 
 fn stage_str(stage: codex_core::features::Stage) -> &'static str {
     use codex_core::features::Stage;
     match stage {
-        Stage::Experimental => "实验",
-        Stage::Beta { .. } => "公测",
+        Stage::UnderDevelopment => "开发中",
+        Stage::Experimental { .. } => "实验",
         Stage::Stable => "稳定",
         Stage::Deprecated => "已弃用",
         Stage::Removed => "已移除",
@@ -511,15 +577,27 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
                 .await?;
             }
             Some(AppServerSubcommand::GenerateTs(gen_cli)) => {
-                codex_app_server_protocol::generate_ts(
+                let options = codex_app_server_protocol::GenerateTsOptions {
+                    experimental_api: gen_cli.experimental,
+                    ..Default::default()
+                };
+                codex_app_server_protocol::generate_ts_with_options(
                     &gen_cli.out_dir,
                     gen_cli.prettier.as_deref(),
+                    options,
                 )?;
             }
             Some(AppServerSubcommand::GenerateJsonSchema(gen_cli)) => {
-                codex_app_server_protocol::generate_json(&gen_cli.out_dir)?;
+                codex_app_server_protocol::generate_json_with_experimental(
+                    &gen_cli.out_dir,
+                    gen_cli.experimental,
+                )?;
             }
         },
+        #[cfg(target_os = "macos")]
+        Some(Subcommand::App(app_cli)) => {
+            app_cmd::run_app(app_cli).await?;
+        }
         Some(Subcommand::Resume(ResumeCommand {
             session_id,
             last,
@@ -579,13 +657,6 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
                     } else if login_cli.with_api_key {
                         let api_key = read_api_key_from_stdin();
                         run_login_with_api_key(login_cli.config_overrides, api_key).await;
-                    } else if is_headless_environment() {
-                        run_login_with_device_code_fallback_to_browser(
-                            login_cli.config_overrides,
-                            login_cli.issuer_base_url,
-                            login_cli.client_id,
-                        )
-                        .await;
                     } else {
                         run_login_with_chatgpt(login_cli.config_overrides).await;
                     }
@@ -644,6 +715,11 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
                 .await?;
             }
         },
+        Some(Subcommand::Debug(DebugCommand { subcommand })) => match subcommand {
+            DebugSubcommand::AppServer(cmd) => {
+                run_debug_app_server_command(cmd)?;
+            }
+        },
         Some(Subcommand::Execpolicy(ExecpolicyCommand { sub })) => match sub {
             ExecpolicySubcommand::Check(cmd) => run_execpolicycheck(cmd)?,
         },
@@ -689,17 +765,83 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
                     overrides,
                 )
                 .await?;
+                let mut rows = Vec::with_capacity(codex_core::features::FEATURES.len());
+                let mut name_width = 0;
+                let mut stage_width = 0;
                 for def in codex_core::features::FEATURES.iter() {
                     let name = def.key;
                     let stage = stage_str(def.stage);
                     let enabled = config.features.enabled(def.id);
-                    println!("{name}\t{stage}\t{enabled}");
+                    name_width = name_width.max(name.len());
+                    stage_width = stage_width.max(stage.len());
+                    rows.push((name, stage, enabled));
                 }
+
+                for (name, stage, enabled) in rows {
+                    println!("{name:<name_width$}  {stage:<stage_width$}  {enabled}");
+                }
+            }
+            FeaturesSubcommand::Enable(FeatureSetArgs { feature }) => {
+                enable_feature_in_config(&interactive, &feature).await?;
+            }
+            FeaturesSubcommand::Disable(FeatureSetArgs { feature }) => {
+                disable_feature_in_config(&interactive, &feature).await?;
             }
         },
     }
 
     Ok(())
+}
+
+async fn enable_feature_in_config(interactive: &TuiCli, feature: &str) -> anyhow::Result<()> {
+    FeatureToggles::validate_feature(feature)?;
+    let codex_home = find_codex_home()?;
+    ConfigEditsBuilder::new(&codex_home)
+        .with_profile(interactive.config_profile.as_deref())
+        .set_feature_enabled(feature, true)
+        .apply()
+        .await?;
+    println!("Enabled feature `{feature}` in config.toml.");
+    maybe_print_under_development_feature_warning(&codex_home, interactive, feature);
+    Ok(())
+}
+
+async fn disable_feature_in_config(interactive: &TuiCli, feature: &str) -> anyhow::Result<()> {
+    FeatureToggles::validate_feature(feature)?;
+    let codex_home = find_codex_home()?;
+    ConfigEditsBuilder::new(&codex_home)
+        .with_profile(interactive.config_profile.as_deref())
+        .set_feature_enabled(feature, false)
+        .apply()
+        .await?;
+    println!("Disabled feature `{feature}` in config.toml.");
+    Ok(())
+}
+
+fn maybe_print_under_development_feature_warning(
+    codex_home: &std::path::Path,
+    interactive: &TuiCli,
+    feature: &str,
+) {
+    if interactive.config_profile.is_some() {
+        return;
+    }
+
+    let Some(spec) = codex_core::features::FEATURES
+        .iter()
+        .find(|spec| spec.key == feature)
+    else {
+        return;
+    };
+    if !matches!(spec.stage, Stage::UnderDevelopment) {
+        return;
+    }
+
+    let config_path = codex_home.join(codex_core::config::CONFIG_TOML_FILE);
+    eprintln!(
+        "Under-development features enabled: {feature}. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in {}.",
+        config_path.display()
+    );
 }
 
 /// Prepend root-level overrides so they have lower precedence than
@@ -713,44 +855,43 @@ fn prepend_config_flags(
         .splice(0..0, cli_config_overrides.raw_overrides);
 }
 
-/// Run the interactive Codex TUI, dispatching to either the legacy implementation or the
-/// experimental TUI v2 shim based on feature flags resolved from config.
 async fn run_interactive_tui(
-    interactive: TuiCli,
+    mut interactive: TuiCli,
     codex_linux_sandbox_exe: Option<PathBuf>,
 ) -> std::io::Result<AppExitInfo> {
-    if is_tui2_enabled(&interactive).await? {
-        let result = tui2::run_main(interactive.into(), codex_linux_sandbox_exe).await?;
-        Ok(result.into())
-    } else {
-        codex_tui::run_main(interactive, codex_linux_sandbox_exe).await
+    if let Some(prompt) = interactive.prompt.take() {
+        // Normalize CRLF/CR to LF so CLI-provided text can't leak `\r` into TUI state.
+        interactive.prompt = Some(prompt.replace("\r\n", "\n").replace('\r', "\n"));
     }
+
+    let terminal_info = codex_core::terminal::terminal_info();
+    if terminal_info.name == TerminalName::Dumb {
+        if !(std::io::stdin().is_terminal() && std::io::stderr().is_terminal()) {
+            return Ok(AppExitInfo::fatal(
+                "TERM is set to \"dumb\". Refusing to start the interactive TUI because no terminal is available for a confirmation prompt (stdin/stderr is not a TTY). Run in a supported terminal or unset TERM.",
+            ));
+        }
+
+        eprintln!(
+            "WARNING: TERM is set to \"dumb\". Codex's interactive TUI may not work in this terminal."
+        );
+        if !confirm("Continue anyway? [y/N]: ")? {
+            return Ok(AppExitInfo::fatal(
+                "Refusing to start the interactive TUI because TERM is set to \"dumb\". Run in a supported terminal or unset TERM.",
+            ));
+        }
+    }
+
+    codex_tui::run_main(interactive, codex_linux_sandbox_exe).await
 }
 
-/// Returns `Ok(true)` when the resolved configuration enables the `tui2` feature flag.
-///
-/// This performs a lightweight config load (honoring the same precedence as the lower-level TUI
-/// bootstrap: `$CODEX_HOME`, config.toml, profile, and CLI `-c` overrides) solely to decide which
-/// TUI frontend to launch. The full configuration is still loaded later by the interactive TUI.
-async fn is_tui2_enabled(cli: &TuiCli) -> std::io::Result<bool> {
-    let raw_overrides = cli.config_overrides.raw_overrides.clone();
-    let overrides_cli = codex_common::CliConfigOverrides { raw_overrides };
-    let cli_kv_overrides = overrides_cli
-        .parse_overrides()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+fn confirm(prompt: &str) -> std::io::Result<bool> {
+    eprintln!("{prompt}");
 
-    let codex_home = find_codex_home()?;
-    let cwd = cli.cwd.clone();
-    let config_cwd = match cwd.as_deref() {
-        Some(path) => AbsolutePathBuf::from_absolute_path(path)?,
-        None => AbsolutePathBuf::current_dir()?,
-    };
-    let config_toml =
-        load_config_as_toml_with_cli_overrides(&codex_home, &config_cwd, cli_kv_overrides).await?;
-    let config_profile = config_toml.get_config_profile(cli.config_profile.clone())?;
-    let overrides = FeatureOverrides::default();
-    let features = Features::from_config(&config_toml, &config_profile, overrides);
-    Ok(features.enabled(Feature::Tui2))
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    let answer = input.trim();
+    Ok(answer.eq_ignore_ascii_case("y") || answer.eq_ignore_ascii_case("yes"))
 }
 
 /// Build the final `TuiCli` for a `codex resume` invocation.
@@ -843,7 +984,8 @@ fn merge_interactive_cli_flags(interactive: &mut TuiCli, subcommand_cli: TuiCli)
         interactive.add_dir.extend(subcommand_cli.add_dir);
     }
     if let Some(prompt) = subcommand_cli.prompt {
-        interactive.prompt = Some(prompt);
+        // Normalize CRLF/CR to LF so CLI-provided text can't leak `\r` into TUI state.
+        interactive.prompt = Some(prompt.replace("\r\n", "\n").replace('\r', "\n"));
     }
 
     interactive
@@ -917,6 +1059,24 @@ mod tests {
         finalize_fork_interactive(interactive, root_overrides, session_id, last, all, fork_cli)
     }
 
+    #[test]
+    fn exec_resume_last_accepts_prompt_positional() {
+        let cli =
+            MultitoolCli::try_parse_from(["codex", "exec", "--json", "resume", "--last", "2+2"])
+                .expect("parse should succeed");
+
+        let Some(Subcommand::Exec(exec)) = cli.subcommand else {
+            panic!("expected exec subcommand");
+        };
+        let Some(codex_exec::Command::Resume(args)) = exec.command else {
+            panic!("expected exec resume");
+        };
+
+        assert!(args.last);
+        assert_eq!(args.session_id, None);
+        assert_eq!(args.prompt.as_deref(), Some("2+2"));
+    }
+
     fn app_server_from_args(args: &[&str]) -> AppServerCommand {
         let cli = MultitoolCli::try_parse_from(args).expect("parse");
         let Subcommand::AppServer(app_server) = cli.subcommand.expect("app-server present") else {
@@ -925,7 +1085,7 @@ mod tests {
         app_server
     }
 
-    fn sample_exit_info(conversation: Option<&str>) -> AppExitInfo {
+    fn sample_exit_info(conversation_id: Option<&str>, thread_name: Option<&str>) -> AppExitInfo {
         let token_usage = TokenUsage {
             output_tokens: 2,
             total_tokens: 2,
@@ -933,7 +1093,10 @@ mod tests {
         };
         AppExitInfo {
             token_usage,
-            thread_id: conversation.map(ThreadId::from_string).map(Result::unwrap),
+            thread_id: conversation_id
+                .map(ThreadId::from_string)
+                .map(Result::unwrap),
+            thread_name: thread_name.map(str::to_string),
             update_action: None,
             exit_reason: ExitReason::UserRequested,
         }
@@ -944,6 +1107,7 @@ mod tests {
         let exit_info = AppExitInfo {
             token_usage: TokenUsage::default(),
             thread_id: None,
+            thread_name: None,
             update_action: None,
             exit_reason: ExitReason::UserRequested,
         };
@@ -953,7 +1117,7 @@ mod tests {
 
     #[test]
     fn format_exit_messages_includes_resume_hint_without_color() {
-        let exit_info = sample_exit_info(Some("123e4567-e89b-12d3-a456-426614174000"));
+        let exit_info = sample_exit_info(Some("123e4567-e89b-12d3-a456-426614174000"), None);
         let lines = format_exit_messages(exit_info, false);
         assert_eq!(
             lines,
@@ -967,10 +1131,26 @@ mod tests {
 
     #[test]
     fn format_exit_messages_applies_color_when_enabled() {
-        let exit_info = sample_exit_info(Some("123e4567-e89b-12d3-a456-426614174000"));
+        let exit_info = sample_exit_info(Some("123e4567-e89b-12d3-a456-426614174000"), None);
         let lines = format_exit_messages(exit_info, true);
         assert_eq!(lines.len(), 2);
         assert!(lines[1].contains("\u{1b}[36m"));
+    }
+
+    #[test]
+    fn format_exit_messages_prefers_thread_name() {
+        let exit_info = sample_exit_info(
+            Some("123e4567-e89b-12d3-a456-426614174000"),
+            Some("my-thread"),
+        );
+        let lines = format_exit_messages(exit_info, false);
+        assert_eq!(
+            lines,
+            vec![
+                "Token usage: total=2 input=0 output=2".to_string(),
+                "若要继续此会话，请运行 codex resume my-thread".to_string(),
+            ]
+        );
     }
 
     #[test]
@@ -1136,6 +1316,32 @@ mod tests {
         let app_server =
             app_server_from_args(["codex", "app-server", "--analytics-default-enabled"].as_ref());
         assert!(app_server.analytics_default_enabled);
+    }
+
+    #[test]
+    fn features_enable_parses_feature_name() {
+        let cli = MultitoolCli::try_parse_from(["codex", "features", "enable", "unified_exec"])
+            .expect("parse should succeed");
+        let Some(Subcommand::Features(FeaturesCli { sub })) = cli.subcommand else {
+            panic!("expected features subcommand");
+        };
+        let FeaturesSubcommand::Enable(FeatureSetArgs { feature }) = sub else {
+            panic!("expected features enable");
+        };
+        assert_eq!(feature, "unified_exec");
+    }
+
+    #[test]
+    fn features_disable_parses_feature_name() {
+        let cli = MultitoolCli::try_parse_from(["codex", "features", "disable", "shell_tool"])
+            .expect("parse should succeed");
+        let Some(Subcommand::Features(FeaturesCli { sub })) = cli.subcommand else {
+            panic!("expected features subcommand");
+        };
+        let FeaturesSubcommand::Disable(FeatureSetArgs { feature }) = sub else {
+            panic!("expected features disable");
+        };
+        assert_eq!(feature, "shell_tool");
     }
 
     #[test]
