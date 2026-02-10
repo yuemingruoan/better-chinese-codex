@@ -47,17 +47,9 @@ use codex_core::protocol::AgentReasoningDeltaEvent;
 use codex_core::protocol::AgentReasoningEvent;
 use codex_core::protocol::AgentReasoningRawContentDeltaEvent;
 use codex_core::protocol::AgentReasoningRawContentEvent;
-use codex_core::protocol::AgentStatus;
 use codex_core::protocol::ApplyPatchApprovalRequestEvent;
 use codex_core::protocol::BackgroundEventEvent;
-use codex_core::protocol::CollabAgentInteractionBeginEvent;
-use codex_core::protocol::CollabAgentInteractionEndEvent;
-use codex_core::protocol::CollabAgentSpawnBeginEvent;
-use codex_core::protocol::CollabAgentSpawnEndEvent;
-use codex_core::protocol::CollabCloseBeginEvent;
-use codex_core::protocol::CollabCloseEndEvent;
-use codex_core::protocol::CollabWaitingBeginEvent;
-use codex_core::protocol::CollabWaitingEndEvent;
+use codex_core::protocol::CodexErrorInfo;
 use codex_core::protocol::CreditsSnapshot;
 use codex_core::protocol::DeprecationNoticeEvent;
 use codex_core::protocol::ErrorEvent;
@@ -2081,130 +2073,6 @@ impl ChatWidget {
         self.bottom_pane.ensure_status_indicator();
         self.bottom_pane.set_interrupt_hint_visible(true);
         self.set_status_header(message);
-    }
-
-    fn on_collab_spawn_begin(&mut self, ev: CollabAgentSpawnBeginEvent) {
-        let message = tr_args(
-            self.config.language,
-            "chatwidget.collab.spawn_begin",
-            &[("call_id", ev.call_id.as_str())],
-        );
-        self.on_collab_event(message);
-    }
-
-    fn on_collab_spawn_end(&mut self, ev: CollabAgentSpawnEndEvent) {
-        let status = self.collab_status_label(&ev.status);
-        let message = if let Some(receiver_thread_id) = ev.new_thread_id {
-            let receiver_id = receiver_thread_id.to_string();
-            tr_args(
-                self.config.language,
-                "chatwidget.collab.spawn_end_with_agent",
-                &[
-                    ("receiver_id", receiver_id.as_str()),
-                    ("status", status.as_str()),
-                ],
-            )
-        } else {
-            tr_args(
-                self.config.language,
-                "chatwidget.collab.spawn_end_without_agent",
-                &[("status", status.as_str())],
-            )
-        };
-        self.on_collab_event(message);
-    }
-
-    fn on_collab_interaction_begin(&mut self, ev: CollabAgentInteractionBeginEvent) {
-        let receiver_id = ev.receiver_thread_id.to_string();
-        let message = tr_args(
-            self.config.language,
-            "chatwidget.collab.interaction_begin",
-            &[("receiver_id", receiver_id.as_str())],
-        );
-        self.on_collab_event(message);
-    }
-
-    fn on_collab_interaction_end(&mut self, ev: CollabAgentInteractionEndEvent) {
-        let receiver_id = ev.receiver_thread_id.to_string();
-        let status = self.collab_status_label(&ev.status);
-        let message = tr_args(
-            self.config.language,
-            "chatwidget.collab.interaction_end",
-            &[
-                ("receiver_id", receiver_id.as_str()),
-                ("status", status.as_str()),
-            ],
-        );
-        self.on_collab_event(message);
-    }
-
-    fn on_collab_waiting_begin(&mut self, ev: CollabWaitingBeginEvent) {
-        let receiver_id = ev.receiver_thread_id.to_string();
-        let message = tr_args(
-            self.config.language,
-            "chatwidget.collab.waiting_begin",
-            &[("receiver_id", receiver_id.as_str())],
-        );
-        self.on_collab_event(message);
-    }
-
-    fn on_collab_waiting_end(&mut self, ev: CollabWaitingEndEvent) {
-        let receiver_id = ev.receiver_thread_id.to_string();
-        let status = self.collab_status_label(&ev.status);
-        let message = tr_args(
-            self.config.language,
-            "chatwidget.collab.waiting_end",
-            &[
-                ("receiver_id", receiver_id.as_str()),
-                ("status", status.as_str()),
-            ],
-        );
-        self.on_collab_event(message);
-    }
-
-    fn on_collab_close_begin(&mut self, ev: CollabCloseBeginEvent) {
-        let receiver_id = ev.receiver_thread_id.to_string();
-        let message = tr_args(
-            self.config.language,
-            "chatwidget.collab.close_begin",
-            &[("receiver_id", receiver_id.as_str())],
-        );
-        self.on_collab_event(message);
-    }
-
-    fn on_collab_close_end(&mut self, ev: CollabCloseEndEvent) {
-        let receiver_id = ev.receiver_thread_id.to_string();
-        let status = self.collab_status_label(&ev.status);
-        let message = tr_args(
-            self.config.language,
-            "chatwidget.collab.close_end",
-            &[
-                ("receiver_id", receiver_id.as_str()),
-                ("status", status.as_str()),
-            ],
-        );
-        self.on_collab_event(message);
-    }
-
-    fn on_collab_event(&mut self, message: String) {
-        self.flush_answer_stream_with_separator();
-        self.add_to_history(history_cell::new_info_event(message, None));
-        self.request_redraw();
-    }
-
-    fn collab_status_label(&self, status: &AgentStatus) -> String {
-        let key = match status {
-            AgentStatus::PendingInit => "chatwidget.collab.status.pending_init",
-            AgentStatus::Running => "chatwidget.collab.status.running",
-            AgentStatus::Completed(_) => "chatwidget.collab.status.completed",
-            AgentStatus::Errored(error) if is_timeout_error(error) => {
-                "chatwidget.collab.status.timed_out"
-            }
-            AgentStatus::Errored(_) => "chatwidget.collab.status.errored",
-            AgentStatus::Shutdown => "chatwidget.collab.status.shutdown",
-            AgentStatus::NotFound => "chatwidget.collab.status.not_found",
-        };
-        tr(self.config.language, key).to_string()
     }
 
     fn on_undo_started(&mut self, event: UndoStartedEvent) {
@@ -4465,7 +4333,7 @@ impl ChatWidget {
     }
 
     fn try_handle_sdd_develop(&mut self, text: &str) -> bool {
-        if let Some((name, rest)) = parse_slash_name(text)
+        if let Some((name, rest, _rest_offset)) = parse_slash_name(text)
             && let Some(workflow) = match name {
                 name if name == SlashCommand::SddDevelop.command() => Some(SddWorkflow::Standard),
                 name if name == SlashCommand::SddDevelopParallels.command() => {
@@ -4688,14 +4556,16 @@ impl ChatWidget {
             EventMsg::ContextCompacted(_) => self.on_agent_message(
                 tr(self.config.language, "chatwidget.context_compacted").to_string(),
             ),
-            EventMsg::CollabAgentSpawnBegin(ev) => self.on_collab_spawn_begin(ev),
-            EventMsg::CollabAgentSpawnEnd(ev) => self.on_collab_spawn_end(ev),
-            EventMsg::CollabAgentInteractionBegin(ev) => self.on_collab_interaction_begin(ev),
-            EventMsg::CollabAgentInteractionEnd(ev) => self.on_collab_interaction_end(ev),
-            EventMsg::CollabWaitingBegin(ev) => self.on_collab_waiting_begin(ev),
-            EventMsg::CollabWaitingEnd(ev) => self.on_collab_waiting_end(ev),
-            EventMsg::CollabCloseBegin(ev) => self.on_collab_close_begin(ev),
-            EventMsg::CollabCloseEnd(ev) => self.on_collab_close_end(ev),
+            EventMsg::CollabAgentSpawnBegin(_) => {}
+            EventMsg::CollabAgentSpawnEnd(ev) => self.on_collab_event(collab::spawn_end(ev)),
+            EventMsg::CollabAgentInteractionBegin(_) => {}
+            EventMsg::CollabAgentInteractionEnd(ev) => {
+                self.on_collab_event(collab::interaction_end(ev))
+            }
+            EventMsg::CollabWaitingBegin(ev) => self.on_collab_event(collab::waiting_begin(ev)),
+            EventMsg::CollabWaitingEnd(ev) => self.on_collab_event(collab::waiting_end(ev)),
+            EventMsg::CollabCloseBegin(_) => {}
+            EventMsg::CollabCloseEnd(ev) => self.on_collab_event(collab::close_end(ev)),
             EventMsg::ThreadRolledBack(_) => {}
             EventMsg::RawResponseItem(_)
             | EventMsg::ItemStarted(_)

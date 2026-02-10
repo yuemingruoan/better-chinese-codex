@@ -1,10 +1,8 @@
 use crate::agent::AgentStatus;
-use crate::agent::exceeds_thread_spawn_depth_limit;
 use crate::codex::Session;
 use crate::codex::TurnContext;
 use crate::config::Config;
 use crate::error::CodexErr;
-use crate::features::Feature;
 use crate::function_tool::FunctionCallError;
 use crate::models_manager::manager::RefreshStrategy;
 use crate::protocol::AskForApproval;
@@ -20,6 +18,7 @@ use async_trait::async_trait;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::SandboxMode;
+use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::CollabAgentInteractionBeginEvent;
 use codex_protocol::protocol::CollabAgentInteractionEndEvent;
@@ -34,6 +33,8 @@ use serde::Serialize;
 
 pub struct CollabHandler;
 
+#[allow(dead_code)] // Referenced by tests.
+pub(crate) const MIN_WAIT_TIMEOUT_MS: i64 = 100;
 pub(crate) const DEFAULT_WAIT_TIMEOUT_MS: i64 = crate::config::DEFAULT_COLLAB_WAIT_TIMEOUT_MS;
 pub(crate) const MAX_WAIT_TIMEOUT_MS: i64 = 300_000;
 
@@ -108,6 +109,7 @@ mod spawn {
     #[derive(Debug, Deserialize)]
     struct SpawnAgentArgs {
         message: String,
+        agent_type: Option<AgentRole>,
         label: Option<String>,
         acceptance_criteria: Option<Vec<String>>,
         test_commands: Option<Vec<String>>,
@@ -138,10 +140,17 @@ mod spawn {
                 "Empty message can't be sent to an agent".to_string(),
             ));
         }
+        let session_source = turn.session_source.clone();
+        let child_depth = next_thread_spawn_depth(&session_source);
+        if exceeds_thread_spawn_depth_limit(child_depth) {
+            return Err(FunctionCallError::RespondToModel(
+                "Agent depth limit reached. Solve the task yourself.".to_string(),
+            ));
+        }
         validate_spawn_limits(
             session.as_ref(),
             session.conversation_id,
-            turn.client.config().as_ref(),
+            turn.config.as_ref(),
         )
         .await?;
         session
@@ -162,7 +171,8 @@ mod spawn {
             approval_policy: args.approval_policy,
             sandbox_mode: args.sandbox_mode,
         };
-        let config = build_agent_spawn_config(session.as_ref(), turn.as_ref(), &overrides).await?;
+        let mut config =
+            build_agent_spawn_config(session.as_ref(), turn.as_ref(), &overrides).await?;
         let metadata = AgentSpawnMetadata {
             creator_thread_id: Some(session.conversation_id),
             label: args.label,
@@ -171,10 +181,21 @@ mod spawn {
             test_commands: args.test_commands.unwrap_or_default(),
             allow_nested_agents: args.allow_nested_agents.unwrap_or(false),
         };
+        agent_role
+            .apply_to_config(&mut config)
+            .map_err(FunctionCallError::RespondToModel)?;
         let result = session
             .services
             .agent_control
-            .spawn_agent_with_metadata(config, prompt.clone(), metadata)
+            .spawn_agent_with_metadata_and_source(
+                config,
+                prompt.clone(),
+                metadata,
+                Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                    parent_thread_id: session.conversation_id,
+                    depth: child_depth,
+                })),
+            )
             .await
             .map_err(collab_spawn_error);
         let (new_thread_id, status) = match &result {
@@ -317,7 +338,8 @@ mod wait {
 
     #[derive(Debug, Deserialize)]
     struct WaitArgs {
-        ids: Vec<String>,
+        id: Option<String>,
+        ids: Option<Vec<String>>,
         timeout_ms: Option<i64>,
     }
 
@@ -334,22 +356,25 @@ mod wait {
         arguments: String,
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: WaitArgs = parse_arguments(&arguments)?;
-        if args.ids.is_empty() {
+        let mut ids = args.ids.unwrap_or_default();
+        if ids.is_empty()
+            && let Some(id) = args.id
+        {
+            ids.push(id);
+        }
+        if ids.is_empty() {
             return Err(FunctionCallError::RespondToModel(
                 "ids must be non-empty".to_owned(),
             ));
         }
-        let receiver_thread_ids = args
-            .ids
+        let receiver_thread_ids = ids
             .iter()
             .map(|id| agent_id(id))
             .collect::<Result<Vec<_>, _>>()?;
 
         // Validate timeout.
-        let timeout_ms = resolve_wait_timeout_ms(
-            args.timeout_ms,
-            turn.client.config().default_wait_timeout_ms,
-        )?;
+        let timeout_ms =
+            resolve_wait_timeout_ms(args.timeout_ms, turn.config.default_wait_timeout_ms)?;
 
         session
             .send_event(
@@ -486,6 +511,7 @@ mod wait {
 mod wait_agents {
     use super::*;
     use crate::agent::status::is_final;
+    use std::collections::HashMap;
     use std::collections::HashSet;
     use std::sync::Arc;
     use std::time::Duration;
@@ -536,50 +562,51 @@ mod wait_agents {
         arguments: String,
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: WaitAgentsArgs = parse_arguments(&arguments)?;
-        let timeout_ms = resolve_wait_timeout_ms(
-            args.timeout_ms,
-            turn.client.config().default_wait_timeout_ms,
-        )?;
+        let timeout_ms =
+            resolve_wait_timeout_ms(args.timeout_ms, turn.config.default_wait_timeout_ms)?;
         let mode = args.mode.unwrap_or(WaitAgentsMode::Any);
         let target_ids =
             resolve_target_ids(session.as_ref(), args.ids, session.conversation_id).await?;
 
-        for receiver_thread_id in &target_ids {
-            session
-                .send_event(
-                    &turn,
-                    CollabWaitingBeginEvent {
-                        sender_thread_id: session.conversation_id,
-                        receiver_thread_id: *receiver_thread_id,
-                        call_id: call_id.clone(),
-                    }
-                    .into(),
-                )
-                .await;
-        }
+        session
+            .send_event(
+                &turn,
+                CollabWaitingBeginEvent {
+                    sender_thread_id: session.conversation_id,
+                    receiver_thread_ids: target_ids.clone(),
+                    call_id: call_id.clone(),
+                }
+                .into(),
+            )
+            .await;
 
         let result = wait_for_agents(session.as_ref(), &target_ids, mode, timeout_ms).await?;
 
-        for snapshot in &result.statuses {
-            let receiver_thread_id = ThreadId::from_string(&snapshot.id).map_err(|err| {
-                FunctionCallError::Fatal(format!(
-                    "failed to deserialize wait_agents snapshot id {}: {err:?}",
-                    snapshot.id
-                ))
-            })?;
-            session
-                .send_event(
-                    &turn,
-                    CollabWaitingEndEvent {
-                        sender_thread_id: session.conversation_id,
-                        receiver_thread_id,
-                        call_id: call_id.clone(),
-                        status: snapshot.status.clone(),
-                    }
-                    .into(),
-                )
-                .await;
-        }
+        let statuses = result
+            .statuses
+            .iter()
+            .map(|snapshot| {
+                let receiver_thread_id = ThreadId::from_string(&snapshot.id).map_err(|err| {
+                    FunctionCallError::Fatal(format!(
+                        "failed to deserialize wait_agents snapshot id {}: {err:?}",
+                        snapshot.id
+                    ))
+                })?;
+                Ok((receiver_thread_id, snapshot.status.clone()))
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
+
+        session
+            .send_event(
+                &turn,
+                CollabWaitingEndEvent {
+                    sender_thread_id: session.conversation_id,
+                    call_id: call_id.clone(),
+                    statuses,
+                }
+                .into(),
+            )
+            .await;
 
         let content = serde_json::to_string(&result).map_err(|err| {
             FunctionCallError::Fatal(format!("failed to serialize wait_agents result: {err}"))
@@ -591,9 +618,8 @@ mod wait_agents {
                 .all(|snapshot| !matches!(snapshot.status, AgentStatus::Errored(_)));
 
         Ok(ToolOutput::Function {
-            content,
+            body: FunctionCallOutputBody::Text(content),
             success: Some(success),
-            content_items: None,
         })
     }
 
@@ -814,9 +840,8 @@ mod list_agents {
                 FunctionCallError::Fatal(format!("failed to serialize list_agents result: {err}"))
             })?;
         Ok(ToolOutput::Function {
-            content,
+            body: FunctionCallOutputBody::Text(content),
             success: Some(true),
-            content_items: None,
         })
     }
 
@@ -890,7 +915,7 @@ pub mod close_agent {
                 .agent_control
                 .shutdown_agent_with_descendants(
                     agent_id,
-                    turn.client.config().auto_close_on_parent_shutdown,
+                    turn.config.auto_close_on_parent_shutdown,
                 )
                 .await
                 .map_err(|err| collab_agent_error(agent_id, err))
@@ -1016,7 +1041,7 @@ mod close_agents {
                 .agent_control
                 .shutdown_agent_with_descendants(
                     agent_id,
-                    turn.client.config().auto_close_on_parent_shutdown,
+                    turn.config.auto_close_on_parent_shutdown,
                 )
                 .await;
             let status = if close_result.is_ok() {
@@ -1051,9 +1076,8 @@ mod close_agents {
             FunctionCallError::Fatal(format!("failed to serialize close_agents result: {err}"))
         })?;
         Ok(ToolOutput::Function {
-            content,
+            body: FunctionCallOutputBody::Text(content),
             success: Some(success),
-            content_items: None,
         })
     }
 }
@@ -1096,7 +1120,7 @@ fn resolve_wait_timeout_ms(
         ms if ms <= 0 => Err(FunctionCallError::RespondToModel(
             "timeout_ms must be greater than zero".to_owned(),
         )),
-        ms => Ok(ms.min(MAX_WAIT_TIMEOUT_MS)),
+        ms => Ok(ms.clamp(MIN_WAIT_TIMEOUT_MS, MAX_WAIT_TIMEOUT_MS)),
     }
 }
 
@@ -1178,9 +1202,8 @@ async fn build_agent_spawn_config(
     turn: &TurnContext,
     overrides: &SpawnConfigOverrides,
 ) -> Result<Config, FunctionCallError> {
-    let base_config = turn.client.config();
-    let mut config = (*base_config).clone();
-    config.base_instructions = Some(base_instructions.text.clone());
+    let mut config = (*turn.config).clone();
+    config.base_instructions = Some(session.get_base_instructions().await.text);
     config.model = Some(turn.model_info.slug.clone());
     config.model_provider = turn.provider.clone();
     config.model_reasoning_effort = turn.reasoning_effort;
@@ -1228,7 +1251,7 @@ async fn apply_spawn_model_overrides(
                 "model must not be empty".to_string(),
             ));
         }
-        validate_spawn_model_override(session, config, &turn.client.get_model(), model).await?;
+        validate_spawn_model_override(session, config, &turn.model_info.slug, model).await?;
         config.model = Some(model.to_string());
     }
 
@@ -1242,7 +1265,7 @@ async fn apply_spawn_model_overrides(
     let model = config
         .model
         .clone()
-        .unwrap_or_else(|| turn.client.get_model());
+        .unwrap_or_else(|| turn.model_info.slug.clone());
     if let Some(reasoning_effort) = config.model_reasoning_effort {
         let model_info = session
             .services
@@ -1378,9 +1401,7 @@ mod tests {
     use super::*;
     use crate::CodexAuth;
     use crate::ThreadManager;
-    use crate::agent::MAX_THREAD_SPAWN_DEPTH;
     use crate::built_in_model_providers;
-    use crate::client::ModelClient;
     use crate::codex::make_session_and_context;
     use crate::config::Config;
     use crate::config::types::ShellEnvironmentPolicy;
@@ -1388,8 +1409,6 @@ mod tests {
     use crate::protocol::AskForApproval;
     use crate::protocol::Op;
     use crate::protocol::SandboxPolicy;
-    use crate::protocol::SessionSource;
-    use crate::protocol::SubAgentSource;
     use crate::turn_diff_tracker::TurnDiffTracker;
     use codex_protocol::ThreadId;
     use pretty_assertions::assert_eq;
@@ -1431,31 +1450,10 @@ mod tests {
         )
     }
 
-    fn overwrite_turn_config(
-        turn: &mut TurnContext,
-        conversation_id: ThreadId,
-        mutate: impl FnOnce(&mut Config),
-    ) {
-        let auth_manager = turn.client.get_auth_manager();
-        let model_info = turn.client.get_model_info();
-        let otel_manager = turn.client.get_otel_manager();
-        let provider = turn.client.get_provider();
-        let reasoning_effort = turn.client.get_reasoning_effort();
-        let reasoning_summary = turn.client.get_reasoning_summary();
-        let session_source = turn.client.get_session_source();
-        let mut config = (*turn.client.config()).clone();
+    fn overwrite_turn_config(turn: &mut TurnContext, mutate: impl FnOnce(&mut Config)) {
+        let mut config = (*turn.config).clone();
         mutate(&mut config);
-        turn.client = ModelClient::new(
-            Arc::new(config),
-            auth_manager,
-            model_info,
-            otel_manager,
-            provider,
-            reasoning_effort,
-            reasoning_summary,
-            conversation_id,
-            session_source,
-        );
+        turn.config = Arc::new(config);
     }
 
     #[tokio::test]
@@ -1581,8 +1579,8 @@ mod tests {
         let (mut session, turn) = make_session_and_context().await;
         let manager = thread_manager();
         session.services.agent_control = manager.agent_control();
-        let config = turn.client.config();
-        let model = turn.client.get_model();
+        let config = turn.config.clone();
+        let model = turn.model_info.slug.clone();
         let model_info = session
             .services
             .models_manager
@@ -1630,7 +1628,7 @@ mod tests {
         let control = manager.agent_control();
         session.services.agent_control = control.clone();
         let root_thread_id = session.conversation_id;
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let child_id = control
             .spawn_agent_with_metadata(
                 config,
@@ -1668,7 +1666,7 @@ mod tests {
         let control = manager.agent_control();
         session.services.agent_control = control.clone();
         let root_thread_id = session.conversation_id;
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let child_id = control
             .spawn_agent_with_metadata(
                 config,
@@ -1703,14 +1701,14 @@ mod tests {
     #[tokio::test]
     async fn spawn_agent_allows_when_spawn_depth_limit_is_raised() {
         let (mut session, mut turn) = make_session_and_context().await;
-        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+        overwrite_turn_config(&mut turn, |config| {
             config.max_spawn_depth = 2;
         });
         let manager = thread_manager();
         let control = manager.agent_control();
         session.services.agent_control = control.clone();
         let root_thread_id = session.conversation_id;
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let child_id = control
             .spawn_agent_with_metadata(
                 config,
@@ -1724,7 +1722,7 @@ mod tests {
             .await
             .expect("spawn child");
         session.conversation_id = child_id;
-        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+        overwrite_turn_config(&mut turn, |config| {
             config.max_spawn_depth = 2;
         });
 
@@ -1739,7 +1737,9 @@ mod tests {
             .await
             .expect("spawn should succeed");
         let ToolOutput::Function {
-            content, success, ..
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
         } = output
         else {
             panic!("expected function output");
@@ -1758,12 +1758,16 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_rejects_when_active_subagent_limit_is_reached() {
-        let (mut session, turn) = make_session_and_context().await;
+        let (mut session, mut turn) = make_session_and_context().await;
+        overwrite_turn_config(&mut turn, |config| {
+            config.agent_max_threads =
+                Some(crate::config::DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD + 2);
+        });
         let manager = thread_manager();
         let control = manager.agent_control();
         session.services.agent_control = control.clone();
         let root_thread_id = session.conversation_id;
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         for i in 0..crate::config::DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD {
             let _ = control
                 .spawn_agent_with_metadata(
@@ -1798,14 +1802,14 @@ mod tests {
     #[tokio::test]
     async fn spawn_agent_rejects_when_configured_active_subagent_limit_is_reached() {
         let (mut session, mut turn) = make_session_and_context().await;
-        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+        overwrite_turn_config(&mut turn, |config| {
             config.max_active_subagents_per_thread = 1;
         });
         let manager = thread_manager();
         let control = manager.agent_control();
         session.services.agent_control = control.clone();
         let root_thread_id = session.conversation_id;
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let _ = control
             .spawn_agent_with_metadata(
                 config,
@@ -1840,7 +1844,7 @@ mod tests {
         let manager = thread_manager();
         let control = manager.agent_control();
         session.services.agent_control = control.clone();
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let creator_id = ThreadId::new();
         let metadata = AgentSpawnMetadata {
             creator_thread_id: Some(creator_id),
@@ -1874,7 +1878,9 @@ mod tests {
             .await
             .expect("list_agents should succeed");
         let ToolOutput::Function {
-            content, success, ..
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
         } = output
         else {
             panic!("expected function output");
@@ -1898,7 +1904,7 @@ mod tests {
         let manager = thread_manager();
         let control = manager.agent_control();
         session.services.agent_control = control.clone();
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let agent_id = control
             .spawn_agent_with_metadata(config, "do work".to_string(), AgentSpawnMetadata::default())
             .await
@@ -1917,7 +1923,11 @@ mod tests {
             .handle(invocation)
             .await
             .expect("list_agents should succeed");
-        let ToolOutput::Function { content, .. } = output else {
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(content),
+            ..
+        } = output
+        else {
             panic!("expected function output");
         };
         let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
@@ -2269,12 +2279,12 @@ mod tests {
     #[tokio::test]
     async fn wait_uses_configured_default_timeout_when_timeout_is_omitted() {
         let (mut session, mut turn) = make_session_and_context().await;
-        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+        overwrite_turn_config(&mut turn, |config| {
             config.default_wait_timeout_ms = 10;
         });
         let manager = thread_manager();
         session.services.agent_control = manager.agent_control();
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let thread = manager.start_thread(config).await.expect("start thread");
         let agent_id = thread.thread_id;
         let invocation = invocation(
@@ -2287,7 +2297,11 @@ mod tests {
             .await
             .expect("wait should return using configured timeout")
             .expect("wait should succeed");
-        let ToolOutput::Function { content, .. } = output else {
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(content),
+            ..
+        } = output
+        else {
             panic!("expected function output");
         };
         let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
@@ -2305,7 +2319,7 @@ mod tests {
         let (mut session, turn) = make_session_and_context().await;
         let manager = thread_manager();
         session.services.agent_control = manager.agent_control();
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let thread1 = manager
             .start_thread(config.clone())
             .await
@@ -2341,7 +2355,9 @@ mod tests {
             .await
             .expect("wait_agents should succeed");
         let ToolOutput::Function {
-            content, success, ..
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
         } = output
         else {
             panic!("expected function output");
@@ -2362,7 +2378,7 @@ mod tests {
         let (mut session, turn) = make_session_and_context().await;
         let manager = thread_manager();
         session.services.agent_control = manager.agent_control();
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let thread1 = manager
             .start_thread(config.clone())
             .await
@@ -2405,7 +2421,9 @@ mod tests {
             .expect("wait_agents should succeed");
         let elapsed = started_at.elapsed();
         let ToolOutput::Function {
-            content, success, ..
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
         } = output
         else {
             panic!("expected function output");
@@ -2428,7 +2446,7 @@ mod tests {
         let (mut session, turn) = make_session_and_context().await;
         let manager = thread_manager();
         session.services.agent_control = manager.agent_control();
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let thread = manager.start_thread(config).await.expect("start thread");
         let agent_id = thread.thread_id;
 
@@ -2445,7 +2463,9 @@ mod tests {
             .await
             .expect("wait_agents should succeed");
         let ToolOutput::Function {
-            content, success, ..
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
         } = output
         else {
             panic!("expected function output");
@@ -2467,7 +2487,7 @@ mod tests {
         let (mut session, turn) = make_session_and_context().await;
         let manager = thread_manager();
         session.services.agent_control = manager.agent_control();
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let control = manager.agent_control();
         let closed_agent_id = control
             .spawn_agent_with_metadata(
@@ -2519,7 +2539,9 @@ mod tests {
             .await
             .expect("wait_agents should succeed");
         let ToolOutput::Function {
-            content, success, ..
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
         } = output
         else {
             panic!("expected function output");
@@ -2587,13 +2609,13 @@ mod tests {
     #[tokio::test]
     async fn close_agent_does_not_auto_close_descendants_when_disabled_in_config() {
         let (mut session, mut turn) = make_session_and_context().await;
-        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+        overwrite_turn_config(&mut turn, |config| {
             config.auto_close_on_parent_shutdown = false;
         });
         let manager = thread_manager();
         let control = manager.agent_control();
         session.services.agent_control = control.clone();
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let parent_id = control
             .spawn_agent_with_metadata(
                 config.clone(),
@@ -2650,7 +2672,7 @@ mod tests {
         let (mut session, turn) = make_session_and_context().await;
         let manager = thread_manager();
         session.services.agent_control = manager.agent_control();
-        let config = turn.client.config().as_ref().clone();
+        let config = turn.config.as_ref().clone();
         let thread = manager.start_thread(config).await.expect("start thread");
         let agent_id = thread.thread_id;
         let missing_id = ThreadId::new();
@@ -2669,7 +2691,9 @@ mod tests {
             .await
             .expect("close_agents should succeed");
         let ToolOutput::Function {
-            content, success, ..
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
         } = output
         else {
             panic!("expected function output");
@@ -2707,7 +2731,9 @@ mod tests {
             .await
             .expect("close_agents should succeed");
         let ToolOutput::Function {
-            content, success, ..
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
         } = output
         else {
             panic!("expected function output");
@@ -2745,11 +2771,12 @@ mod tests {
         let config = build_agent_spawn_config(&session, &turn, &SpawnConfigOverrides::default())
             .await
             .expect("spawn config");
-        let mut expected = (*turn.client.config()).clone();
-        expected.model = Some(turn.client.get_model());
-        expected.model_provider = turn.client.get_provider();
-        expected.model_reasoning_effort = turn.client.get_reasoning_effort();
-        expected.model_reasoning_summary = turn.client.get_reasoning_summary();
+        let mut expected = (*turn.config).clone();
+        expected.base_instructions = Some(session.get_base_instructions().await.text);
+        expected.model = Some(turn.model_info.slug.clone());
+        expected.model_provider = turn.provider.clone();
+        expected.model_reasoning_effort = turn.reasoning_effort;
+        expected.model_reasoning_summary = turn.reasoning_summary;
         expected.developer_instructions = turn.developer_instructions.clone();
         expected.compact_prompt = turn.compact_prompt.clone();
         expected.shell_environment_policy = turn.shell_environment_policy.clone();
@@ -2769,11 +2796,11 @@ mod tests {
     #[tokio::test]
     async fn build_agent_spawn_config_applies_model_reasoning_overrides() {
         let (session, turn) = make_session_and_context().await;
-        let current_model = turn.client.get_model();
+        let current_model = turn.model_info.slug.clone();
         let available_models = session
             .services
             .models_manager
-            .list_models(turn.client.config().as_ref(), RefreshStrategy::Offline)
+            .list_models(turn.config.as_ref(), RefreshStrategy::Offline)
             .await;
         let model = available_models
             .iter()
@@ -2783,7 +2810,7 @@ mod tests {
         let model_info = session
             .services
             .models_manager
-            .get_model_info(&model, turn.client.config().as_ref())
+            .get_model_info(&model, turn.config.as_ref())
             .await;
         let effort = model_info
             .supported_reasoning_levels
@@ -2879,7 +2906,7 @@ mod tests {
         let (session, mut turn) = make_session_and_context().await;
         turn.approval_policy = AskForApproval::Never;
         turn.sandbox_policy = SandboxPolicy::ReadOnly;
-        overwrite_turn_config(&mut turn, session.conversation_id, |config| {
+        overwrite_turn_config(&mut turn, |config| {
             config.allow_subagent_permission_escalation = true;
         });
         let overrides = SpawnConfigOverrides {

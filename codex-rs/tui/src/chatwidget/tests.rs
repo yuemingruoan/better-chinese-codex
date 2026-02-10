@@ -9,8 +9,6 @@ use crate::app_event::AppEvent;
 use crate::app_event::ExitMode;
 use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::FeedbackAudience;
-use crate::bottom_pane::LocalImageAttachment;
-use crate::history_cell::UserHistoryCell;
 use crate::i18n::tr;
 use crate::i18n::tr_args;
 use crate::test_backend::VT100Backend;
@@ -33,7 +31,7 @@ use codex_core::protocol::AgentReasoningEvent;
 use codex_core::protocol::AgentStatus;
 use codex_core::protocol::ApplyPatchApprovalRequestEvent;
 use codex_core::protocol::BackgroundEventEvent;
-use codex_core::protocol::CollabAgentSpawnBeginEvent;
+use codex_core::protocol::CollabAgentSpawnEndEvent;
 use codex_core::protocol::CollabWaitingEndEvent;
 use codex_core::protocol::CreditsSnapshot;
 use codex_core::protocol::Event;
@@ -55,6 +53,7 @@ use codex_core::protocol::RateLimitWindow;
 use codex_core::protocol::ReviewRequest;
 use codex_core::protocol::ReviewTarget;
 use codex_core::protocol::SddGitAction;
+use codex_core::protocol::SessionSource;
 use codex_core::protocol::StreamErrorEvent;
 use codex_core::protocol::TerminalInteractionEvent;
 use codex_core::protocol::TokenCountEvent;
@@ -201,45 +200,39 @@ async fn collab_events_emit_history_lines() {
 
     chat.handle_codex_event(Event {
         id: "collab-spawn-begin".into(),
-        msg: EventMsg::CollabAgentSpawnBegin(CollabAgentSpawnBeginEvent {
+        msg: EventMsg::CollabAgentSpawnEnd(CollabAgentSpawnEndEvent {
             call_id: "call-1".to_string(),
             sender_thread_id,
-            prompt: String::new(),
+            new_thread_id: Some(receiver_thread_id),
+            prompt: "spawn child".to_string(),
+            status: AgentStatus::Running,
         }),
     });
     let cells = drain_insert_history(&mut rx);
     assert_eq!(cells.len(), 1, "expected one collab history cell");
     let text = lines_to_single_string(cells.last().expect("collab cell"));
-    let expected_spawn = tr_args(
-        chat.config.language,
-        "chatwidget.collab.spawn_begin",
-        &[("call_id", "call-1")],
-    );
-    assert!(text.contains(&expected_spawn));
+    assert!(text.contains("Agent spawned"));
+    assert!(text.contains("call: call-1"));
+    assert!(text.contains(receiver_thread_id.to_string().as_str()));
 
     chat.handle_codex_event(Event {
         id: "collab-wait-end".into(),
         msg: EventMsg::CollabWaitingEnd(CollabWaitingEndEvent {
             sender_thread_id,
-            receiver_thread_id,
             call_id: "call-2".to_string(),
-            status: AgentStatus::Completed(Some("done".to_string())),
+            statuses: HashMap::from([(
+                receiver_thread_id,
+                AgentStatus::Completed(Some("done".to_string())),
+            )]),
         }),
     });
     let cells = drain_insert_history(&mut rx);
     assert_eq!(cells.len(), 1, "expected one collab history cell");
     let text = lines_to_single_string(cells.last().expect("collab wait cell"));
-    let status = tr(chat.config.language, "chatwidget.collab.status.completed").to_string();
-    let receiver_id = receiver_thread_id.to_string();
-    let expected_wait = tr_args(
-        chat.config.language,
-        "chatwidget.collab.waiting_end",
-        &[
-            ("receiver_id", receiver_id.as_str()),
-            ("status", status.as_str()),
-        ],
-    );
-    assert!(text.contains(&expected_wait));
+    assert!(text.contains("Wait complete"));
+    assert!(text.contains("call: call-2"));
+    assert!(text.contains(receiver_thread_id.to_string().as_str()));
+    assert!(text.contains("completed"));
 }
 
 /// Entering review mode uses the hint provided by the review request.
@@ -664,14 +657,15 @@ fn drain_ops(op_rx: &mut tokio::sync::mpsc::UnboundedReceiver<Op>) -> Vec<Op> {
 }
 
 fn find_text_input(op: &Op) -> Option<&str> {
-    if let Op::UserInput { items, .. } = op {
-        items.iter().find_map(|item| match item {
-            UserInput::Text { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
-    } else {
-        None
-    }
+    let items = match op {
+        Op::UserInput { items, .. } => items.as_slice(),
+        Op::UserTurn { items, .. } => items.as_slice(),
+        _ => return None,
+    };
+    items.iter().find_map(|item| match item {
+        UserInput::Text { text, .. } => Some(text.as_str()),
+        _ => None,
+    })
 }
 
 fn make_token_info(total_tokens: i64, context_window: i64) -> TokenUsageInfo {
@@ -2566,6 +2560,7 @@ async fn slash_sdd_develop_parallels_requires_collab_feature() {
     chat.dispatch_command_with_args(
         SlashCommand::SddDevelopParallels,
         "实现并行 sdd".to_string(),
+        vec![],
     );
 
     let cells = drain_insert_history(&mut rx);
@@ -2600,6 +2595,7 @@ async fn sdd_develop_parallels_plan_approval_sends_execute_prompt_without_create
     chat.dispatch_command_with_args(
         SlashCommand::SddDevelopParallels,
         "新增并行 SDD 流程".to_string(),
+        vec![],
     );
     let initial_ops = drain_ops(&mut op_rx);
     let plan_prompt = initial_ops
@@ -2650,6 +2646,7 @@ async fn sdd_develop_parallels_merge_sends_prompt_and_skips_git_ops() {
     chat.dispatch_command_with_args(
         SlashCommand::SddDevelopParallels,
         "新增并行 SDD 流程".to_string(),
+        vec![],
     );
     let _ = drain_ops(&mut op_rx);
     chat.on_sdd_plan_approved().await;

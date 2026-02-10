@@ -100,6 +100,7 @@ pub const DEFAULT_COLLAB_MAX_SPAWN_DEPTH: usize = 1;
 pub const DEFAULT_COLLAB_WAIT_TIMEOUT_MS: i64 = 30_000;
 pub const DEFAULT_COLLAB_AUTO_CLOSE_ON_PARENT_SHUTDOWN: bool = true;
 pub const DEFAULT_COLLAB_ALLOW_SUBAGENT_PERMISSION_ESCALATION: bool = false;
+pub(crate) const DEFAULT_AGENT_MAX_THREADS: Option<usize> = Some(6);
 
 pub const CONFIG_TOML_FILE: &str = "config.toml";
 
@@ -146,6 +147,11 @@ pub struct Config {
     pub approval_policy: Constrained<AskForApproval>,
 
     pub sandbox_policy: Constrained<SandboxPolicy>,
+
+    /// enforce_residency means web traffic cannot be routed outside of a
+    /// particular geography. HTTP clients should direct their requests
+    /// using backend-specific headers or URLs to enforce this.
+    pub enforce_residency: Constrained<Option<ResidencyRequirement>>,
 
     /// Maximum active direct sub-agents that a thread can own at one time.
     pub max_active_subagents_per_thread: usize,
@@ -1658,8 +1664,9 @@ impl Config {
             model_provider_id,
             model_provider,
             cwd: resolved_cwd,
-            approval_policy: constrained_approval_policy,
-            sandbox_policy: constrained_sandbox_policy,
+            approval_policy: constrained_approval_policy.value,
+            sandbox_policy: constrained_sandbox_policy.value,
+            enforce_residency: enforce_residency.value,
             max_active_subagents_per_thread,
             max_spawn_depth,
             default_wait_timeout_ms,
@@ -3899,6 +3906,7 @@ model_verbosity = "high"
                 model_provider: fixture.openai_provider.clone(),
                 approval_policy: Constrained::allow_any(AskForApproval::Never),
                 sandbox_policy: Constrained::allow_any(SandboxPolicy::new_read_only_policy()),
+                enforce_residency: Constrained::allow_any(None),
                 max_active_subagents_per_thread: DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD,
                 max_spawn_depth: DEFAULT_COLLAB_MAX_SPAWN_DEPTH,
                 default_wait_timeout_ms: DEFAULT_COLLAB_WAIT_TIMEOUT_MS,
@@ -3991,6 +3999,7 @@ model_verbosity = "high"
             model_provider: fixture.openai_custom_provider.clone(),
             approval_policy: Constrained::allow_any(AskForApproval::UnlessTrusted),
             sandbox_policy: Constrained::allow_any(SandboxPolicy::new_read_only_policy()),
+            enforce_residency: Constrained::allow_any(None),
             max_active_subagents_per_thread: DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD,
             max_spawn_depth: DEFAULT_COLLAB_MAX_SPAWN_DEPTH,
             default_wait_timeout_ms: DEFAULT_COLLAB_WAIT_TIMEOUT_MS,
@@ -4098,6 +4107,7 @@ model_verbosity = "high"
             model_provider: fixture.openai_provider.clone(),
             approval_policy: Constrained::allow_any(AskForApproval::OnFailure),
             sandbox_policy: Constrained::allow_any(SandboxPolicy::new_read_only_policy()),
+            enforce_residency: Constrained::allow_any(None),
             max_active_subagents_per_thread: DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD,
             max_spawn_depth: DEFAULT_COLLAB_MAX_SPAWN_DEPTH,
             default_wait_timeout_ms: DEFAULT_COLLAB_WAIT_TIMEOUT_MS,
@@ -4191,6 +4201,7 @@ model_verbosity = "high"
             model_provider: fixture.openai_provider.clone(),
             approval_policy: Constrained::allow_any(AskForApproval::OnFailure),
             sandbox_policy: Constrained::allow_any(SandboxPolicy::new_read_only_policy()),
+            enforce_residency: Constrained::allow_any(None),
             max_active_subagents_per_thread: DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD,
             max_spawn_depth: DEFAULT_COLLAB_MAX_SPAWN_DEPTH,
             default_wait_timeout_ms: DEFAULT_COLLAB_WAIT_TIMEOUT_MS,

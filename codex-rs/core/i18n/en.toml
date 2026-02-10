@@ -590,6 +590,15 @@ disabled = "Collaboration modes are disabled."
 enable_plan = "Enable collaboration modes to use /plan."
 plan_unavailable = "Plan mode is unavailable for the current model."
 enable_collab = "Enable collaboration modes to use /collab."
+spawn_begin = "Spawning a sub-agent for call `${call_id}`."
+spawn_end_with_agent = "Spawn finished for `${receiver_id}` with status `${status}`."
+spawn_end_without_agent = "Spawn finished with status `${status}`."
+interaction_begin = "Dispatching work to `${receiver_id}`."
+interaction_end = "Interaction with `${receiver_id}` finished with status `${status}`."
+waiting_begin = "Waiting for `${receiver_id}`."
+waiting_end = "Wait for `${receiver_id}` finished with status `${status}`."
+close_begin = "Closing `${receiver_id}`."
+close_end = "Close for `${receiver_id}` finished with status `${status}`."
 
 [chatwidget.clean]
 deleted = "Clipboard image cache cleaned: deleted ${deleted} file(s)."
@@ -823,17 +832,6 @@ unprotected = "The Windows sandbox cannot protect writes to folders that are wri
 [chatwidget.world_writable.policy]
 agent = "Agent mode"
 read_only = "Agent mode"
-
-[chatwidget.collab]
-spawn_begin = "Spawning a sub-agent for call `${call_id}`."
-spawn_end_with_agent = "Spawn finished for `${receiver_id}` with status `${status}`."
-spawn_end_without_agent = "Spawn finished with status `${status}`."
-interaction_begin = "Dispatching work to `${receiver_id}`."
-interaction_end = "Interaction with `${receiver_id}` finished with status `${status}`."
-waiting_begin = "Waiting for `${receiver_id}`."
-waiting_end = "Wait for `${receiver_id}` finished with status `${status}`."
-close_begin = "Closing `${receiver_id}`."
-close_end = "Close for `${receiver_id}` finished with status `${status}`."
 
 [chatwidget.collab.status]
 pending_init = "pending"

@@ -586,6 +586,15 @@ disabled = "协作模式已禁用。"
 enable_plan = "启用协作模式以使用 /plan。"
 plan_unavailable = "当前模型不可用计划模式。"
 enable_collab = "启用协作模式以使用 /collab。"
+spawn_begin = "正在为调用 `${call_id}` 启动子 Agent。"
+spawn_end_with_agent = "`${receiver_id}` 启动完成，状态为 `${status}`。"
+spawn_end_without_agent = "子 Agent 启动流程结束，状态为 `${status}`。"
+interaction_begin = "正在向 `${receiver_id}` 派发任务。"
+interaction_end = "与 `${receiver_id}` 的交互结束，状态为 `${status}`。"
+waiting_begin = "正在等待 `${receiver_id}`。"
+waiting_end = "等待 `${receiver_id}` 结束，状态为 `${status}`。"
+close_begin = "正在关闭 `${receiver_id}`。"
+close_end = "`${receiver_id}` 关闭结束，状态为 `${status}`。"
 
 [chatwidget.clean]
 deleted = "已清理剪贴板图片缓存：删除 ${deleted} 个文件。"
@@ -819,17 +828,6 @@ unprotected = "Windows 沙盒无法保护对 Everyone 可写文件夹的写入�
 [chatwidget.world_writable.policy]
 agent = "代理模式"
 read_only = "代理模式"
-
-[chatwidget.collab]
-spawn_begin = "正在为调用 `${call_id}` 启动子 Agent。"
-spawn_end_with_agent = "`${receiver_id}` 启动完成，状态为 `${status}`。"
-spawn_end_without_agent = "子 Agent 启动流程结束，状态为 `${status}`。"
-interaction_begin = "正在向 `${receiver_id}` 派发任务。"
-interaction_end = "与 `${receiver_id}` 的交互结束，状态为 `${status}`。"
-waiting_begin = "正在等待 `${receiver_id}`。"
-waiting_end = "等待 `${receiver_id}` 结束，状态为 `${status}`。"
-close_begin = "正在关闭 `${receiver_id}`。"
-close_end = "`${receiver_id}` 关闭结束，状态为 `${status}`。"
 
 [chatwidget.collab.status]
 pending_init = "初始化中"

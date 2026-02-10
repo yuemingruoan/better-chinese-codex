@@ -46,16 +46,33 @@ impl AgentControl {
         prompt: String,
         session_source: Option<codex_protocol::protocol::SessionSource>,
     ) -> CodexResult<ThreadId> {
-        self.spawn_agent_with_metadata(config, prompt, AgentSpawnMetadata::default())
-            .await
+        self.spawn_agent_with_metadata_and_source(
+            config,
+            prompt,
+            AgentSpawnMetadata::default(),
+            session_source,
+        )
+        .await
     }
 
+    #[allow(dead_code)] // Kept for compatibility with existing call sites/tests.
     /// Spawn a new agent thread and submit the initial prompt.
     pub(crate) async fn spawn_agent_with_metadata(
         &self,
         config: crate::config::Config,
         prompt: String,
         metadata: AgentSpawnMetadata,
+    ) -> CodexResult<ThreadId> {
+        self.spawn_agent_with_metadata_and_source(config, prompt, metadata, None)
+            .await
+    }
+
+    pub(crate) async fn spawn_agent_with_metadata_and_source(
+        &self,
+        config: crate::config::Config,
+        prompt: String,
+        metadata: AgentSpawnMetadata,
+        session_source: Option<codex_protocol::protocol::SessionSource>,
     ) -> CodexResult<ThreadId> {
         let state = self.upgrade()?;
         let reservation = self.state.reserve_spawn_slot(config.agent_max_threads)?;
@@ -80,6 +97,12 @@ impl AgentControl {
         self.send_prompt(new_thread.thread_id, prompt).await?;
 
         Ok(new_thread.thread_id)
+    }
+
+    /// Interrupt the current task for an existing agent thread.
+    pub(crate) async fn interrupt_agent(&self, agent_id: ThreadId) -> CodexResult<String> {
+        let state = self.upgrade()?;
+        state.send_op(agent_id, Op::Interrupt).await
     }
 
     /// Send a `user` prompt to an existing agent thread.

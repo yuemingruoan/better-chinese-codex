@@ -1,10 +1,11 @@
 ---
 source: tui/src/bottom_pane/chat_composer.rs
+assertion_line: 4765
 expression: terminal.backend()
 ---
 "                                                            "
 "› /res                                                      "
 "                                                            "
-"  /resume                 resume a saved chat               "
-"  /sdd-develop-parallels  start the parallel SDD workflow   "
-"                          (main agent + sub agents)         "
+"                                                            "
+"                                                            "
+"  /resume  resume a saved chat                              "

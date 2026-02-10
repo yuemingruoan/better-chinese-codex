@@ -44,6 +44,44 @@ use tracing::warn;
 
 const THREAD_CREATED_CHANNEL_CAPACITY: usize = 1024;
 
+fn build_file_watcher(codex_home: PathBuf, skills_manager: Arc<SkillsManager>) -> Arc<FileWatcher> {
+    #[cfg(any(test, feature = "test-support"))]
+    if let Ok(handle) = Handle::try_current()
+        && handle.runtime_flavor() == RuntimeFlavor::CurrentThread
+    {
+        warn!("using noop file watcher under current-thread test runtime");
+        return Arc::new(FileWatcher::noop());
+    }
+
+    let file_watcher = match FileWatcher::new(codex_home) {
+        Ok(file_watcher) => Arc::new(file_watcher),
+        Err(err) => {
+            warn!("failed to initialize file watcher: {err}");
+            Arc::new(FileWatcher::noop())
+        }
+    };
+
+    let mut rx = file_watcher.subscribe();
+    let skills_manager = Arc::clone(&skills_manager);
+    if let Ok(handle) = Handle::try_current() {
+        handle.spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(FileWatcherEvent::SkillsChanged { .. }) => {
+                        skills_manager.clear_cache();
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                }
+            }
+        });
+    } else {
+        warn!("file watcher listener skipped: no Tokio runtime available");
+    }
+
+    file_watcher
+}
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AgentSpawnMetadata {
     pub creator_thread_id: Option<ThreadId>,
