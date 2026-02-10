@@ -191,6 +191,7 @@ impl AgentControl {
         let state = self.upgrade()?;
         let result = state.send_op(agent_id, Op::Shutdown {}).await;
         let _ = state.remove_thread(&agent_id).await;
+        self.state.release_spawned_thread(agent_id);
         if result.is_ok() {
             state
                 .mark_agent_closed(agent_id, AgentStatus::Shutdown)
@@ -512,6 +513,39 @@ mod tests {
             .into_iter()
             .find(|entry| *entry == expected);
         assert_eq!(captured, Some(expected));
+    }
+
+    #[tokio::test]
+    async fn shutdown_agent_releases_spawn_slot() {
+        let harness = AgentControlHarness::new().await;
+        let mut config = harness.config.clone();
+        config.agent_max_threads = Some(1);
+
+        let first = harness
+            .control
+            .spawn_agent(config.clone(), "first".to_string(), None)
+            .await
+            .expect("first spawn should succeed");
+
+        let _ = harness
+            .control
+            .shutdown_agent(first)
+            .await
+            .expect("shutdown should succeed");
+
+        let second = harness
+            .control
+            .spawn_agent(config, "second".to_string(), None)
+            .await
+            .expect("second spawn should succeed after slot release");
+
+        assert_ne!(first, second);
+
+        let _ = harness
+            .control
+            .shutdown_agent(second)
+            .await
+            .expect("second shutdown should succeed");
     }
 
     #[tokio::test]

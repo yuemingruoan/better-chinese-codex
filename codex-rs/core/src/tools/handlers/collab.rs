@@ -2607,6 +2607,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn close_agent_releases_spawn_slot_for_follow_up_spawn() {
+        let (mut session, mut turn) = make_session_and_context().await;
+        overwrite_turn_config(&mut turn, |config| {
+            config.agent_max_threads = Some(1);
+        });
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let session = Arc::new(session);
+        let turn = Arc::new(turn);
+
+        let first_spawn = invocation(
+            session.clone(),
+            turn.clone(),
+            "spawn_agent",
+            function_payload(json!({ "message": "first worker" })),
+        );
+        let first_output = CollabHandler
+            .handle(first_spawn)
+            .await
+            .expect("first spawn should succeed");
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(first_body),
+            success: first_success,
+            ..
+        } = first_output
+        else {
+            panic!("expected function output");
+        };
+        assert_eq!(first_success, Some(true));
+        let first_value: serde_json::Value =
+            serde_json::from_str(&first_body).expect("first spawn result should be json");
+        let first_agent_id = first_value
+            .get("agent_id")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|id| ThreadId::from_string(id).ok())
+            .expect("first agent id should be present");
+
+        let close_invocation = invocation(
+            session.clone(),
+            turn.clone(),
+            "close_agent",
+            function_payload(json!({ "id": first_agent_id.to_string() })),
+        );
+        let close_output = CollabHandler
+            .handle(close_invocation)
+            .await
+            .expect("close_agent should succeed");
+        let ToolOutput::Function {
+            success: close_success,
+            ..
+        } = close_output
+        else {
+            panic!("expected function output");
+        };
+        assert_eq!(close_success, Some(true));
+
+        let second_spawn = invocation(
+            session,
+            turn,
+            "spawn_agent",
+            function_payload(json!({ "message": "second worker" })),
+        );
+        let second_output = CollabHandler
+            .handle(second_spawn)
+            .await
+            .expect("second spawn should succeed after close");
+        let ToolOutput::Function {
+            success: second_success,
+            ..
+        } = second_output
+        else {
+            panic!("expected function output");
+        };
+        assert_eq!(second_success, Some(true));
+    }
+
+    #[tokio::test]
     async fn close_agent_does_not_auto_close_descendants_when_disabled_in_config() {
         let (mut session, mut turn) = make_session_and_context().await;
         overwrite_turn_config(&mut turn, |config| {

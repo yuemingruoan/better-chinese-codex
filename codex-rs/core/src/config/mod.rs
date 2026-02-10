@@ -95,12 +95,12 @@ pub use codex_git::GhostSnapshotConfig;
 /// files are *silently truncated* to this size so we do not take up too much of
 /// the context window.
 pub(crate) const PROJECT_DOC_MAX_BYTES: usize = 32 * 1024; // 32 KiB
-pub const DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD: usize = 8;
+pub const DEFAULT_COLLAB_MAX_ACTIVE_SUBAGENTS_PER_THREAD: usize = 30;
 pub const DEFAULT_COLLAB_MAX_SPAWN_DEPTH: usize = 1;
 pub const DEFAULT_COLLAB_WAIT_TIMEOUT_MS: i64 = 30_000;
 pub const DEFAULT_COLLAB_AUTO_CLOSE_ON_PARENT_SHUTDOWN: bool = true;
 pub const DEFAULT_COLLAB_ALLOW_SUBAGENT_PERMISSION_ESCALATION: bool = false;
-pub(crate) const DEFAULT_AGENT_MAX_THREADS: Option<usize> = Some(6);
+pub(crate) const DEFAULT_AGENT_MAX_THREADS: Option<usize> = Some(30);
 
 pub const CONFIG_TOML_FILE: &str = "config.toml";
 
