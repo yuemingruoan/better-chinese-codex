@@ -15,6 +15,24 @@
 - Code conflicts require manual review case by case; default to preserving fork features and integrating upstream capabilities when possible.
 - Keep fork version numbers; do not align to upstream versions.
 
+## Release publishing workflow（常规发布流程）
+
+- 常规流程固定为：`develop-main` 开发与验证 → 打包提交 → 升级版本号 → 更新发布说明 → 发起并合并 `develop-main -> main` 的 PR → 手动触发 `release.yml`。
+- 每次发布必须同步更新版本号（至少以下位置）：
+  - `codex-rs/Cargo.toml` 的 workspace version
+  - `codex-cli/package.json`
+  - `sdk/typescript/package.json`
+  - `shell-tool-mcp/package.json`
+  - `codex-rs/responses-api-proxy/npm/package.json`
+- 每次发布必须更新 `docs/release/notes.md`，中英文都要覆盖，文件路径默认用于 release workflow 的 `notes_file` 入参。
+- PR 合并目标固定为 `main`，来源分支固定为 `develop-main`（除非用户明确要求其他分支策略）。
+- 发布使用 `.github/workflows/release.yml`，推荐参数：
+  - `tag`: `v<semver>`（例如 `v1.7.1`）
+  - `target`: `main`
+  - `notes_file`: `docs/release/notes.md`
+  - `draft` / `prerelease`: 按发布类型设置
+- `.github/workflows/release.yml` 与 `.github/workflows/build-platform-binaries.yml` 属于保留工作流，禁止删除或覆盖为非等价实现。
+
 # Rust/codex-rs
 
 In the codex-rs folder where the rust code lives:
