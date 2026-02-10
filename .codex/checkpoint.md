@@ -154,33 +154,39 @@
 
 - 当前待办：
   - 等待用户确认更新后的计划或补充需求。
-## 2026-02-06 11:51:29 CST
-- 新增 upstream `rust-v0.98.0` 合并任务规划 `.codex/task.md`。
-- 确认合并目标：sdd 分支、文档中文化与 i18n、保持 fork 版本号。
+## 2026-02-09 01:55:10 CST
+- 实现 `/sdd-develop-parallels`（tui/tui2）：新增命令入口、`SddWorkflow` 分流、collab experimental 门禁、并行流程计划/执行/合并提示词接入。
+- parallels 路径去硬编码 Git 动作：计划批准后不再触发 `CreateBranch`，合并阶段不再触发 `FinalizeMerge`（tui2）；改为提示词引导主 Agent 编排。
+- 新增中英文 i18n：`prompt.sdd_*_parallels`、`chatwidget.sdd.*parallels`、`slash_command.description.sdd_develop_parallels`，并增强现有 `sdd_execute` 协作说明。
+- 补充回归测试（tui/tui2）：collab 门禁、计划批准不触发 `SddGitAction::CreateBranch`、parallels 合并不走硬编码 Git 路径。
+- 同步提示词镜像文档：更新 `prompt_for_sdd_execute*.md` 协作原则，新增 plan/execute/merge parallels 中英文文档（tui 与 tui2）。
+- 已执行：`just fmt`、`just fix -p codex-tui`、`just fix -p codex-tui2`、`cargo test -p codex-core i18n::tests::catalogs_share_keys`、`cargo test -p codex-tui --lib`、`cargo test -p codex-tui2 --lib`；并接受 2 处 slash popup 快照更新。
 
 - 当前待办：
-  - 等待用户确认计划或提出异议。
+  - `cargo test -p codex-core` 全量仍有既有环境/二进制依赖失败（`codex` / `test_stdio_server` 缺失等），需按项目测试环境补齐后二次确认。
+  - `cargo test -p codex-tui` 与 `cargo test -p codex-tui2` 的 integration 测试会因缺少 `codex` 二进制失败；lib 测试已全部通过。
 
-## 2026-02-06 17:39:50 CST
-- 在 `.codex/task.md` 追加 gpt-5.3 迁移任务（T8-T10），准备按官方行为在 `main` 分支执行。
-
-- 当前待办：
-  - 执行 T8-T10，完成模型支持、测试与格式化。
-
-## 2026-02-06 18:25:04 CST
-- T8-T10 已完成；按用户要求跳过 `cargo test --all-features`。
+## 2026-02-09 02:05:54 CST
+- 完成收口复检：`just fmt`、`cargo test -p codex-tui`、`cargo test -p codex-tui2` 均通过（含 `tests/all.rs`）。
+- 为 core 集成测试补齐依赖：执行 `cargo build -p codex-rmcp-client --bin test_stdio_server` 后，`rmcp_client/truncation` 相关失败已消除。
+- `cargo test -p codex-core` 仍剩 2 个失败：`suite::model_tools::model_selects_expected_tools`、`suite::prompt_caching::prompt_tools_are_consistent_across_requests`（均为工具列表期望未包含 `batches_read_file`）。
+- 已确认无未处理快照：`.snap.new` 文件为 0；`.codex/task.md` 的 T9 保持未完成并记录阻塞。
 
 - 当前待办：
-  - 提交剩余改动并同步最终测试结果（不含全量测试）。
+  - 评估并修复 `codex-core` 两个既有断言（工具列表期望）后，复跑 `cargo test -p codex-core` 并更新 T9 状态。
 
-## 2026-02-09 00:51:02 CST
-- 新建 `/sdd-develop-parallels` 需求的阶段性计划，并覆盖 `.codex/task.md`。
-- 落实多智能体方案约束：主 Agent 统筹、Sub Agent 分工、冲突处理与收尾职责。
-- 规划将 parallels 流程中的“创建分支/合并分支”从硬编码操作迁移为提示词引导。
-- 当前待办：等待用户确认计划内容是否有异议，再进入实现阶段。
+## 2026-02-09 02:35:34 CST
+- 修复 `codex-core` 断言：更新 `core/tests/suite/model_tools.rs` 与 `core/tests/suite/prompt_caching.rs`，为默认工具列表补齐 `batches_read_file` 期望。
+- 执行 `just fmt` 后复跑 `cargo test -p codex-core`，全量通过（单元 + `tests/all.rs` + 其余测试集）。
+- 已完成 SDD 收尾：`.codex/task.md` 中 T9 由 `[ ]` 更新为 `[x]`；并确认无 `.snap.new` 残留。
 
-## 2026-02-09 01:01:53 CST
-- 根据用户确认更新 `.codex/task.md`：明确 `/sdd-develop-parallels` 必须在 experimental 开启后才能使用。
-- 补充提示词改造范围：除新增 parallels 提示词外，允许并计划优化现有 SDD 提示词。
-- 同步调整任务、验收标准与测试计划，新增 experimental 门禁验证点。
-- 当前待办：等待用户确认更新后的规划，再开始实施开发。
+- 当前待办：
+  - 无
+
+## 2026-02-09 12:29:45 CST
+- 阅读并核对 `/sdd-develop` 相关实现（`tui`/`tui2` chatwidget、`core` 的 `sdd_git` 与 i18n 提示词），确认当前分支创建与合并清理时机。
+- 按新需求重写 `.codex/task.md`：将工作流目标调整为“创建 task.md 前签出固定分支 `sdd-develop`，合并后删除该分支”，并补齐双端实现、测试、回滚与汇报计划。
+- 保持任务状态初始化为 `[ ]`，等待执行阶段逐项勾选。
+
+- 当前待办：
+  - 等待用户确认新的任务计划或提出异议。

@@ -212,6 +212,7 @@ use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::DeveloperInstructions;
+use codex_protocol::models::MessagePhase;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
@@ -4528,6 +4529,9 @@ async fn try_run_sampling_request(
         FuturesOrdered::new();
     let mut needs_follow_up = false;
     let mut last_agent_message: Option<String> = None;
+    let mut saw_assistant_commentary_message = false;
+    let mut saw_assistant_non_commentary_message = false;
+    let mut saw_tool_call = false;
     let mut active_item: Option<TurnItem> = None;
     let mut should_emit_turn_diff = false;
     let plan_mode = turn_context.collaboration_mode.mode == ModeKind::Plan;
@@ -4569,6 +4573,16 @@ async fn try_run_sampling_request(
         match event {
             ResponseEvent::Created => {}
             ResponseEvent::OutputItemDone(item) => {
+                if let ResponseItem::Message { role, phase, .. } = &item
+                    && role == "assistant"
+                {
+                    if matches!(phase, Some(MessagePhase::Commentary)) {
+                        saw_assistant_commentary_message = true;
+                    } else {
+                        saw_assistant_non_commentary_message = true;
+                    }
+                }
+
                 let previously_active_item = active_item.take();
                 if let Some(state) = plan_mode_state.as_mut() {
                     if let Some(previous) = previously_active_item.as_ref() {
@@ -4607,6 +4621,9 @@ async fn try_run_sampling_request(
                 let output_result = handle_output_item_done(&mut ctx, item, previously_active_item)
                     .instrument(handle_responses)
                     .await?;
+                if output_result.tool_future.is_some() {
+                    saw_tool_call = true;
+                }
                 if let Some(tool_future) = output_result.tool_future {
                     in_flight.push_back(tool_future);
                 }
@@ -4650,6 +4667,14 @@ async fn try_run_sampling_request(
                 response_id: _,
                 token_usage,
             } => {
+                if saw_assistant_commentary_message
+                    && !saw_assistant_non_commentary_message
+                    && !saw_tool_call
+                {
+                    // Commentary-only outputs are preambles, not final answers.
+                    needs_follow_up = true;
+                    last_agent_message = None;
+                }
                 if let Some(state) = plan_mode_state.as_mut() {
                     flush_proposed_plan_segments_all(&sess, &turn_context, state).await;
                 }

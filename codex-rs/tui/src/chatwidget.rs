@@ -249,12 +249,24 @@ fn sdd_plan_prompt_template(language: Language) -> &'static str {
     tr(language, "prompt.sdd_plan")
 }
 
+fn sdd_plan_parallels_prompt_template(language: Language) -> &'static str {
+    tr(language, "prompt.sdd_plan_parallels")
+}
+
 fn sdd_exec_prompt_template(language: Language) -> &'static str {
     tr(language, "prompt.sdd_execute")
 }
 
+fn sdd_exec_parallels_prompt_template(language: Language) -> &'static str {
+    tr(language, "prompt.sdd_execute_parallels")
+}
+
 fn sdd_merge_prompt_template(language: Language) -> &'static str {
     tr(language, "prompt.sdd_merge")
+}
+
+fn sdd_merge_parallels_prompt_template(language: Language) -> &'static str {
+    tr(language, "prompt.sdd_merge_parallels")
 }
 const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 // Track information about an in-flight exec command.
@@ -478,8 +490,15 @@ enum SddDevelopStage {
     AwaitDevDecision,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SddWorkflow {
+    Standard,
+    Parallels,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SddDevelopState {
+    workflow: SddWorkflow,
     description: String,
     branch_name: String,
     base_branch: Option<String>,
@@ -1216,7 +1235,11 @@ impl ChatWidget {
             }
             match action {
                 SddGitPendingAction::CreateBranch { description } => {
-                    let prompt = self.build_sdd_exec_prompt(&description);
+                    let workflow = self
+                        .sdd_state
+                        .as_ref()
+                        .map_or(SddWorkflow::Standard, |state| state.workflow);
+                    let prompt = self.build_sdd_exec_prompt(&description, workflow);
                     self.send_user_inputs(prompt, Vec::new());
                     if let Some(state) = self.sdd_state.as_mut() {
                         state.stage = SddDevelopStage::AwaitDevDecision;
@@ -3183,7 +3206,10 @@ impl ChatWidget {
                 self.submit_user_message(prompt.to_string().into());
             }
             SlashCommand::SddDevelop => {
-                self.handle_sdd_develop_command(None);
+                self.handle_sdd_develop_command(None, SddWorkflow::Standard);
+            }
+            SlashCommand::SddDevelopParallels => {
+                self.handle_sdd_develop_command(None, SddWorkflow::Parallels);
             }
             SlashCommand::Checkpoint => {
                 let prompt = checkpoint_prompt(self.config.language);
@@ -3409,13 +3435,28 @@ impl ChatWidget {
         }
     }
 
-    fn handle_sdd_develop_command(&mut self, description: Option<String>) {
+    fn is_sdd_workflow_enabled(&mut self, workflow: SddWorkflow) -> bool {
+        if workflow == SddWorkflow::Parallels && !self.config.features.enabled(Feature::Collab) {
+            let language = self.config.language;
+            self.add_info_message(
+                tr(language, "chatwidget.sdd.collab_required").to_string(),
+                Some(tr(language, "chatwidget.sdd.collab_required_hint").to_string()),
+            );
+            return false;
+        }
+        true
+    }
+
+    fn handle_sdd_develop_command(&mut self, description: Option<String>, workflow: SddWorkflow) {
         let language = self.config.language;
         if get_git_repo_root(&self.config.cwd).is_none() {
             self.add_info_message(
                 tr(language, "chatwidget.sdd.not_git_repo").to_string(),
                 None,
             );
+            return;
+        }
+        if !self.is_sdd_workflow_enabled(workflow) {
             return;
         }
 
@@ -3429,16 +3470,22 @@ impl ChatWidget {
             self.sdd_git_action_failed = false;
             let branch_name = self.sdd_branch_name(&desc);
             self.sdd_state = Some(SddDevelopState {
+                workflow,
                 description: desc.clone(),
                 branch_name,
                 base_branch: None,
                 stage: SddDevelopStage::AwaitPlanDecision,
             });
-            let prompt = self.build_sdd_plan_prompt(&desc);
+            let prompt = self.build_sdd_plan_prompt(&desc, workflow);
             self.send_user_inputs(prompt, Vec::new());
+            let plan_request_hint = if workflow == SddWorkflow::Parallels {
+                tr(language, "chatwidget.sdd.plan_request_hint_parallels").to_string()
+            } else {
+                tr(language, "chatwidget.sdd.plan_request_hint").to_string()
+            };
             self.add_info_message(
                 tr(language, "chatwidget.sdd.plan_request_sent").to_string(),
-                Some(tr(language, "chatwidget.sdd.plan_request_hint").to_string()),
+                Some(plan_request_hint),
             );
             self.open_sdd_plan_options();
             return;
@@ -3466,10 +3513,12 @@ impl ChatWidget {
                 self.open_sdd_dev_options();
             }
             None => {
-                self.add_info_message(
-                    tr(language, "chatwidget.sdd.require_description").to_string(),
-                    None,
-                );
+                let require_description = if workflow == SddWorkflow::Parallels {
+                    tr(language, "chatwidget.sdd.require_description_parallels")
+                } else {
+                    tr(language, "chatwidget.sdd.require_description")
+                };
+                self.add_info_message(require_description.to_string(), None);
             }
         }
     }
@@ -3571,9 +3620,9 @@ impl ChatWidget {
 
     pub(crate) async fn on_sdd_plan_approved(&mut self) {
         let language = self.config.language;
-        let description = match self.sdd_state.as_ref() {
+        let (description, workflow) = match self.sdd_state.as_ref() {
             Some(state) if state.stage == SddDevelopStage::AwaitPlanDecision => {
-                state.description.clone()
+                (state.description.clone(), state.workflow)
             }
             Some(_) => {
                 self.add_info_message(
@@ -3593,6 +3642,25 @@ impl ChatWidget {
 
         self.sdd_pending_plan_rework_prompt = None;
         self.sdd_open_plan_options_after_task = false;
+
+        if workflow == SddWorkflow::Parallels {
+            if let Some(base_branch) = current_branch_name(&self.config.cwd).await
+                && let Some(state) = self.sdd_state.as_mut()
+            {
+                state.base_branch = Some(base_branch);
+            }
+            if let Some(state) = self.sdd_state.as_mut() {
+                state.stage = SddDevelopStage::AwaitDevDecision;
+            }
+            let prompt = self.build_sdd_exec_prompt(&description, workflow);
+            self.send_user_inputs(prompt, Vec::new());
+            self.add_info_message(
+                tr(language, "chatwidget.sdd.exec_sent").to_string(),
+                Some(tr(language, "chatwidget.sdd.exec_sent_hint_parallels").to_string()),
+            );
+            self.open_sdd_dev_options();
+            return;
+        }
 
         let branch_name = match self.sdd_state.as_ref() {
             Some(state) => state.branch_name.clone(),
@@ -3703,13 +3771,19 @@ impl ChatWidget {
             );
             return;
         }
-        let prompt = self.build_sdd_merge_prompt(&state.description, &state.branch_name);
+        let merge_hint = if state.workflow == SddWorkflow::Parallels {
+            tr(language, "chatwidget.sdd.merge_guidance_hint_parallels").to_string()
+        } else {
+            tr(language, "chatwidget.sdd.merge_guidance_hint").to_string()
+        };
+        let prompt =
+            self.build_sdd_merge_prompt(&state.description, &state.branch_name, state.workflow);
         self.sdd_pending_git_action = None;
         self.sdd_git_action_failed = false;
         self.send_user_inputs(prompt, Vec::new());
         self.add_info_message(
             tr(language, "chatwidget.sdd.merge_guidance_sent").to_string(),
-            Some(tr(language, "chatwidget.sdd.merge_guidance_hint").to_string()),
+            Some(merge_hint),
         );
     }
 
@@ -3756,20 +3830,35 @@ impl ChatWidget {
         );
     }
 
-    fn build_sdd_plan_prompt(&self, description: &str) -> String {
-        let template = sdd_plan_prompt_template(self.config.language).trim();
-        let description_block = format!(
-            "{}\n{description}",
-            tr(self.config.language, "chatwidget.sdd.requirement_label")
-        );
+    fn build_sdd_plan_prompt(&self, description: &str, workflow: SddWorkflow) -> String {
+        let template = match workflow {
+            SddWorkflow::Standard => sdd_plan_prompt_template(self.config.language),
+            SddWorkflow::Parallels => sdd_plan_parallels_prompt_template(self.config.language),
+        }
+        .trim();
+        let description_block = if workflow == SddWorkflow::Parallels {
+            match self.sdd_state.as_ref() {
+                Some(state) => format!(
+                    "{}\n{description}\n{}\n{}",
+                    tr(self.config.language, "chatwidget.sdd.requirement_label"),
+                    tr(self.config.language, "chatwidget.sdd.branch_label"),
+                    state.branch_name
+                ),
+                None => format!(
+                    "{}\n{description}",
+                    tr(self.config.language, "chatwidget.sdd.requirement_label")
+                ),
+            }
+        } else {
+            format!(
+                "{}\n{description}",
+                tr(self.config.language, "chatwidget.sdd.requirement_label")
+            )
+        };
         if template.is_empty() {
             description_block
         } else {
-            format!(
-                "{}\n\n{}",
-                sdd_plan_prompt_template(self.config.language),
-                description_block
-            )
+            format!("{template}\n\n{description_block}")
         }
     }
 
@@ -3805,8 +3894,12 @@ impl ChatWidget {
         tr(self.config.language, "chatwidget.sdd.plan_rework_prompt").to_string()
     }
 
-    fn build_sdd_exec_prompt(&self, description: &str) -> String {
-        let template = sdd_exec_prompt_template(self.config.language).trim();
+    fn build_sdd_exec_prompt(&self, description: &str, workflow: SddWorkflow) -> String {
+        let template = match workflow {
+            SddWorkflow::Standard => sdd_exec_prompt_template(self.config.language),
+            SddWorkflow::Parallels => sdd_exec_parallels_prompt_template(self.config.language),
+        }
+        .trim();
         let description_block = format!(
             "{}\n{description}",
             tr(self.config.language, "chatwidget.sdd.requirement_label")
@@ -3814,16 +3907,21 @@ impl ChatWidget {
         if template.is_empty() {
             description_block
         } else {
-            format!(
-                "{}\n\n{}",
-                sdd_exec_prompt_template(self.config.language),
-                description_block
-            )
+            format!("{template}\n\n{description_block}")
         }
     }
 
-    fn build_sdd_merge_prompt(&self, description: &str, branch_name: &str) -> String {
-        let template = sdd_merge_prompt_template(self.config.language).trim();
+    fn build_sdd_merge_prompt(
+        &self,
+        description: &str,
+        branch_name: &str,
+        workflow: SddWorkflow,
+    ) -> String {
+        let template = match workflow {
+            SddWorkflow::Standard => sdd_merge_prompt_template(self.config.language),
+            SddWorkflow::Parallels => sdd_merge_parallels_prompt_template(self.config.language),
+        }
+        .trim();
         let context_block = format!(
             "{}\n{description}\n{}\n{branch_name}",
             tr(self.config.language, "chatwidget.sdd.requirement_label"),
@@ -3832,11 +3930,7 @@ impl ChatWidget {
         if template.is_empty() {
             context_block
         } else {
-            format!(
-                "{}\n\n{}",
-                sdd_merge_prompt_template(self.config.language),
-                context_block
-            )
+            format!("{template}\n\n{context_block}")
         }
     }
 
@@ -3929,7 +4023,15 @@ impl ChatWidget {
                 } else {
                     Some(trimmed.to_string())
                 };
-                self.handle_sdd_develop_command(desc);
+                self.handle_sdd_develop_command(desc, SddWorkflow::Standard);
+            }
+            SlashCommand::SddDevelopParallels => {
+                let desc = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
+                self.handle_sdd_develop_command(desc, SddWorkflow::Parallels);
             }
             _ => self.dispatch_command(cmd),
         }
@@ -4232,7 +4334,13 @@ impl ChatWidget {
 
     fn try_handle_sdd_develop(&mut self, text: &str) -> bool {
         if let Some((name, rest, _rest_offset)) = parse_slash_name(text)
-            && name == SlashCommand::SddDevelop.command()
+            && let Some(workflow) = match name {
+                name if name == SlashCommand::SddDevelop.command() => Some(SddWorkflow::Standard),
+                name if name == SlashCommand::SddDevelopParallels.command() => {
+                    Some(SddWorkflow::Parallels)
+                }
+                _ => None,
+            }
         {
             let description = rest.trim();
             let description = if description.is_empty() {
@@ -4240,7 +4348,7 @@ impl ChatWidget {
             } else {
                 Some(description.to_string())
             };
-            self.handle_sdd_develop_command(description);
+            self.handle_sdd_develop_command(description, workflow);
             return true;
         }
         false
@@ -7505,6 +7613,11 @@ fn format_duration_short(seconds: u64) -> String {
     } else {
         format!("{}d", seconds / 86_400)
     }
+}
+
+fn is_timeout_error(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("timed out") || lower.contains("timeout")
 }
 
 #[cfg(test)]

@@ -39,6 +39,7 @@ pub enum SlashCommand {
     Status,
     SddDevelop,
     DebugConfig,
+    SddDevelopParallels,
     Mcp,
     Apps,
     Logout,
@@ -87,6 +88,9 @@ impl SlashCommand {
             SlashCommand::Checkpoint => tr(language, "slash_command.description.checkpoint"),
             SlashCommand::SddDevelop => tr(language, "slash_command.description.sdd_develop"),
             SlashCommand::DebugConfig => tr(language, "slash_command.description.debug_config"),
+            SlashCommand::SddDevelopParallels => {
+                tr(language, "slash_command.description.sdd_develop_parallels")
+            }
             SlashCommand::Personality => tr(language, "slash_command.description.personality"),
             SlashCommand::Plan => tr(language, "slash_command.description.plan"),
             SlashCommand::Collab => tr(language, "slash_command.description.collab"),
@@ -104,7 +108,11 @@ impl SlashCommand {
     pub fn supports_inline_args(self) -> bool {
         matches!(
             self,
-            SlashCommand::Review | SlashCommand::Rename | SlashCommand::Plan
+            SlashCommand::Review
+                | SlashCommand::Rename
+                | SlashCommand::Plan
+                | SlashCommand::SddDevelop
+                | SlashCommand::SddDevelopParallels
         )
     }
 
@@ -118,6 +126,7 @@ impl SlashCommand {
             | SlashCommand::Checkpoint
             | SlashCommand::Compact
             | SlashCommand::SddDevelop
+            | SlashCommand::SddDevelopParallels
             | SlashCommand::Model
             | SlashCommand::Lang
             | SlashCommand::Personality

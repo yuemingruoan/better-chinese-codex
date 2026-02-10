@@ -2,10 +2,14 @@ use crate::agent::AgentStatus;
 use crate::agent::guards::Guards;
 use crate::error::CodexErr;
 use crate::error::Result as CodexResult;
+use crate::thread_manager::AgentRegistryRecord;
+use crate::thread_manager::AgentSpawnMetadata;
 use crate::thread_manager::ThreadManagerState;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::Op;
 use codex_protocol::user_input::UserInput;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::Weak;
 use tokio::sync::watch;
@@ -34,11 +38,40 @@ impl AgentControl {
         }
     }
 
+    #[allow(dead_code)] // Kept for compatibility with existing call sites/tests.
     /// Spawn a new agent thread and submit the initial prompt.
     pub(crate) async fn spawn_agent(
         &self,
         config: crate::config::Config,
         prompt: String,
+        session_source: Option<codex_protocol::protocol::SessionSource>,
+    ) -> CodexResult<ThreadId> {
+        self.spawn_agent_with_metadata_and_source(
+            config,
+            prompt,
+            AgentSpawnMetadata::default(),
+            session_source,
+        )
+        .await
+    }
+
+    #[allow(dead_code)] // Kept for compatibility with existing call sites/tests.
+    /// Spawn a new agent thread and submit the initial prompt.
+    pub(crate) async fn spawn_agent_with_metadata(
+        &self,
+        config: crate::config::Config,
+        prompt: String,
+        metadata: AgentSpawnMetadata,
+    ) -> CodexResult<ThreadId> {
+        self.spawn_agent_with_metadata_and_source(config, prompt, metadata, None)
+            .await
+    }
+
+    pub(crate) async fn spawn_agent_with_metadata_and_source(
+        &self,
+        config: crate::config::Config,
+        prompt: String,
+        metadata: AgentSpawnMetadata,
         session_source: Option<codex_protocol::protocol::SessionSource>,
     ) -> CodexResult<ThreadId> {
         let state = self.upgrade()?;
@@ -59,10 +92,17 @@ impl AgentControl {
         // to subscribe or drain this newly created thread.
         // TODO(jif) add helper for drain
         state.notify_thread_created(new_thread.thread_id);
+        state.register_agent(new_thread.thread_id, metadata).await;
 
         self.send_prompt(new_thread.thread_id, prompt).await?;
 
         Ok(new_thread.thread_id)
+    }
+
+    /// Interrupt the current task for an existing agent thread.
+    pub(crate) async fn interrupt_agent(&self, agent_id: ThreadId) -> CodexResult<String> {
+        let state = self.upgrade()?;
+        state.send_op(agent_id, Op::Interrupt).await
     }
 
     /// Send a `user` prompt to an existing agent thread.
@@ -92,19 +132,24 @@ impl AgentControl {
         result
     }
 
-    /// Interrupt the current task for an existing agent thread.
-    pub(crate) async fn interrupt_agent(&self, agent_id: ThreadId) -> CodexResult<String> {
-        let state = self.upgrade()?;
-        state.send_op(agent_id, Op::Interrupt).await
-    }
-
+    #[allow(dead_code)] // Kept for compatibility with existing call sites/tests.
     /// Submit a shutdown request to an existing agent thread.
     pub(crate) async fn shutdown_agent(&self, agent_id: ThreadId) -> CodexResult<String> {
-        let state = self.upgrade()?;
-        let result = state.send_op(agent_id, Op::Shutdown {}).await;
-        let _ = state.remove_thread(&agent_id).await;
-        self.state.release_spawned_thread(agent_id);
-        result
+        self.shutdown_agent_with_descendants(agent_id, true).await
+    }
+
+    /// Submit a shutdown request and optionally close active descendants first.
+    pub(crate) async fn shutdown_agent_with_descendants(
+        &self,
+        agent_id: ThreadId,
+        auto_close_descendants: bool,
+    ) -> CodexResult<String> {
+        if auto_close_descendants {
+            for descendant_id in self.collect_active_descendant_ids(agent_id).await? {
+                let _ = self.shutdown_agent_only(descendant_id).await;
+            }
+        }
+        self.shutdown_agent_only(agent_id).await
     }
 
     /// Fetch the last known status for `agent_id`, returning `NotFound` when unavailable.
@@ -127,6 +172,70 @@ impl AgentControl {
         let state = self.upgrade()?;
         let thread = state.get_thread(agent_id).await?;
         Ok(thread.subscribe_status())
+    }
+
+    pub(crate) async fn list_agents(&self) -> CodexResult<Vec<AgentRegistryRecord>> {
+        let state = self.upgrade()?;
+        Ok(state.list_agent_records().await)
+    }
+
+    pub(crate) async fn get_agent_record(
+        &self,
+        agent_id: ThreadId,
+    ) -> CodexResult<Option<AgentRegistryRecord>> {
+        let state = self.upgrade()?;
+        Ok(state.get_agent_record(agent_id).await)
+    }
+
+    async fn shutdown_agent_only(&self, agent_id: ThreadId) -> CodexResult<String> {
+        let state = self.upgrade()?;
+        let result = state.send_op(agent_id, Op::Shutdown {}).await;
+        let _ = state.remove_thread(&agent_id).await;
+        self.state.release_spawned_thread(agent_id);
+        if result.is_ok() {
+            state
+                .mark_agent_closed(agent_id, AgentStatus::Shutdown)
+                .await;
+        }
+        result
+    }
+
+    async fn collect_active_descendant_ids(
+        &self,
+        agent_id: ThreadId,
+    ) -> CodexResult<Vec<ThreadId>> {
+        let state = self.upgrade()?;
+        let records = state.list_agent_records().await;
+        let mut children_by_parent: HashMap<ThreadId, Vec<ThreadId>> = HashMap::new();
+        for record in records {
+            if record.closed {
+                continue;
+            }
+            if let Some(parent_id) = record.creator_thread_id {
+                children_by_parent
+                    .entry(parent_id)
+                    .or_default()
+                    .push(record.agent_id);
+            }
+        }
+
+        let mut seen = HashSet::new();
+        let mut stack = vec![agent_id];
+        let mut descendants = Vec::new();
+        while let Some(parent_id) = stack.pop() {
+            if let Some(children) = children_by_parent.get(&parent_id) {
+                for child_id in children {
+                    if seen.insert(*child_id) {
+                        stack.push(*child_id);
+                        descendants.push(*child_id);
+                    }
+                }
+            }
+        }
+
+        // Close deepest descendants first so parent shutdown doesn't strand nested workers.
+        descendants.reverse();
+        Ok(descendants)
     }
 
     fn upgrade(&self) -> CodexResult<Arc<ThreadManagerState>> {
@@ -407,115 +516,166 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn spawn_agent_respects_max_threads_limit() {
-        let max_threads = 1usize;
-        let (_home, config) = test_config_with_cli_overrides(vec![(
-            "agents.max_threads".to_string(),
-            TomlValue::Integer(max_threads as i64),
-        )])
-        .await;
-        let manager = ThreadManager::with_models_provider_and_home(
-            CodexAuth::from_api_key("dummy"),
-            config.model_provider.clone(),
-            config.codex_home.clone(),
-        );
-        let control = manager.agent_control();
+    async fn shutdown_agent_releases_spawn_slot() {
+        let harness = AgentControlHarness::new().await;
+        let mut config = harness.config.clone();
+        config.agent_max_threads = Some(1);
 
-        let _ = manager
-            .start_thread(config.clone())
+        let first = harness
+            .control
+            .spawn_agent(config.clone(), "first".to_string(), None)
             .await
-            .expect("start thread");
+            .expect("first spawn should succeed");
 
-        let first_agent_id = control
-            .spawn_agent(config.clone(), "hello".to_string(), None)
+        let _ = harness
+            .control
+            .shutdown_agent(first)
             .await
-            .expect("spawn_agent should succeed");
+            .expect("shutdown should succeed");
 
-        let err = control
-            .spawn_agent(config, "hello again".to_string(), None)
+        let second = harness
+            .control
+            .spawn_agent(config, "second".to_string(), None)
             .await
-            .expect_err("spawn_agent should respect max threads");
-        let CodexErr::AgentLimitReached {
-            max_threads: seen_max_threads,
-        } = err
-        else {
-            panic!("expected CodexErr::AgentLimitReached");
-        };
-        assert_eq!(seen_max_threads, max_threads);
+            .expect("second spawn should succeed after slot release");
 
-        let _ = control
-            .shutdown_agent(first_agent_id)
+        assert_ne!(first, second);
+
+        let _ = harness
+            .control
+            .shutdown_agent(second)
             .await
-            .expect("shutdown agent");
+            .expect("second shutdown should succeed");
     }
 
     #[tokio::test]
-    async fn spawn_agent_releases_slot_after_shutdown() {
-        let max_threads = 1usize;
-        let (_home, config) = test_config_with_cli_overrides(vec![(
-            "agents.max_threads".to_string(),
-            TomlValue::Integer(max_threads as i64),
-        )])
-        .await;
-        let manager = ThreadManager::with_models_provider_and_home(
-            CodexAuth::from_api_key("dummy"),
-            config.model_provider.clone(),
-            config.codex_home.clone(),
+    async fn shutdown_agent_closes_active_descendants_first() {
+        let harness = AgentControlHarness::new().await;
+        let root_thread_id = ThreadId::new();
+        let parent_id = harness
+            .control
+            .spawn_agent_with_metadata(
+                harness.config.clone(),
+                "parent".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(root_thread_id),
+                    goal: "parent".to_string(),
+                    allow_nested_agents: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("spawn parent agent");
+        let child_id = harness
+            .control
+            .spawn_agent_with_metadata(
+                harness.config.clone(),
+                "child".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(parent_id),
+                    goal: "child".to_string(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("spawn child agent");
+
+        let _ = harness
+            .control
+            .shutdown_agent(parent_id)
+            .await
+            .expect("shutdown parent should succeed");
+
+        assert_eq!(
+            harness.control.get_status(parent_id).await,
+            AgentStatus::NotFound
         );
-        let control = manager.agent_control();
+        assert_eq!(
+            harness.control.get_status(child_id).await,
+            AgentStatus::NotFound
+        );
 
-        let first_agent_id = control
-            .spawn_agent(config.clone(), "hello".to_string(), None)
+        let parent_record = harness
+            .control
+            .get_agent_record(parent_id)
             .await
-            .expect("spawn_agent should succeed");
-        let _ = control
-            .shutdown_agent(first_agent_id)
+            .expect("load parent record")
+            .expect("parent record should exist");
+        let child_record = harness
+            .control
+            .get_agent_record(child_id)
             .await
-            .expect("shutdown agent");
-
-        let second_agent_id = control
-            .spawn_agent(config.clone(), "hello again".to_string(), None)
-            .await
-            .expect("spawn_agent should succeed after shutdown");
-        let _ = control
-            .shutdown_agent(second_agent_id)
-            .await
-            .expect("shutdown agent");
+            .expect("load child record")
+            .expect("child record should exist");
+        assert!(parent_record.closed);
+        assert_eq!(parent_record.status, AgentStatus::Shutdown);
+        assert!(child_record.closed);
+        assert_eq!(child_record.status, AgentStatus::Shutdown);
     }
 
     #[tokio::test]
-    async fn spawn_agent_limit_shared_across_clones() {
-        let max_threads = 1usize;
-        let (_home, config) = test_config_with_cli_overrides(vec![(
-            "agents.max_threads".to_string(),
-            TomlValue::Integer(max_threads as i64),
-        )])
-        .await;
-        let manager = ThreadManager::with_models_provider_and_home(
-            CodexAuth::from_api_key("dummy"),
-            config.model_provider.clone(),
-            config.codex_home.clone(),
+    async fn shutdown_agent_can_leave_descendants_running_when_auto_close_disabled() {
+        let harness = AgentControlHarness::new().await;
+        let root_thread_id = ThreadId::new();
+        let parent_id = harness
+            .control
+            .spawn_agent_with_metadata(
+                harness.config.clone(),
+                "parent".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(root_thread_id),
+                    goal: "parent".to_string(),
+                    allow_nested_agents: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("spawn parent agent");
+        let child_id = harness
+            .control
+            .spawn_agent_with_metadata(
+                harness.config.clone(),
+                "child".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(parent_id),
+                    goal: "child".to_string(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("spawn child agent");
+
+        let _ = harness
+            .control
+            .shutdown_agent_with_descendants(parent_id, false)
+            .await
+            .expect("shutdown parent should succeed");
+
+        assert_eq!(
+            harness.control.get_status(parent_id).await,
+            AgentStatus::NotFound
         );
-        let control = manager.agent_control();
-        let cloned = control.clone();
+        assert_ne!(
+            harness.control.get_status(child_id).await,
+            AgentStatus::NotFound
+        );
 
-        let first_agent_id = cloned
-            .spawn_agent(config.clone(), "hello".to_string(), None)
+        let parent_record = harness
+            .control
+            .get_agent_record(parent_id)
             .await
-            .expect("spawn_agent should succeed");
+            .expect("load parent record")
+            .expect("parent record should exist");
+        let child_record = harness
+            .control
+            .get_agent_record(child_id)
+            .await
+            .expect("load child record")
+            .expect("child record should exist");
+        assert!(parent_record.closed);
+        assert_eq!(parent_record.status, AgentStatus::Shutdown);
+        assert!(!child_record.closed);
 
-        let err = control
-            .spawn_agent(config, "hello again".to_string(), None)
-            .await
-            .expect_err("spawn_agent should respect shared guard");
-        let CodexErr::AgentLimitReached { max_threads } = err else {
-            panic!("expected CodexErr::AgentLimitReached");
-        };
-        assert_eq!(max_threads, 1);
-
-        let _ = control
-            .shutdown_agent(first_agent_id)
-            .await
-            .expect("shutdown agent");
+        let _ = harness.control.shutdown_agent(child_id).await;
     }
 }

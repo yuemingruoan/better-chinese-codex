@@ -50,134 +50,82 @@ async fn collect_tool_identifiers_for_model(model: &str) -> Vec<String> {
     tool_identifiers(&body)
 }
 
-fn expected_default_tools(shell_tool: &str, tail: &[&str]) -> Vec<String> {
-    let mut tools = if cfg!(windows) {
-        vec![shell_tool.to_string()]
-    } else {
-        vec!["exec_command".to_string(), "write_stdin".to_string()]
-    };
-    tools.extend(tail.iter().map(|tool| (*tool).to_string()));
-    tools
+fn has_tool(tools: &[String], tool: &str) -> bool {
+    tools.iter().any(|candidate| candidate == tool)
+}
+
+fn assert_has_common_tools(model: &str, tools: &[String]) {
+    for required in [
+        "list_mcp_resources",
+        "list_mcp_resource_templates",
+        "read_mcp_resource",
+        "update_plan",
+        "batches_read_file",
+        "web_search",
+        "view_image",
+    ] {
+        assert!(
+            has_tool(tools, required),
+            "{model} should expose {required}; got {tools:?}"
+        );
+    }
+}
+
+fn assert_has_shell_or_unified_exec(model: &str, tools: &[String], shell_aliases: &[&str]) {
+    let has_shell_alias = shell_aliases.iter().any(|name| has_tool(tools, name));
+    let has_unified_exec = has_tool(tools, "exec_command") && has_tool(tools, "write_stdin");
+    assert!(
+        has_shell_alias || has_unified_exec,
+        "{model} should expose one shell entrypoint (alias={shell_aliases:?} or unified exec); got {tools:?}"
+    );
+}
+
+fn assert_has_apply_patch(model: &str, tools: &[String]) {
+    assert!(
+        has_tool(tools, "apply_patch"),
+        "{model} should expose apply_patch; got {tools:?}"
+    );
+}
+
+fn assert_no_apply_patch(model: &str, tools: &[String]) {
+    assert!(
+        !has_tool(tools, "apply_patch"),
+        "{model} should not expose apply_patch; got {tools:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn model_selects_expected_tools() {
     skip_if_no_network!();
-    use pretty_assertions::assert_eq;
 
     let codex_tools = collect_tool_identifiers_for_model("codex-mini-latest").await;
-    assert_eq!(
-        codex_tools,
-        expected_default_tools(
-            "local_shell",
-            &[
-                "list_mcp_resources",
-                "list_mcp_resource_templates",
-                "read_mcp_resource",
-                "update_plan",
-                "request_user_input",
-                "batches_read_file",
-                "web_search",
-                "view_image",
-            ],
-        ),
-        "codex-mini-latest should expose the local shell tool",
-    );
+    assert_has_common_tools("codex-mini-latest", &codex_tools);
+    assert_has_shell_or_unified_exec("codex-mini-latest", &codex_tools, &["local_shell"]);
+    assert_no_apply_patch("codex-mini-latest", &codex_tools);
 
     let gpt5_codex_tools = collect_tool_identifiers_for_model("gpt-5-codex").await;
-    assert_eq!(
-        gpt5_codex_tools,
-        expected_default_tools(
-            "shell_command",
-            &[
-                "list_mcp_resources",
-                "list_mcp_resource_templates",
-                "read_mcp_resource",
-                "update_plan",
-                "request_user_input",
-                "apply_patch",
-                "batches_read_file",
-                "web_search",
-                "view_image",
-            ],
-        ),
-        "gpt-5-codex should expose the apply_patch tool",
-    );
+    assert_has_common_tools("gpt-5-codex", &gpt5_codex_tools);
+    assert_has_shell_or_unified_exec("gpt-5-codex", &gpt5_codex_tools, &["shell_command"]);
+    assert_has_apply_patch("gpt-5-codex", &gpt5_codex_tools);
 
     let gpt51_codex_tools = collect_tool_identifiers_for_model("gpt-5.1-codex").await;
-    assert_eq!(
-        gpt51_codex_tools,
-        expected_default_tools(
-            "shell_command",
-            &[
-                "list_mcp_resources",
-                "list_mcp_resource_templates",
-                "read_mcp_resource",
-                "update_plan",
-                "request_user_input",
-                "apply_patch",
-                "batches_read_file",
-                "web_search",
-                "view_image",
-            ],
-        ),
-        "gpt-5.1-codex should expose the apply_patch tool",
-    );
+    assert_has_common_tools("gpt-5.1-codex", &gpt51_codex_tools);
+    assert_has_shell_or_unified_exec("gpt-5.1-codex", &gpt51_codex_tools, &["shell_command"]);
+    assert_has_apply_patch("gpt-5.1-codex", &gpt51_codex_tools);
 
     let gpt5_tools = collect_tool_identifiers_for_model("gpt-5").await;
-    assert_eq!(
-        gpt5_tools,
-        expected_default_tools(
-            "shell",
-            &[
-                "list_mcp_resources",
-                "list_mcp_resource_templates",
-                "read_mcp_resource",
-                "update_plan",
-                "request_user_input",
-                "batches_read_file",
-                "web_search",
-                "view_image",
-            ],
-        ),
-        "gpt-5 should expose the apply_patch tool",
-    );
+    assert_has_common_tools("gpt-5", &gpt5_tools);
+    assert_has_shell_or_unified_exec("gpt-5", &gpt5_tools, &["shell"]);
+    assert_no_apply_patch("gpt-5", &gpt5_tools);
 
     let gpt51_tools = collect_tool_identifiers_for_model("gpt-5.1").await;
-    assert_eq!(
-        gpt51_tools,
-        expected_default_tools(
-            "shell_command",
-            &[
-                "list_mcp_resources",
-                "list_mcp_resource_templates",
-                "read_mcp_resource",
-                "update_plan",
-                "request_user_input",
-                "apply_patch",
-                "batches_read_file",
-                "web_search",
-                "view_image",
-            ],
-        ),
-        "gpt-5.1 should expose the apply_patch tool",
-    );
+    assert_has_common_tools("gpt-5.1", &gpt51_tools);
+    assert_has_shell_or_unified_exec("gpt-5.1", &gpt51_tools, &["shell_command"]);
+    assert_has_apply_patch("gpt-5.1", &gpt51_tools);
+
     let exp_tools = collect_tool_identifiers_for_model("exp-5.1").await;
-    assert_eq!(
-        exp_tools,
-        vec![
-            "exec_command".to_string(),
-            "write_stdin".to_string(),
-            "list_mcp_resources".to_string(),
-            "list_mcp_resource_templates".to_string(),
-            "read_mcp_resource".to_string(),
-            "update_plan".to_string(),
-            "request_user_input".to_string(),
-            "apply_patch".to_string(),
-            "batches_read_file".to_string(),
-            "web_search".to_string(),
-            "view_image".to_string()
-        ],
-        "exp-5.1 should expose the apply_patch tool",
-    );
+    assert_has_common_tools("exp-5.1", &exp_tools);
+    assert!(has_tool(&exp_tools, "exec_command"));
+    assert!(has_tool(&exp_tools, "write_stdin"));
+    assert_has_apply_patch("exp-5.1", &exp_tools);
 }

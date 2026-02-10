@@ -4,6 +4,7 @@ use crate::CodexAuth;
 #[cfg(any(test, feature = "test-support"))]
 use crate::ModelProviderInfo;
 use crate::agent::AgentControl;
+use crate::agent::AgentStatus;
 use crate::codex::Codex;
 use crate::codex::CodexSpawnOk;
 use crate::codex::INITIAL_SUBMIT_ID;
@@ -31,6 +32,7 @@ use codex_protocol::protocol::SessionSource;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::SystemTime;
 #[cfg(any(test, feature = "test-support"))]
 use tempfile::TempDir;
 use tokio::runtime::Handle;
@@ -47,9 +49,6 @@ fn build_file_watcher(codex_home: PathBuf, skills_manager: Arc<SkillsManager>) -
     if let Ok(handle) = Handle::try_current()
         && handle.runtime_flavor() == RuntimeFlavor::CurrentThread
     {
-        // The real watcher spins background tasks that can starve the
-        // current-thread test runtime and cause event waits to time out.
-        // Integration tests compile with the `test-support` feature.
         warn!("using noop file watcher under current-thread test runtime");
         return Arc::new(FileWatcher::noop());
     }
@@ -83,6 +82,31 @@ fn build_file_watcher(codex_home: PathBuf, skills_manager: Arc<SkillsManager>) -
     file_watcher
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct AgentSpawnMetadata {
+    pub creator_thread_id: Option<ThreadId>,
+    pub label: Option<String>,
+    pub goal: String,
+    pub acceptance_criteria: Vec<String>,
+    pub test_commands: Vec<String>,
+    pub allow_nested_agents: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AgentRegistryRecord {
+    pub agent_id: ThreadId,
+    pub creator_thread_id: Option<ThreadId>,
+    pub label: Option<String>,
+    pub goal: String,
+    pub acceptance_criteria: Vec<String>,
+    pub test_commands: Vec<String>,
+    pub allow_nested_agents: bool,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    pub status: AgentStatus,
+    pub closed: bool,
+}
+
 /// Represents a newly created Codex thread (formerly called a conversation), including the first event
 /// (which is [`EventMsg::SessionConfigured`]).
 pub struct NewThread {
@@ -104,6 +128,7 @@ pub struct ThreadManager {
 /// function to require an `Arc<&Self>`.
 pub(crate) struct ThreadManagerState {
     threads: Arc<RwLock<HashMap<ThreadId, Arc<CodexThread>>>>,
+    agent_registry: Arc<RwLock<HashMap<ThreadId, AgentRegistryRecord>>>,
     thread_created_tx: broadcast::Sender<ThreadId>,
     auth_manager: Arc<AuthManager>,
     models_manager: Arc<ModelsManager>,
@@ -128,6 +153,7 @@ impl ThreadManager {
         Self {
             state: Arc::new(ThreadManagerState {
                 threads: Arc::new(RwLock::new(HashMap::new())),
+                agent_registry: Arc::new(RwLock::new(HashMap::new())),
                 thread_created_tx,
                 models_manager: Arc::new(ModelsManager::new(codex_home, auth_manager.clone())),
                 skills_manager,
@@ -168,6 +194,7 @@ impl ThreadManager {
         Self {
             state: Arc::new(ThreadManagerState {
                 threads: Arc::new(RwLock::new(HashMap::new())),
+                agent_registry: Arc::new(RwLock::new(HashMap::new())),
                 thread_created_tx,
                 models_manager: Arc::new(ModelsManager::with_provider(
                     codex_home,
@@ -301,7 +328,7 @@ impl ThreadManager {
     /// as `Arc<CodexThread>`, it is possible that other references to it exist elsewhere.
     /// Returns the thread if the thread was found and removed.
     pub async fn remove_thread(&self, thread_id: &ThreadId) -> Option<Arc<CodexThread>> {
-        self.state.threads.write().await.remove(thread_id)
+        self.state.remove_thread(thread_id).await
     }
 
     /// Closes all threads open in this ThreadManager
@@ -352,6 +379,65 @@ impl ThreadManager {
 }
 
 impl ThreadManagerState {
+    pub(crate) async fn register_agent(&self, agent_id: ThreadId, metadata: AgentSpawnMetadata) {
+        let timestamp_ms = unix_timestamp_ms();
+        self.agent_registry.write().await.insert(
+            agent_id,
+            AgentRegistryRecord {
+                agent_id,
+                creator_thread_id: metadata.creator_thread_id,
+                label: metadata.label,
+                goal: metadata.goal,
+                acceptance_criteria: metadata.acceptance_criteria,
+                test_commands: metadata.test_commands,
+                allow_nested_agents: metadata.allow_nested_agents,
+                created_at_ms: timestamp_ms,
+                updated_at_ms: timestamp_ms,
+                status: AgentStatus::PendingInit,
+                closed: false,
+            },
+        );
+    }
+
+    pub(crate) async fn mark_agent_closed(&self, agent_id: ThreadId, status: AgentStatus) {
+        self.update_agent_registry_entry(agent_id, status, true)
+            .await;
+    }
+
+    pub(crate) async fn get_agent_record(&self, agent_id: ThreadId) -> Option<AgentRegistryRecord> {
+        self.agent_registry.read().await.get(&agent_id).cloned()
+    }
+
+    pub(crate) async fn list_agent_records(&self) -> Vec<AgentRegistryRecord> {
+        let records = self
+            .agent_registry
+            .read()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut updates = Vec::new();
+        for record in &records {
+            if record.closed {
+                continue;
+            }
+            let thread = { self.threads.read().await.get(&record.agent_id).cloned() };
+            let (status, closed) = if let Some(thread) = thread {
+                (thread.agent_status().await, false)
+            } else {
+                (AgentStatus::NotFound, true)
+            };
+            if status != record.status || closed != record.closed {
+                updates.push((record.agent_id, status, closed));
+            }
+        }
+        for (agent_id, status, closed) in updates {
+            self.update_agent_registry_entry(agent_id, status, closed)
+                .await;
+        }
+        self.agent_registry.read().await.values().cloned().collect()
+    }
+
     /// Fetch a thread by ID or return ThreadNotFound.
     pub(crate) async fn get_thread(&self, thread_id: ThreadId) -> CodexResult<Arc<CodexThread>> {
         let threads = self.threads.read().await;
@@ -375,7 +461,12 @@ impl ThreadManagerState {
 
     /// Remove a thread from the manager by ID, returning it when present.
     pub(crate) async fn remove_thread(&self, thread_id: &ThreadId) -> Option<Arc<CodexThread>> {
-        self.threads.write().await.remove(thread_id)
+        let removed = self.threads.write().await.remove(thread_id);
+        if removed.is_some() {
+            self.mark_agent_closed(*thread_id, AgentStatus::NotFound)
+                .await;
+        }
+        removed
     }
 
     /// Spawn a new thread with no history using a provided config.
@@ -485,6 +576,29 @@ impl ThreadManagerState {
     pub(crate) fn notify_thread_created(&self, thread_id: ThreadId) {
         let _ = self.thread_created_tx.send(thread_id);
     }
+
+    async fn update_agent_registry_entry(
+        &self,
+        agent_id: ThreadId,
+        status: AgentStatus,
+        closed: bool,
+    ) {
+        if let Some(entry) = self.agent_registry.write().await.get_mut(&agent_id)
+            && (entry.status != status || entry.closed != closed)
+        {
+            entry.status = status;
+            entry.closed = closed;
+            entry.updated_at_ms = unix_timestamp_ms();
+        }
+    }
+}
+
+fn unix_timestamp_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_millis()).ok())
+        .unwrap_or_default()
 }
 
 /// Return a prefix of `items` obtained by cutting strictly before the nth user message

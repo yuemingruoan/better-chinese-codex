@@ -44,8 +44,17 @@ use codex_core::protocol::AgentReasoningDeltaEvent;
 use codex_core::protocol::AgentReasoningEvent;
 use codex_core::protocol::AgentReasoningRawContentDeltaEvent;
 use codex_core::protocol::AgentReasoningRawContentEvent;
+use codex_core::protocol::AgentStatus;
 use codex_core::protocol::ApplyPatchApprovalRequestEvent;
 use codex_core::protocol::BackgroundEventEvent;
+use codex_core::protocol::CollabAgentInteractionBeginEvent;
+use codex_core::protocol::CollabAgentInteractionEndEvent;
+use codex_core::protocol::CollabAgentSpawnBeginEvent;
+use codex_core::protocol::CollabAgentSpawnEndEvent;
+use codex_core::protocol::CollabCloseBeginEvent;
+use codex_core::protocol::CollabCloseEndEvent;
+use codex_core::protocol::CollabWaitingBeginEvent;
+use codex_core::protocol::CollabWaitingEndEvent;
 use codex_core::protocol::CreditsSnapshot;
 use codex_core::protocol::DeprecationNoticeEvent;
 use codex_core::protocol::ErrorEvent;
@@ -205,8 +214,24 @@ fn sdd_plan_prompt_template(language: Language) -> &'static str {
     tr(language, "prompt.sdd_plan")
 }
 
+fn sdd_plan_parallels_prompt_template(language: Language) -> &'static str {
+    tr(language, "prompt.sdd_plan_parallels")
+}
+
 fn sdd_exec_prompt_template(language: Language) -> &'static str {
     tr(language, "prompt.sdd_execute")
+}
+
+fn sdd_exec_parallels_prompt_template(language: Language) -> &'static str {
+    tr(language, "prompt.sdd_execute_parallels")
+}
+
+fn sdd_merge_prompt_template(language: Language) -> &'static str {
+    tr(language, "prompt.sdd_merge")
+}
+
+fn sdd_merge_parallels_prompt_template(language: Language) -> &'static str {
+    tr(language, "prompt.sdd_merge_parallels")
 }
 // Track information about an in-flight exec command.
 struct RunningCommand {
@@ -388,8 +413,15 @@ enum SddDevelopStage {
     AwaitDevDecision,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SddWorkflow {
+    Standard,
+    Parallels,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SddDevelopState {
+    workflow: SddWorkflow,
     description: String,
     branch_name: String,
     base_branch: Option<String>,
@@ -790,7 +822,11 @@ impl ChatWidget {
             }
             match action {
                 SddGitPendingAction::CreateBranch { description } => {
-                    let prompt = self.build_sdd_exec_prompt(&description);
+                    let workflow = self
+                        .sdd_state
+                        .as_ref()
+                        .map_or(SddWorkflow::Standard, |state| state.workflow);
+                    let prompt = self.build_sdd_exec_prompt(&description, workflow);
                     self.submit_user_message(prompt.into());
                     if let Some(state) = self.sdd_state.as_mut() {
                         state.stage = SddDevelopStage::AwaitDevDecision;
@@ -1296,6 +1332,130 @@ impl ChatWidget {
         self.bottom_pane.ensure_status_indicator();
         self.bottom_pane.set_interrupt_hint_visible(true);
         self.set_status_header(message);
+    }
+
+    fn on_collab_spawn_begin(&mut self, ev: CollabAgentSpawnBeginEvent) {
+        let message = tr_args(
+            self.config.language,
+            "chatwidget.collab.spawn_begin",
+            &[("call_id", ev.call_id.as_str())],
+        );
+        self.on_collab_event(message);
+    }
+
+    fn on_collab_spawn_end(&mut self, ev: CollabAgentSpawnEndEvent) {
+        let status = self.collab_status_label(&ev.status);
+        let message = if let Some(receiver_thread_id) = ev.new_thread_id {
+            let receiver_id = receiver_thread_id.to_string();
+            tr_args(
+                self.config.language,
+                "chatwidget.collab.spawn_end_with_agent",
+                &[
+                    ("receiver_id", receiver_id.as_str()),
+                    ("status", status.as_str()),
+                ],
+            )
+        } else {
+            tr_args(
+                self.config.language,
+                "chatwidget.collab.spawn_end_without_agent",
+                &[("status", status.as_str())],
+            )
+        };
+        self.on_collab_event(message);
+    }
+
+    fn on_collab_interaction_begin(&mut self, ev: CollabAgentInteractionBeginEvent) {
+        let receiver_id = ev.receiver_thread_id.to_string();
+        let message = tr_args(
+            self.config.language,
+            "chatwidget.collab.interaction_begin",
+            &[("receiver_id", receiver_id.as_str())],
+        );
+        self.on_collab_event(message);
+    }
+
+    fn on_collab_interaction_end(&mut self, ev: CollabAgentInteractionEndEvent) {
+        let receiver_id = ev.receiver_thread_id.to_string();
+        let status = self.collab_status_label(&ev.status);
+        let message = tr_args(
+            self.config.language,
+            "chatwidget.collab.interaction_end",
+            &[
+                ("receiver_id", receiver_id.as_str()),
+                ("status", status.as_str()),
+            ],
+        );
+        self.on_collab_event(message);
+    }
+
+    fn on_collab_waiting_begin(&mut self, ev: CollabWaitingBeginEvent) {
+        let receiver_id = ev.receiver_thread_id.to_string();
+        let message = tr_args(
+            self.config.language,
+            "chatwidget.collab.waiting_begin",
+            &[("receiver_id", receiver_id.as_str())],
+        );
+        self.on_collab_event(message);
+    }
+
+    fn on_collab_waiting_end(&mut self, ev: CollabWaitingEndEvent) {
+        let receiver_id = ev.receiver_thread_id.to_string();
+        let status = self.collab_status_label(&ev.status);
+        let message = tr_args(
+            self.config.language,
+            "chatwidget.collab.waiting_end",
+            &[
+                ("receiver_id", receiver_id.as_str()),
+                ("status", status.as_str()),
+            ],
+        );
+        self.on_collab_event(message);
+    }
+
+    fn on_collab_close_begin(&mut self, ev: CollabCloseBeginEvent) {
+        let receiver_id = ev.receiver_thread_id.to_string();
+        let message = tr_args(
+            self.config.language,
+            "chatwidget.collab.close_begin",
+            &[("receiver_id", receiver_id.as_str())],
+        );
+        self.on_collab_event(message);
+    }
+
+    fn on_collab_close_end(&mut self, ev: CollabCloseEndEvent) {
+        let receiver_id = ev.receiver_thread_id.to_string();
+        let status = self.collab_status_label(&ev.status);
+        let message = tr_args(
+            self.config.language,
+            "chatwidget.collab.close_end",
+            &[
+                ("receiver_id", receiver_id.as_str()),
+                ("status", status.as_str()),
+            ],
+        );
+        self.on_collab_event(message);
+    }
+
+    fn on_collab_event(&mut self, message: String) {
+        self.flush_answer_stream_with_separator();
+        self.add_to_history(history_cell::new_info_event(message, None));
+        self.request_redraw();
+    }
+
+    fn collab_status_label(&self, status: &AgentStatus) -> String {
+        let key = match status {
+            AgentStatus::PendingInit => "chatwidget.collab.status.pending_init",
+            AgentStatus::Running => "chatwidget.collab.status.running",
+            AgentStatus::Completed(_) => "chatwidget.collab.status.completed",
+            AgentStatus::Errored(error) if is_timeout_error(error) => {
+                "chatwidget.collab.status.timed_out"
+            }
+            AgentStatus::Errored(_) => "chatwidget.collab.status.errored",
+            AgentStatus::Shutdown => "chatwidget.collab.status.shutdown",
+            AgentStatus::NotFound => "chatwidget.collab.status.not_found",
+        };
+        tr(self.config.language, key).to_string()
     }
 
     fn on_undo_started(&mut self, event: UndoStartedEvent) {
@@ -2063,7 +2223,10 @@ impl ChatWidget {
                 self.submit_user_message(prompt.to_string().into());
             }
             SlashCommand::SddDevelop => {
-                self.handle_sdd_develop_command(None);
+                self.handle_sdd_develop_command(None, SddWorkflow::Standard);
+            }
+            SlashCommand::SddDevelopParallels => {
+                self.handle_sdd_develop_command(None, SddWorkflow::Parallels);
             }
             SlashCommand::Compact => {
                 self.app_event_tx.send(AppEvent::CodexOp(Op::Compact));
@@ -2262,13 +2425,28 @@ impl ChatWidget {
         }
     }
 
-    fn handle_sdd_develop_command(&mut self, description: Option<String>) {
+    fn is_sdd_workflow_enabled(&mut self, workflow: SddWorkflow) -> bool {
+        if workflow == SddWorkflow::Parallels && !self.config.features.enabled(Feature::Collab) {
+            let language = self.config.language;
+            self.add_info_message(
+                tr(language, "chatwidget.sdd.collab_required").to_string(),
+                Some(tr(language, "chatwidget.sdd.collab_required_hint").to_string()),
+            );
+            return false;
+        }
+        true
+    }
+
+    fn handle_sdd_develop_command(&mut self, description: Option<String>, workflow: SddWorkflow) {
         let language = self.config.language;
         if get_git_repo_root(&self.config.cwd).is_none() {
             self.add_info_message(
                 tr(language, "chatwidget.sdd.not_git_repo").to_string(),
                 None,
             );
+            return;
+        }
+        if !self.is_sdd_workflow_enabled(workflow) {
             return;
         }
 
@@ -2282,16 +2460,22 @@ impl ChatWidget {
             self.sdd_git_action_failed = false;
             let branch_name = self.sdd_branch_name(&desc);
             self.sdd_state = Some(SddDevelopState {
+                workflow,
                 description: desc.clone(),
                 branch_name,
                 base_branch: None,
                 stage: SddDevelopStage::AwaitPlanDecision,
             });
-            let prompt = self.build_sdd_plan_prompt(&desc);
+            let prompt = self.build_sdd_plan_prompt(&desc, workflow);
             self.submit_user_message(prompt.into());
+            let plan_request_hint = if workflow == SddWorkflow::Parallels {
+                tr(language, "chatwidget.sdd.plan_request_hint_parallels").to_string()
+            } else {
+                tr(language, "chatwidget.sdd.plan_request_hint").to_string()
+            };
             self.add_info_message(
                 tr(language, "chatwidget.sdd.plan_request_sent").to_string(),
-                Some(tr(language, "chatwidget.sdd.plan_request_hint").to_string()),
+                Some(plan_request_hint),
             );
             self.open_sdd_plan_options();
             return;
@@ -2319,10 +2503,12 @@ impl ChatWidget {
                 self.open_sdd_dev_options();
             }
             None => {
-                self.add_info_message(
-                    tr(language, "chatwidget.sdd.require_description").to_string(),
-                    None,
-                );
+                let require_description = if workflow == SddWorkflow::Parallels {
+                    tr(language, "chatwidget.sdd.require_description_parallels")
+                } else {
+                    tr(language, "chatwidget.sdd.require_description")
+                };
+                self.add_info_message(require_description.to_string(), None);
             }
         }
     }
@@ -2424,9 +2610,9 @@ impl ChatWidget {
 
     pub(crate) async fn on_sdd_plan_approved(&mut self) {
         let language = self.config.language;
-        let description = match self.sdd_state.as_ref() {
+        let (description, workflow) = match self.sdd_state.as_ref() {
             Some(state) if state.stage == SddDevelopStage::AwaitPlanDecision => {
-                state.description.clone()
+                (state.description.clone(), state.workflow)
             }
             Some(_) => {
                 self.add_info_message(
@@ -2446,6 +2632,25 @@ impl ChatWidget {
 
         self.sdd_pending_plan_rework_prompt = None;
         self.sdd_open_plan_options_after_task = false;
+
+        if workflow == SddWorkflow::Parallels {
+            if let Some(base_branch) = current_branch_name(&self.config.cwd).await
+                && let Some(state) = self.sdd_state.as_mut()
+            {
+                state.base_branch = Some(base_branch);
+            }
+            if let Some(state) = self.sdd_state.as_mut() {
+                state.stage = SddDevelopStage::AwaitDevDecision;
+            }
+            let prompt = self.build_sdd_exec_prompt(&description, workflow);
+            self.submit_user_message(prompt.into());
+            self.add_info_message(
+                tr(language, "chatwidget.sdd.exec_sent").to_string(),
+                Some(tr(language, "chatwidget.sdd.exec_sent_hint_parallels").to_string()),
+            );
+            self.open_sdd_dev_options();
+            return;
+        }
 
         let branch_name = match self.sdd_state.as_ref() {
             Some(state) => state.branch_name.clone(),
@@ -2556,6 +2761,18 @@ impl ChatWidget {
             );
             return;
         }
+        if state.workflow == SddWorkflow::Parallels {
+            let prompt =
+                self.build_sdd_merge_prompt(&state.description, &state.branch_name, state.workflow);
+            self.sdd_pending_git_action = None;
+            self.sdd_git_action_failed = false;
+            self.submit_user_message(prompt.into());
+            self.add_info_message(
+                tr(language, "chatwidget.sdd.merge_guidance_sent").to_string(),
+                Some(tr(language, "chatwidget.sdd.merge_guidance_hint_parallels").to_string()),
+            );
+            return;
+        }
         let commit_message = self.sdd_commit_message(&state.description);
         let branch_name = state.branch_name.clone();
         let base_branch = match state.base_branch.clone() {
@@ -2627,20 +2844,35 @@ impl ChatWidget {
         );
     }
 
-    fn build_sdd_plan_prompt(&self, description: &str) -> String {
-        let template = sdd_plan_prompt_template(self.config.language).trim();
-        let description_block = format!(
-            "{}\n{description}",
-            tr(self.config.language, "chatwidget.sdd.requirement_label")
-        );
+    fn build_sdd_plan_prompt(&self, description: &str, workflow: SddWorkflow) -> String {
+        let template = match workflow {
+            SddWorkflow::Standard => sdd_plan_prompt_template(self.config.language),
+            SddWorkflow::Parallels => sdd_plan_parallels_prompt_template(self.config.language),
+        }
+        .trim();
+        let description_block = if workflow == SddWorkflow::Parallels {
+            match self.sdd_state.as_ref() {
+                Some(state) => format!(
+                    "{}\n{description}\n{}\n{}",
+                    tr(self.config.language, "chatwidget.sdd.requirement_label"),
+                    tr(self.config.language, "chatwidget.sdd.branch_label"),
+                    state.branch_name
+                ),
+                None => format!(
+                    "{}\n{description}",
+                    tr(self.config.language, "chatwidget.sdd.requirement_label")
+                ),
+            }
+        } else {
+            format!(
+                "{}\n{description}",
+                tr(self.config.language, "chatwidget.sdd.requirement_label")
+            )
+        };
         if template.is_empty() {
             description_block
         } else {
-            format!(
-                "{}\n\n{}",
-                sdd_plan_prompt_template(self.config.language),
-                description_block
-            )
+            format!("{template}\n\n{description_block}")
         }
     }
 
@@ -2681,8 +2913,12 @@ impl ChatWidget {
         tr(self.config.language, "chatwidget.sdd.plan_rework_prompt").to_string()
     }
 
-    fn build_sdd_exec_prompt(&self, description: &str) -> String {
-        let template = sdd_exec_prompt_template(self.config.language).trim();
+    fn build_sdd_exec_prompt(&self, description: &str, workflow: SddWorkflow) -> String {
+        let template = match workflow {
+            SddWorkflow::Standard => sdd_exec_prompt_template(self.config.language),
+            SddWorkflow::Parallels => sdd_exec_parallels_prompt_template(self.config.language),
+        }
+        .trim();
         let description_block = format!(
             "{}\n{description}",
             tr(self.config.language, "chatwidget.sdd.requirement_label")
@@ -2690,11 +2926,30 @@ impl ChatWidget {
         if template.is_empty() {
             description_block
         } else {
-            format!(
-                "{}\n\n{}",
-                sdd_exec_prompt_template(self.config.language),
-                description_block
-            )
+            format!("{template}\n\n{description_block}")
+        }
+    }
+
+    fn build_sdd_merge_prompt(
+        &self,
+        description: &str,
+        branch_name: &str,
+        workflow: SddWorkflow,
+    ) -> String {
+        let template = match workflow {
+            SddWorkflow::Standard => sdd_merge_prompt_template(self.config.language),
+            SddWorkflow::Parallels => sdd_merge_parallels_prompt_template(self.config.language),
+        }
+        .trim();
+        let context_block = format!(
+            "{}\n{description}\n{}\n{branch_name}",
+            tr(self.config.language, "chatwidget.sdd.requirement_label"),
+            tr(self.config.language, "chatwidget.sdd.branch_label")
+        );
+        if template.is_empty() {
+            context_block
+        } else {
+            format!("{template}\n\n{context_block}")
         }
     }
     fn dispatch_command_with_args(&mut self, cmd: SlashCommand, args: String) {
@@ -2719,6 +2974,22 @@ impl ChatWidget {
                         user_facing_hint: None,
                     },
                 });
+            }
+            SlashCommand::SddDevelop => {
+                let desc = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
+                self.handle_sdd_develop_command(desc, SddWorkflow::Standard);
+            }
+            SlashCommand::SddDevelopParallels => {
+                let desc = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
+                self.handle_sdd_develop_command(desc, SddWorkflow::Parallels);
             }
             _ => self.dispatch_command(cmd),
         }
@@ -2897,7 +3168,13 @@ impl ChatWidget {
 
     fn try_handle_sdd_develop(&mut self, text: &str) -> bool {
         if let Some((name, rest)) = parse_slash_name(text)
-            && name == SlashCommand::SddDevelop.command()
+            && let Some(workflow) = match name {
+                name if name == SlashCommand::SddDevelop.command() => Some(SddWorkflow::Standard),
+                name if name == SlashCommand::SddDevelopParallels.command() => {
+                    Some(SddWorkflow::Parallels)
+                }
+                _ => None,
+            }
         {
             let description = rest.trim();
             let description = if description.is_empty() {
@@ -2905,7 +3182,7 @@ impl ChatWidget {
             } else {
                 Some(description.to_string())
             };
-            self.handle_sdd_develop_command(description);
+            self.handle_sdd_develop_command(description, workflow);
             return true;
         }
         false
@@ -3049,16 +3326,14 @@ impl ChatWidget {
             EventMsg::ContextCompacted(_) => self.on_agent_message(
                 tr(self.config.language, "chatwidget.context_compacted").to_string(),
             ),
-            EventMsg::CollabAgentSpawnBegin(_)
-            | EventMsg::CollabAgentSpawnEnd(_)
-            | EventMsg::CollabAgentInteractionBegin(_)
-            | EventMsg::CollabAgentInteractionEnd(_)
-            | EventMsg::CollabWaitingBegin(_)
-            | EventMsg::CollabWaitingEnd(_)
-            | EventMsg::CollabCloseBegin(_)
-            | EventMsg::CollabCloseEnd(_) => {
-                // TODO(jif) handle collab tools.
-            }
+            EventMsg::CollabAgentSpawnBegin(ev) => self.on_collab_spawn_begin(ev),
+            EventMsg::CollabAgentSpawnEnd(ev) => self.on_collab_spawn_end(ev),
+            EventMsg::CollabAgentInteractionBegin(ev) => self.on_collab_interaction_begin(ev),
+            EventMsg::CollabAgentInteractionEnd(ev) => self.on_collab_interaction_end(ev),
+            EventMsg::CollabWaitingBegin(ev) => self.on_collab_waiting_begin(ev),
+            EventMsg::CollabWaitingEnd(ev) => self.on_collab_waiting_end(ev),
+            EventMsg::CollabCloseBegin(ev) => self.on_collab_close_begin(ev),
+            EventMsg::CollabCloseEnd(ev) => self.on_collab_close_end(ev),
             EventMsg::RawResponseItem(_)
             | EventMsg::ThreadRolledBack(_)
             | EventMsg::ItemStarted(_)
@@ -5352,6 +5627,11 @@ fn skills_for_cwd(cwd: &Path, skills_entries: &[SkillsListEntry]) -> Vec<SkillMe
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn is_timeout_error(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("timed out") || lower.contains("timeout")
 }
 
 #[cfg(test)]

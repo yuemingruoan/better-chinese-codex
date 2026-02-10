@@ -9,8 +9,6 @@ use crate::app_event::AppEvent;
 use crate::app_event::ExitMode;
 use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::FeedbackAudience;
-use crate::bottom_pane::LocalImageAttachment;
-use crate::history_cell::UserHistoryCell;
 use crate::i18n::tr;
 use crate::i18n::tr_args;
 use crate::test_backend::VT100Backend;
@@ -30,8 +28,11 @@ use codex_core::protocol::AgentMessageDeltaEvent;
 use codex_core::protocol::AgentMessageEvent;
 use codex_core::protocol::AgentReasoningDeltaEvent;
 use codex_core::protocol::AgentReasoningEvent;
+use codex_core::protocol::AgentStatus;
 use codex_core::protocol::ApplyPatchApprovalRequestEvent;
 use codex_core::protocol::BackgroundEventEvent;
+use codex_core::protocol::CollabAgentSpawnEndEvent;
+use codex_core::protocol::CollabWaitingEndEvent;
 use codex_core::protocol::CreditsSnapshot;
 use codex_core::protocol::Event;
 use codex_core::protocol::EventMsg;
@@ -51,6 +52,7 @@ use codex_core::protocol::PatchApplyEndEvent;
 use codex_core::protocol::RateLimitWindow;
 use codex_core::protocol::ReviewRequest;
 use codex_core::protocol::ReviewTarget;
+use codex_core::protocol::SddGitAction;
 use codex_core::protocol::SessionSource;
 use codex_core::protocol::StreamErrorEvent;
 use codex_core::protocol::TerminalInteractionEvent;
@@ -79,7 +81,6 @@ use codex_protocol::plan_tool::PlanItemArg;
 use codex_protocol::plan_tool::StepStatus;
 use codex_protocol::plan_tool::UpdatePlanArgs;
 use codex_protocol::protocol::CodexErrorInfo;
-use codex_protocol::user_input::TextElement;
 use codex_protocol::user_input::UserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use crossterm::event::KeyCode;
@@ -192,405 +193,46 @@ async fn resumed_initial_messages_render_history() {
 }
 
 #[tokio::test]
-async fn replayed_user_message_preserves_text_elements_and_local_images() {
+async fn collab_events_emit_history_lines() {
     let (mut chat, mut rx, _ops) = make_chatwidget_manual(None).await;
-
-    let placeholder = "[Image #1]";
-    let message = format!("{placeholder} replayed");
-    let text_elements = vec![TextElement::new(
-        (0..placeholder.len()).into(),
-        Some(placeholder.to_string()),
-    )];
-    let local_images = vec![PathBuf::from("/tmp/replay.png")];
-
-    let conversation_id = ThreadId::new();
-    let rollout_file = NamedTempFile::new().unwrap();
-    let configured = codex_core::protocol::SessionConfiguredEvent {
-        session_id: conversation_id,
-        forked_from_id: None,
-        thread_name: None,
-        model: "test-model".to_string(),
-        model_provider_id: "test-provider".to_string(),
-        approval_policy: AskForApproval::Never,
-        sandbox_policy: SandboxPolicy::ReadOnly,
-        cwd: PathBuf::from("/home/user/project"),
-        reasoning_effort: Some(ReasoningEffortConfig::default()),
-        history_log_id: 0,
-        history_entry_count: 0,
-        initial_messages: Some(vec![EventMsg::UserMessage(UserMessageEvent {
-            message: message.clone(),
-            images: None,
-            text_elements: text_elements.clone(),
-            local_images: local_images.clone(),
-        })]),
-        rollout_path: Some(rollout_file.path().to_path_buf()),
-    };
+    let sender_thread_id = ThreadId::new();
+    let receiver_thread_id = ThreadId::new();
 
     chat.handle_codex_event(Event {
-        id: "initial".into(),
-        msg: EventMsg::SessionConfigured(configured),
-    });
-
-    let mut user_cell = None;
-    while let Ok(ev) = rx.try_recv() {
-        if let AppEvent::InsertHistoryCell(cell) = ev
-            && let Some(cell) = cell.as_any().downcast_ref::<UserHistoryCell>()
-        {
-            user_cell = Some((
-                cell.message.clone(),
-                cell.text_elements.clone(),
-                cell.local_image_paths.clone(),
-            ));
-            break;
-        }
-    }
-
-    let (stored_message, stored_elements, stored_images) =
-        user_cell.expect("expected a replayed user history cell");
-    assert_eq!(stored_message, message);
-    assert_eq!(stored_elements, text_elements);
-    assert_eq!(stored_images, local_images);
-}
-
-#[tokio::test]
-async fn submission_preserves_text_elements_and_local_images() {
-    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(None).await;
-
-    let conversation_id = ThreadId::new();
-    let rollout_file = NamedTempFile::new().unwrap();
-    let configured = codex_core::protocol::SessionConfiguredEvent {
-        session_id: conversation_id,
-        forked_from_id: None,
-        thread_name: None,
-        model: "test-model".to_string(),
-        model_provider_id: "test-provider".to_string(),
-        approval_policy: AskForApproval::Never,
-        sandbox_policy: SandboxPolicy::ReadOnly,
-        cwd: PathBuf::from("/home/user/project"),
-        reasoning_effort: Some(ReasoningEffortConfig::default()),
-        history_log_id: 0,
-        history_entry_count: 0,
-        initial_messages: None,
-        rollout_path: Some(rollout_file.path().to_path_buf()),
-    };
-    chat.handle_codex_event(Event {
-        id: "initial".into(),
-        msg: EventMsg::SessionConfigured(configured),
-    });
-    drain_insert_history(&mut rx);
-
-    let placeholder = "[Image #1]";
-    let text = format!("{placeholder} submit");
-    let text_elements = vec![TextElement::new(
-        (0..placeholder.len()).into(),
-        Some(placeholder.to_string()),
-    )];
-    let local_images = vec![PathBuf::from("/tmp/submitted.png")];
-
-    chat.bottom_pane
-        .set_composer_text(text.clone(), text_elements.clone(), local_images.clone());
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-
-    let items = match next_submit_op(&mut op_rx) {
-        Op::UserTurn { items, .. } => items,
-        other => panic!("expected Op::UserTurn, got {other:?}"),
-    };
-    assert_eq!(items.len(), 2);
-    assert_eq!(
-        items[0],
-        UserInput::LocalImage {
-            path: local_images[0].clone()
-        }
-    );
-    assert_eq!(
-        items[1],
-        UserInput::Text {
-            text: text.clone(),
-            text_elements: text_elements.clone(),
-        }
-    );
-
-    let mut user_cell = None;
-    while let Ok(ev) = rx.try_recv() {
-        if let AppEvent::InsertHistoryCell(cell) = ev
-            && let Some(cell) = cell.as_any().downcast_ref::<UserHistoryCell>()
-        {
-            user_cell = Some((
-                cell.message.clone(),
-                cell.text_elements.clone(),
-                cell.local_image_paths.clone(),
-            ));
-            break;
-        }
-    }
-
-    let (stored_message, stored_elements, stored_images) =
-        user_cell.expect("expected submitted user history cell");
-    assert_eq!(stored_message, text);
-    assert_eq!(stored_elements, text_elements);
-    assert_eq!(stored_images, local_images);
-}
-
-#[tokio::test]
-async fn blocked_image_restore_preserves_mention_paths() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
-
-    let placeholder = "[Image #1]";
-    let text = format!("{placeholder} check $file");
-    let text_elements = vec![TextElement::new(
-        (0..placeholder.len()).into(),
-        Some(placeholder.to_string()),
-    )];
-    let local_images = vec![LocalImageAttachment {
-        placeholder: placeholder.to_string(),
-        path: PathBuf::from("/tmp/blocked.png"),
-    }];
-    let mention_paths =
-        HashMap::from([("file".to_string(), "/tmp/skills/file/SKILL.md".to_string())]);
-
-    chat.restore_blocked_image_submission(
-        text.clone(),
-        text_elements.clone(),
-        local_images.clone(),
-        mention_paths.clone(),
-    );
-
-    assert_eq!(chat.bottom_pane.composer_text(), text);
-    assert_eq!(chat.bottom_pane.composer_text_elements(), text_elements);
-    assert_eq!(
-        chat.bottom_pane.composer_local_image_paths(),
-        vec![local_images[0].path.clone()],
-    );
-    assert_eq!(chat.bottom_pane.take_mention_paths(), mention_paths);
-
-    let cells = drain_insert_history(&mut rx);
-    let warning = cells
-        .last()
-        .map(|lines| lines_to_single_string(lines))
-        .expect("expected warning cell");
-    assert!(
-        warning.contains("does not support image inputs"),
-        "expected image warning, got: {warning:?}"
-    );
-}
-
-#[tokio::test]
-async fn interrupted_turn_restores_queued_messages_with_images_and_elements() {
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(None).await;
-
-    let first_placeholder = "[Image #1]";
-    let first_text = format!("{first_placeholder} first");
-    let first_elements = vec![TextElement::new(
-        (0..first_placeholder.len()).into(),
-        Some(first_placeholder.to_string()),
-    )];
-    let first_images = [PathBuf::from("/tmp/first.png")];
-
-    let second_placeholder = "[Image #1]";
-    let second_text = format!("{second_placeholder} second");
-    let second_elements = vec![TextElement::new(
-        (0..second_placeholder.len()).into(),
-        Some(second_placeholder.to_string()),
-    )];
-    let second_images = [PathBuf::from("/tmp/second.png")];
-
-    let existing_placeholder = "[Image #1]";
-    let existing_text = format!("{existing_placeholder} existing");
-    let existing_elements = vec![TextElement::new(
-        (0..existing_placeholder.len()).into(),
-        Some(existing_placeholder.to_string()),
-    )];
-    let existing_images = vec![PathBuf::from("/tmp/existing.png")];
-
-    chat.queued_user_messages.push_back(UserMessage {
-        text: first_text,
-        local_images: vec![LocalImageAttachment {
-            placeholder: first_placeholder.to_string(),
-            path: first_images[0].clone(),
-        }],
-        text_elements: first_elements,
-        mention_paths: HashMap::new(),
-    });
-    chat.queued_user_messages.push_back(UserMessage {
-        text: second_text,
-        local_images: vec![LocalImageAttachment {
-            placeholder: second_placeholder.to_string(),
-            path: second_images[0].clone(),
-        }],
-        text_elements: second_elements,
-        mention_paths: HashMap::new(),
-    });
-    chat.refresh_queued_user_messages();
-
-    chat.bottom_pane
-        .set_composer_text(existing_text, existing_elements, existing_images.clone());
-
-    // When interrupted, queued messages are merged into the composer; image placeholders
-    // must be renumbered to match the combined local image list.
-    chat.handle_codex_event(Event {
-        id: "interrupt".into(),
-        msg: EventMsg::TurnAborted(codex_core::protocol::TurnAbortedEvent {
-            reason: TurnAbortReason::Interrupted,
+        id: "collab-spawn-begin".into(),
+        msg: EventMsg::CollabAgentSpawnEnd(CollabAgentSpawnEndEvent {
+            call_id: "call-1".to_string(),
+            sender_thread_id,
+            new_thread_id: Some(receiver_thread_id),
+            prompt: "spawn child".to_string(),
+            status: AgentStatus::Running,
         }),
     });
+    let cells = drain_insert_history(&mut rx);
+    assert_eq!(cells.len(), 1, "expected one collab history cell");
+    let text = lines_to_single_string(cells.last().expect("collab cell"));
+    assert!(text.contains("Agent spawned"));
+    assert!(text.contains("call: call-1"));
+    assert!(text.contains(receiver_thread_id.to_string().as_str()));
 
-    let first = "[Image #1] first".to_string();
-    let second = "[Image #2] second".to_string();
-    let third = "[Image #3] existing".to_string();
-    let expected_text = format!("{first}\n{second}\n{third}");
-    assert_eq!(chat.bottom_pane.composer_text(), expected_text);
-
-    let first_start = 0;
-    let second_start = first.len() + 1;
-    let third_start = second_start + second.len() + 1;
-    let expected_elements = vec![
-        TextElement::new(
-            (first_start..first_start + "[Image #1]".len()).into(),
-            Some("[Image #1]".to_string()),
-        ),
-        TextElement::new(
-            (second_start..second_start + "[Image #2]".len()).into(),
-            Some("[Image #2]".to_string()),
-        ),
-        TextElement::new(
-            (third_start..third_start + "[Image #3]".len()).into(),
-            Some("[Image #3]".to_string()),
-        ),
-    ];
-    assert_eq!(chat.bottom_pane.composer_text_elements(), expected_elements);
-    assert_eq!(
-        chat.bottom_pane.composer_local_image_paths(),
-        vec![
-            first_images[0].clone(),
-            second_images[0].clone(),
-            existing_images[0].clone(),
-        ]
-    );
-}
-
-#[tokio::test]
-async fn remap_placeholders_uses_attachment_labels() {
-    let placeholder_one = "[Image #1]";
-    let placeholder_two = "[Image #2]";
-    let text = format!("{placeholder_two} before {placeholder_one}");
-    let elements = vec![
-        TextElement::new(
-            (0..placeholder_two.len()).into(),
-            Some(placeholder_two.to_string()),
-        ),
-        TextElement::new(
-            ("[Image #2] before ".len().."[Image #2] before [Image #1]".len()).into(),
-            Some(placeholder_one.to_string()),
-        ),
-    ];
-
-    let attachments = vec![
-        LocalImageAttachment {
-            placeholder: placeholder_one.to_string(),
-            path: PathBuf::from("/tmp/one.png"),
-        },
-        LocalImageAttachment {
-            placeholder: placeholder_two.to_string(),
-            path: PathBuf::from("/tmp/two.png"),
-        },
-    ];
-    let message = UserMessage {
-        text,
-        text_elements: elements,
-        local_images: attachments,
-        mention_paths: HashMap::new(),
-    };
-    let mut next_label = 3usize;
-    let remapped = remap_placeholders_for_message(message, &mut next_label);
-
-    assert_eq!(remapped.text, "[Image #4] before [Image #3]");
-    assert_eq!(
-        remapped.text_elements,
-        vec![
-            TextElement::new(
-                (0.."[Image #4]".len()).into(),
-                Some("[Image #4]".to_string()),
-            ),
-            TextElement::new(
-                ("[Image #4] before ".len().."[Image #4] before [Image #3]".len()).into(),
-                Some("[Image #3]".to_string()),
-            ),
-        ]
-    );
-    assert_eq!(
-        remapped.local_images,
-        vec![
-            LocalImageAttachment {
-                placeholder: "[Image #3]".to_string(),
-                path: PathBuf::from("/tmp/one.png"),
-            },
-            LocalImageAttachment {
-                placeholder: "[Image #4]".to_string(),
-                path: PathBuf::from("/tmp/two.png"),
-            },
-        ]
-    );
-}
-
-#[tokio::test]
-async fn remap_placeholders_uses_byte_ranges_when_placeholder_missing() {
-    let placeholder_one = "[Image #1]";
-    let placeholder_two = "[Image #2]";
-    let text = format!("{placeholder_two} before {placeholder_one}");
-    let elements = vec![
-        TextElement::new((0..placeholder_two.len()).into(), None),
-        TextElement::new(
-            ("[Image #2] before ".len().."[Image #2] before [Image #1]".len()).into(),
-            None,
-        ),
-    ];
-
-    let attachments = vec![
-        LocalImageAttachment {
-            placeholder: placeholder_one.to_string(),
-            path: PathBuf::from("/tmp/one.png"),
-        },
-        LocalImageAttachment {
-            placeholder: placeholder_two.to_string(),
-            path: PathBuf::from("/tmp/two.png"),
-        },
-    ];
-    let message = UserMessage {
-        text,
-        text_elements: elements,
-        local_images: attachments,
-        mention_paths: HashMap::new(),
-    };
-    let mut next_label = 3usize;
-    let remapped = remap_placeholders_for_message(message, &mut next_label);
-
-    assert_eq!(remapped.text, "[Image #4] before [Image #3]");
-    assert_eq!(
-        remapped.text_elements,
-        vec![
-            TextElement::new(
-                (0.."[Image #4]".len()).into(),
-                Some("[Image #4]".to_string()),
-            ),
-            TextElement::new(
-                ("[Image #4] before ".len().."[Image #4] before [Image #3]".len()).into(),
-                Some("[Image #3]".to_string()),
-            ),
-        ]
-    );
-    assert_eq!(
-        remapped.local_images,
-        vec![
-            LocalImageAttachment {
-                placeholder: "[Image #3]".to_string(),
-                path: PathBuf::from("/tmp/one.png"),
-            },
-            LocalImageAttachment {
-                placeholder: "[Image #4]".to_string(),
-                path: PathBuf::from("/tmp/two.png"),
-            },
-        ]
-    );
+    chat.handle_codex_event(Event {
+        id: "collab-wait-end".into(),
+        msg: EventMsg::CollabWaitingEnd(CollabWaitingEndEvent {
+            sender_thread_id,
+            call_id: "call-2".to_string(),
+            statuses: HashMap::from([(
+                receiver_thread_id,
+                AgentStatus::Completed(Some("done".to_string())),
+            )]),
+        }),
+    });
+    let cells = drain_insert_history(&mut rx);
+    assert_eq!(cells.len(), 1, "expected one collab history cell");
+    let text = lines_to_single_string(cells.last().expect("collab wait cell"));
+    assert!(text.contains("Wait complete"));
+    assert!(text.contains("call: call-2"));
+    assert!(text.contains(receiver_thread_id.to_string().as_str()));
+    assert!(text.contains("completed"));
 }
 
 /// Entering review mode uses the hint provided by the review request.
@@ -1004,6 +646,26 @@ fn lines_to_single_string(lines: &[ratatui::text::Line<'static>]) -> String {
         s.push('\n');
     }
     s
+}
+
+fn drain_ops(op_rx: &mut tokio::sync::mpsc::UnboundedReceiver<Op>) -> Vec<Op> {
+    let mut ops = Vec::new();
+    while let Ok(op) = op_rx.try_recv() {
+        ops.push(op);
+    }
+    ops
+}
+
+fn find_text_input(op: &Op) -> Option<&str> {
+    let items = match op {
+        Op::UserInput { items, .. } => items.as_slice(),
+        Op::UserTurn { items, .. } => items.as_slice(),
+        _ => return None,
+    };
+    items.iter().find_map(|item| match item {
+        UserInput::Text { text, .. } => Some(text.as_str()),
+        _ => None,
+    })
 }
 
 fn make_token_info(total_tokens: i64, context_window: i64) -> TokenUsageInfo {
@@ -2888,6 +2550,127 @@ async fn slash_rollout_handles_missing_path() {
     assert!(
         rendered.contains(tr(chat.config.language, "chatwidget.rollout.not_available")),
         "expected missing rollout path message: {rendered}"
+    );
+}
+
+#[tokio::test]
+async fn slash_sdd_develop_parallels_requires_collab_feature() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(None).await;
+
+    chat.dispatch_command_with_args(
+        SlashCommand::SddDevelopParallels,
+        "实现并行 sdd".to_string(),
+        vec![],
+    );
+
+    let cells = drain_insert_history(&mut rx);
+    assert_eq!(cells.len(), 1, "expected one gatekeeping info message");
+    let rendered = lines_to_single_string(&cells[0]);
+    assert!(
+        rendered.contains(tr(chat.config.language, "chatwidget.sdd.collab_required")),
+        "expected collab-required message: {rendered}"
+    );
+    assert!(
+        rendered.contains(tr(
+            chat.config.language,
+            "chatwidget.sdd.collab_required_hint"
+        )),
+        "expected collab-required hint: {rendered}"
+    );
+    assert!(
+        chat.sdd_state.is_none(),
+        "workflow should not start when blocked"
+    );
+    assert!(
+        op_rx.try_recv().is_err(),
+        "blocked command should not emit codex ops"
+    );
+}
+
+#[tokio::test]
+async fn sdd_develop_parallels_plan_approval_sends_execute_prompt_without_create_branch() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(None).await;
+    chat.config.features.enable(Feature::Collab);
+
+    chat.dispatch_command_with_args(
+        SlashCommand::SddDevelopParallels,
+        "新增并行 SDD 流程".to_string(),
+        vec![],
+    );
+    let initial_ops = drain_ops(&mut op_rx);
+    let plan_prompt = initial_ops
+        .iter()
+        .find_map(find_text_input)
+        .expect("plan request should emit user input");
+    let plan_prefix = tr(chat.config.language, "prompt.sdd_plan_parallels")
+        .lines()
+        .next()
+        .expect("plan template should have first line");
+    assert!(
+        plan_prompt.contains(plan_prefix),
+        "expected parallels plan prompt, got: {plan_prompt}"
+    );
+
+    chat.on_sdd_plan_approved().await;
+    let approval_ops = drain_ops(&mut op_rx);
+    let exec_prompt = approval_ops
+        .iter()
+        .find_map(find_text_input)
+        .expect("plan approval should emit execute prompt");
+    let exec_prefix = tr(chat.config.language, "prompt.sdd_execute_parallels")
+        .lines()
+        .next()
+        .expect("execute template should have first line");
+    assert!(
+        exec_prompt.contains(exec_prefix),
+        "expected parallels execute prompt, got: {exec_prompt}"
+    );
+    assert!(
+        !approval_ops.iter().any(|op| {
+            matches!(
+                op,
+                Op::SddGitAction {
+                    action: SddGitAction::CreateBranch { .. }
+                }
+            )
+        }),
+        "parallels approval should not trigger create-branch git action"
+    );
+}
+
+#[tokio::test]
+async fn sdd_develop_parallels_merge_sends_prompt_and_skips_git_ops() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(None).await;
+    chat.config.features.enable(Feature::Collab);
+
+    chat.dispatch_command_with_args(
+        SlashCommand::SddDevelopParallels,
+        "新增并行 SDD 流程".to_string(),
+        vec![],
+    );
+    let _ = drain_ops(&mut op_rx);
+    chat.on_sdd_plan_approved().await;
+    let _ = drain_ops(&mut op_rx);
+
+    chat.on_sdd_merge_branch();
+    let merge_ops = drain_ops(&mut op_rx);
+    let merge_prompt = merge_ops
+        .iter()
+        .find_map(find_text_input)
+        .expect("merge should emit user input guidance");
+    let merge_prefix = tr(chat.config.language, "prompt.sdd_merge_parallels")
+        .lines()
+        .next()
+        .expect("merge template should have first line");
+    assert!(
+        merge_prompt.contains(merge_prefix),
+        "expected parallels merge prompt, got: {merge_prompt}"
+    );
+    assert!(
+        !merge_ops
+            .iter()
+            .any(|op| matches!(op, Op::SddGitAction { .. })),
+        "parallels merge should avoid hardcoded git actions"
     );
 }
 

@@ -1117,6 +1117,10 @@
       ],
       "description": "Agent-related settings (thread limits, etc.)."
     },
+    "allow_subagent_permission_escalation": {
+      "description": "Whether sub-agents can request more permissive approval/sandbox policies.",
+      "type": "boolean"
+    },
     "analytics": {
       "allOf": [
         {
@@ -1132,6 +1136,10 @@
         }
       ],
       "description": "Default approval policy for executing commands."
+    },
+    "auto_close_on_parent_shutdown": {
+      "description": "Whether closing a parent agent should also close its active descendants.",
+      "type": "boolean"
     },
     "chatgpt_base_url": {
       "description": "Base URL for requests to ChatGPT (as opposed to the OpenAI API).",
@@ -1153,6 +1161,11 @@
     "compact_prompt": {
       "description": "Compact prompt used for history compaction.",
       "type": "string"
+    },
+    "default_wait_timeout_ms": {
+      "description": "Default timeout used by collab wait tools when no explicit timeout is passed.",
+      "format": "int64",
+      "type": "integer"
     },
     "developer_instructions": {
       "default": null,
@@ -1350,6 +1363,18 @@
         }
       ],
       "description": "Directory where Codex writes log files, for example `codex-tui.log`. Defaults to `$CODEX_HOME/log`."
+    },
+    "max_active_subagents_per_thread": {
+      "description": "Maximum active direct sub-agents that a thread can own at one time.",
+      "format": "uint",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "max_spawn_depth": {
+      "description": "Maximum nested spawn depth for sub-agents (root thread depth is 0).",
+      "format": "uint",
+      "minimum": 0.0,
+      "type": "integer"
     },
     "mcp_oauth_callback_port": {
       "description": "Optional fixed port for the local HTTP callback server used during MCP OAuth login. When unset, Codex will bind to an ephemeral port chosen by the OS.",

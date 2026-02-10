@@ -5,6 +5,7 @@ Core principles
 - **Commit per item**: After each task.md item (or sub-item) is completed and verified, commit immediately; the commit message should describe the completed functionality.
 - **Small, verifiable increments**: Keep each change small and verifiable; validate immediately after completing it.
 - **TDD first**: If tests are missing, add tests before implementation; ensure relevant tests pass after implementation.
+- **Collaboration-ready**: If task.md requires multi-agent work and collab tools are available, split ownership clearly and keep verification explicit per owner.
 - **Transparent reporting**: Report progress, test results, and blockers at key checkpoints.
 - **Safe operations**: Prefer `apply_patch` for file edits; explain the purpose and expected outcome before running commands.
 

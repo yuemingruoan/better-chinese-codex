@@ -8,7 +8,6 @@ use crate::tools::handlers::apply_patch::create_apply_patch_freeform_tool;
 use crate::tools::handlers::apply_patch::create_apply_patch_json_tool;
 use crate::tools::handlers::collab::DEFAULT_WAIT_TIMEOUT_MS;
 use crate::tools::handlers::collab::MAX_WAIT_TIMEOUT_MS;
-use crate::tools::handlers::collab::MIN_WAIT_TIMEOUT_MS;
 use crate::tools::handlers::request_user_input_tool_description;
 use crate::tools::registry::ToolRegistryBuilder;
 use codex_protocol::config_types::WebSearchMode;
@@ -466,6 +465,77 @@ fn create_spawn_agent_tool() -> ToolSpec {
             )),
         },
     );
+    properties.insert(
+        "label".to_string(),
+        JsonSchema::String {
+            description: Some("Optional short label for the spawned agent.".to_string()),
+        },
+    );
+    properties.insert(
+        "acceptance_criteria".to_string(),
+        JsonSchema::Array {
+            items: Box::new(JsonSchema::String {
+                description: Some("Optional acceptance criterion.".to_string()),
+            }),
+            description: Some("Optional acceptance criteria for the task.".to_string()),
+        },
+    );
+    properties.insert(
+        "test_commands".to_string(),
+        JsonSchema::Array {
+            items: Box::new(JsonSchema::String {
+                description: Some("Optional test command.".to_string()),
+            }),
+            description: Some("Optional validation commands for the spawned task.".to_string()),
+        },
+    );
+    properties.insert(
+        "allow_nested_agents".to_string(),
+        JsonSchema::Boolean {
+            description: Some("Whether the spawned agent may create nested agents.".to_string()),
+        },
+    );
+    properties.insert(
+        "model".to_string(),
+        JsonSchema::String {
+            description: Some("Optional model override for the spawned agent.".to_string()),
+        },
+    );
+    properties.insert(
+        "reasoning_effort".to_string(),
+        JsonSchema::String {
+            description: Some(
+                "Optional reasoning effort override (none|minimal|low|medium|high|xhigh)."
+                    .to_string(),
+            ),
+        },
+    );
+    properties.insert(
+        "reasoning_summary".to_string(),
+        JsonSchema::String {
+            description: Some(
+                "Optional reasoning summary override (auto|concise|detailed|none).".to_string(),
+            ),
+        },
+    );
+    properties.insert(
+        "approval_policy".to_string(),
+        JsonSchema::String {
+            description: Some(
+                "Optional approval policy override (never|on-request|on-failure|untrusted)."
+                    .to_string(),
+            ),
+        },
+    );
+    properties.insert(
+        "sandbox_mode".to_string(),
+        JsonSchema::String {
+            description: Some(
+                "Optional sandbox mode override (read-only|workspace-write|danger-full-access)."
+                    .to_string(),
+            ),
+        },
+    );
 
     ToolSpec::Function(ResponsesApiTool {
         name: "spawn_agent".to_string(),
@@ -535,7 +605,7 @@ fn create_wait_tool() -> ToolSpec {
         "timeout_ms".to_string(),
         JsonSchema::Number {
             description: Some(format!(
-                "Optional timeout in milliseconds. Defaults to {DEFAULT_WAIT_TIMEOUT_MS}, min {MIN_WAIT_TIMEOUT_MS}, max {MAX_WAIT_TIMEOUT_MS}. Prefer longer waits (minutes) to avoid busy polling."
+                "Optional timeout in milliseconds. Defaults to session config (fallback {DEFAULT_WAIT_TIMEOUT_MS}) and max {MAX_WAIT_TIMEOUT_MS}."
             )),
         },
     );
@@ -634,6 +704,86 @@ fn create_request_user_input_tool() -> ToolSpec {
     })
 }
 
+fn create_wait_agents_tool() -> ToolSpec {
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "ids".to_string(),
+        JsonSchema::Array {
+            items: Box::new(JsonSchema::String {
+                description: Some("Agent id to wait on.".to_string()),
+            }),
+            description: Some(
+                "Optional list of agent ids to wait on. When omitted, waits on active child agents created by the current thread."
+                    .to_string(),
+            ),
+        },
+    );
+    properties.insert(
+        "mode".to_string(),
+        JsonSchema::String {
+            description: Some("Wait mode: any (default) or all.".to_string()),
+        },
+    );
+    properties.insert(
+        "timeout_ms".to_string(),
+        JsonSchema::Number {
+            description: Some(format!(
+                "Optional timeout in milliseconds. Defaults to session config (fallback {DEFAULT_WAIT_TIMEOUT_MS}) and max {MAX_WAIT_TIMEOUT_MS}."
+            )),
+        },
+    );
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "wait_agents".to_string(),
+        description: "Wait for one or more agents and return aggregated statuses.".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: None,
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_list_agents_tool() -> ToolSpec {
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "creator_id".to_string(),
+        JsonSchema::String {
+            description: Some("Optional creator thread id filter.".to_string()),
+        },
+    );
+    properties.insert(
+        "statuses".to_string(),
+        JsonSchema::Array {
+            items: Box::new(JsonSchema::String {
+                description: Some(
+                    "Optional status filter values: pending_init|running|completed|errored|shutdown|not_found."
+                        .to_string(),
+                ),
+            }),
+            description: Some("Optional list of statuses to include.".to_string()),
+        },
+    );
+    properties.insert(
+        "include_closed".to_string(),
+        JsonSchema::Boolean {
+            description: Some("Whether to include closed agents; defaults to false.".to_string()),
+        },
+    );
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "list_agents".to_string(),
+        description: "List known child agents and their metadata.".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: None,
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
 fn create_close_agent_tool() -> ToolSpec {
     let mut properties = BTreeMap::new();
     properties.insert(
@@ -651,6 +801,36 @@ fn create_close_agent_tool() -> ToolSpec {
         parameters: JsonSchema::Object {
             properties,
             required: Some(vec!["id".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_close_agents_tool() -> ToolSpec {
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "ids".to_string(),
+        JsonSchema::Array {
+            items: Box::new(JsonSchema::String {
+                description: Some("Identifier of the agent to close.".to_string()),
+            }),
+            description: Some("List of agent ids to close.".to_string()),
+        },
+    );
+    properties.insert(
+        "ignore_missing".to_string(),
+        JsonSchema::Boolean {
+            description: Some("When true, missing agents are ignored.".to_string()),
+        },
+    );
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "close_agents".to_string(),
+        description: "Close multiple agents and return per-agent results.".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["ids".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
@@ -1538,11 +1718,17 @@ pub(crate) fn build_specs(
         builder.push_spec(create_spawn_agent_tool());
         builder.push_spec(create_send_input_tool());
         builder.push_spec(create_wait_tool());
+        builder.push_spec(create_wait_agents_tool());
+        builder.push_spec(create_list_agents_tool());
         builder.push_spec(create_close_agent_tool());
+        builder.push_spec(create_close_agents_tool());
         builder.register_handler("spawn_agent", collab_handler.clone());
         builder.register_handler("send_input", collab_handler.clone());
         builder.register_handler("wait", collab_handler.clone());
-        builder.register_handler("close_agent", collab_handler);
+        builder.register_handler("wait_agents", collab_handler.clone());
+        builder.register_handler("list_agents", collab_handler.clone());
+        builder.register_handler("close_agent", collab_handler.clone());
+        builder.register_handler("close_agents", collab_handler);
     }
 
     if let Some(mcp_tools) = mcp_tools {
@@ -1849,7 +2035,15 @@ mod tests {
         let (tools, _) = build_specs(&tools_config, None, &[]).build();
         assert_contains_tool_names(
             &tools,
-            &["spawn_agent", "send_input", "wait", "close_agent"],
+            &[
+                "spawn_agent",
+                "send_input",
+                "wait",
+                "wait_agents",
+                "list_agents",
+                "close_agent",
+                "close_agents",
+            ],
         );
     }
 
