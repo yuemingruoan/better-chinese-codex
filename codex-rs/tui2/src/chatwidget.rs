@@ -2240,6 +2240,9 @@ impl ChatWidget {
             SlashCommand::Lang => {
                 self.open_language_popup();
             }
+            SlashCommand::Spec => {
+                self.open_spec_popup();
+            }
             SlashCommand::Approvals => {
                 self.open_approvals_popup();
             }
@@ -3588,9 +3591,13 @@ impl ChatWidget {
                 cwd: None,
                 approval_policy: None,
                 sandbox_policy: None,
+                windows_sandbox_level: None,
                 model: Some(switch_model.clone()),
                 effort: Some(Some(default_effort)),
                 summary: None,
+                collaboration_mode: None,
+                personality: None,
+                spec_parallel_priority: None,
             }));
             tx.send(AppEvent::UpdateModel(switch_model.clone()));
             tx.send(AppEvent::UpdateReasoningEffort(Some(default_effort)));
@@ -3704,6 +3711,50 @@ impl ChatWidget {
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some(tr(ui_language, "chatwidget.language_popup.title").to_string()),
             footer_hint: Some(standard_popup_hint_line(ui_language)),
+            items,
+            header: Box::new(()),
+            ..Default::default()
+        });
+    }
+
+    pub(crate) fn open_spec_popup(&mut self) {
+        let language = self.config.language;
+        let current = self.config.spec.parallel_priority;
+        let items = vec![
+            SelectionItem {
+                name: tr(language, "chatwidget.spec_popup.parallel_priority_on").to_string(),
+                description: Some(
+                    tr(
+                        language,
+                        "chatwidget.spec_popup.parallel_priority_on_desc",
+                    )
+                    .to_string(),
+                ),
+                is_current: current,
+                actions: Self::spec_parallel_priority_selection_actions(true),
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: tr(language, "chatwidget.spec_popup.parallel_priority_off").to_string(),
+                description: Some(
+                    tr(
+                        language,
+                        "chatwidget.spec_popup.parallel_priority_off_desc",
+                    )
+                    .to_string(),
+                ),
+                is_current: !current,
+                actions: Self::spec_parallel_priority_selection_actions(false),
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+        ];
+
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some(tr(language, "chatwidget.spec_popup.title").to_string()),
+            subtitle: Some(tr(language, "chatwidget.spec_popup.subtitle").to_string()),
+            footer_hint: Some(standard_popup_hint_line(language)),
             items,
             header: Box::new(()),
             ..Default::default()
@@ -3895,9 +3946,13 @@ impl ChatWidget {
                 cwd: None,
                 approval_policy: None,
                 sandbox_policy: None,
+                windows_sandbox_level: None,
                 model: Some(model_for_action.clone()),
                 effort: Some(effort_for_action),
                 summary: None,
+                collaboration_mode: None,
+                personality: None,
+                spec_parallel_priority: None,
             }));
             tx.send(AppEvent::UpdateModel(model_for_action.clone()));
             tx.send(AppEvent::UpdateReasoningEffort(effort_for_action));
@@ -3917,6 +3972,25 @@ impl ChatWidget {
         vec![Box::new(move |tx| {
             tx.send(AppEvent::UpdateLanguage(language));
             tx.send(AppEvent::PersistLanguageSelection { language });
+        })]
+    }
+
+    fn spec_parallel_priority_selection_actions(enabled: bool) -> Vec<SelectionAction> {
+        vec![Box::new(move |tx| {
+            tx.send(AppEvent::CodexOp(Op::OverrideTurnContext {
+                cwd: None,
+                approval_policy: None,
+                sandbox_policy: None,
+                windows_sandbox_level: None,
+                model: None,
+                effort: None,
+                summary: None,
+                collaboration_mode: None,
+                personality: None,
+                spec_parallel_priority: Some(enabled),
+            }));
+            tx.send(AppEvent::UpdateSpecParallelPriority(enabled));
+            tx.send(AppEvent::PersistSpecParallelPriority { enabled });
         })]
     }
 
@@ -4088,9 +4162,13 @@ impl ChatWidget {
                 cwd: None,
                 approval_policy: None,
                 sandbox_policy: None,
+                windows_sandbox_level: None,
                 model: Some(model.clone()),
                 effort: Some(effort),
                 summary: None,
+                collaboration_mode: None,
+                personality: None,
+                spec_parallel_priority: None,
             }));
         self.app_event_tx.send(AppEvent::UpdateModel(model.clone()));
         self.app_event_tx
@@ -4260,9 +4338,13 @@ impl ChatWidget {
                 cwd: None,
                 approval_policy: Some(approval),
                 sandbox_policy: Some(sandbox_clone.clone()),
+                windows_sandbox_level: None,
                 model: None,
                 effort: None,
                 summary: None,
+                collaboration_mode: None,
+                personality: None,
+                spec_parallel_priority: None,
             }));
             tx.send(AppEvent::UpdateAskForApprovalPolicy(approval));
             tx.send(AppEvent::UpdateSandboxPolicy(sandbox_clone));
@@ -4883,6 +4965,11 @@ impl ChatWidget {
     pub(crate) fn set_model(&mut self, model: &str) {
         self.session_header.set_model(model);
         self.model = Some(model.to_string());
+    }
+
+    /// Set the parallel-priority spec toggle in the widget's config copy.
+    pub(crate) fn set_spec_parallel_priority(&mut self, enabled: bool) {
+        self.config.spec.parallel_priority = enabled;
     }
 
     fn current_model(&self) -> Option<&str> {

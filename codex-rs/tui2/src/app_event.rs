@@ -116,6 +116,9 @@ pub(crate) enum AppEvent {
     /// Update the current UI language in the running app and widget.
     UpdateLanguage(Language),
 
+    /// Update the current Parallel Priority spec toggle in the running app and widget.
+    UpdateSpecParallelPriority(bool),
+
     /// Persist the selected model and reasoning effort to the appropriate config.
     PersistModelSelection {
         model: String,
@@ -125,6 +128,11 @@ pub(crate) enum AppEvent {
     /// Persist the selected UI language to the appropriate config.
     PersistLanguageSelection {
         language: Language,
+    },
+
+    /// Persist the selected Parallel Priority spec toggle to the appropriate config.
+    PersistSpecParallelPriority {
+        enabled: bool,
     },
 
     /// Persist the selected approval policy and sandbox mode to the config.
