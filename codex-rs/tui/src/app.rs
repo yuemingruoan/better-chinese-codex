@@ -1646,6 +1646,10 @@ impl App {
                 self.config.language = language;
                 self.chat_widget.set_language(language);
             }
+            AppEvent::UpdateSpecParallelPriority(enabled) => {
+                self.config.spec.parallel_priority = enabled;
+                self.chat_widget.set_spec_parallel_priority(enabled);
+            }
             AppEvent::OpenReasoningPopup { model } => {
                 self.chat_widget.open_reasoning_popup(model);
             }
@@ -1846,6 +1850,7 @@ impl App {
                                         summary: None,
                                         collaboration_mode: None,
                                         personality: None,
+                                        spec_parallel_priority: None,
                                     },
                                 ));
                                 self.app_event_tx.send(
@@ -1868,6 +1873,7 @@ impl App {
                                         summary: None,
                                         collaboration_mode: None,
                                         personality: None,
+                                        spec_parallel_priority: None,
                                     },
                                 ));
                                 self.app_event_tx
@@ -1982,6 +1988,53 @@ impl App {
                             "app.language.save_failed",
                             &[("error", &err.to_string())],
                         );
+                        self.chat_widget.add_error_message(message);
+                    }
+                }
+            }
+            AppEvent::PersistSpecParallelPriority { enabled } => {
+                let profile = self.active_profile.as_deref();
+                match ConfigEditsBuilder::new(&self.config.codex_home)
+                    .with_profile(profile)
+                    .set_spec_parallel_priority(enabled)
+                    .apply()
+                    .await
+                {
+                    Ok(()) => {
+                        let key = if enabled {
+                            "app.spec.parallel_priority.enabled"
+                        } else {
+                            "app.spec.parallel_priority.disabled"
+                        };
+                        let mut message = tr(self.config.language, key).to_string();
+                        if let Some(profile) = profile {
+                            message.push_str(&tr_args(
+                                self.config.language,
+                                "app.spec.parallel_priority.profile_suffix",
+                                &[("profile", profile)],
+                            ));
+                        }
+                        self.chat_widget.add_info_message(message, None);
+                    }
+                    Err(err) => {
+                        tracing::error!(
+                            error = %err,
+                            "failed to persist parallel priority spec selection"
+                        );
+                        let key = if profile.is_some() {
+                            "app.spec.parallel_priority.save_profile_failed"
+                        } else {
+                            "app.spec.parallel_priority.save_default_failed"
+                        };
+                        let message = if let Some(profile) = profile {
+                            tr_args(
+                                self.config.language,
+                                key,
+                                &[("profile", profile), ("error", &err.to_string())],
+                            )
+                        } else {
+                            tr_args(self.config.language, key, &[("error", &err.to_string())])
+                        };
                         self.chat_widget.add_error_message(message);
                     }
                 }
@@ -2180,6 +2233,7 @@ impl App {
                                 summary: None,
                                 collaboration_mode: None,
                                 personality: None,
+                                spec_parallel_priority: None,
                             }));
                     }
                 }

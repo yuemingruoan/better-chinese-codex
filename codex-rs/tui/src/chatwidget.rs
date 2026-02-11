@@ -3230,6 +3230,9 @@ impl ChatWidget {
             SlashCommand::Lang => {
                 self.open_language_popup();
             }
+            SlashCommand::Spec => {
+                self.open_spec_popup();
+            }
             SlashCommand::Personality => {
                 self.open_personality_popup();
             }
@@ -4891,6 +4894,7 @@ impl ChatWidget {
                 summary: None,
                 collaboration_mode: None,
                 personality: None,
+                spec_parallel_priority: None,
             }));
             tx.send(AppEvent::UpdateModel(switch_model.clone()));
             tx.send(AppEvent::UpdateReasoningEffort(Some(default_effort)));
@@ -5010,6 +5014,42 @@ impl ChatWidget {
         });
     }
 
+    pub(crate) fn open_spec_popup(&mut self) {
+        let language = self.config.language;
+        let current = self.config.spec.parallel_priority;
+        let items = vec![
+            SelectionItem {
+                name: tr(language, "chatwidget.spec_popup.parallel_priority_on").to_string(),
+                description: Some(
+                    tr(language, "chatwidget.spec_popup.parallel_priority_on_desc").to_string(),
+                ),
+                is_current: current,
+                actions: Self::spec_parallel_priority_selection_actions(true),
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: tr(language, "chatwidget.spec_popup.parallel_priority_off").to_string(),
+                description: Some(
+                    tr(language, "chatwidget.spec_popup.parallel_priority_off_desc").to_string(),
+                ),
+                is_current: !current,
+                actions: Self::spec_parallel_priority_selection_actions(false),
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+        ];
+
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some(tr(language, "chatwidget.spec_popup.title").to_string()),
+            subtitle: Some(tr(language, "chatwidget.spec_popup.subtitle").to_string()),
+            footer_hint: Some(standard_popup_hint_line(language)),
+            items,
+            header: Box::new(()),
+            ..Default::default()
+        });
+    }
+
     pub(crate) fn open_model_popup(&mut self) {
         let language = self.config.language;
         if !self.is_session_configured() {
@@ -5070,6 +5110,7 @@ impl ChatWidget {
                         collaboration_mode: None,
                         windows_sandbox_level: None,
                         personality: Some(personality),
+                        spec_parallel_priority: None,
                     }));
                     tx.send(AppEvent::UpdatePersonality(personality));
                     tx.send(AppEvent::PersistPersonalitySelection { personality });
@@ -5347,6 +5388,7 @@ impl ChatWidget {
                 summary: None,
                 collaboration_mode: None,
                 personality: None,
+                spec_parallel_priority: None,
             }));
             tx.send(AppEvent::UpdateModel(model_for_action.clone()));
             tx.send(AppEvent::UpdateReasoningEffort(effort_for_action));
@@ -5366,6 +5408,25 @@ impl ChatWidget {
         vec![Box::new(move |tx| {
             tx.send(AppEvent::UpdateLanguage(language));
             tx.send(AppEvent::PersistLanguageSelection { language });
+        })]
+    }
+
+    fn spec_parallel_priority_selection_actions(enabled: bool) -> Vec<SelectionAction> {
+        vec![Box::new(move |tx| {
+            tx.send(AppEvent::CodexOp(Op::OverrideTurnContext {
+                cwd: None,
+                approval_policy: None,
+                sandbox_policy: None,
+                windows_sandbox_level: None,
+                model: None,
+                effort: None,
+                summary: None,
+                collaboration_mode: None,
+                personality: None,
+                spec_parallel_priority: Some(enabled),
+            }));
+            tx.send(AppEvent::UpdateSpecParallelPriority(enabled));
+            tx.send(AppEvent::PersistSpecParallelPriority { enabled });
         })]
     }
 
@@ -5543,6 +5604,7 @@ impl ChatWidget {
                 summary: None,
                 collaboration_mode: None,
                 personality: None,
+                spec_parallel_priority: None,
             }));
         self.app_event_tx.send(AppEvent::UpdateModel(model.clone()));
         self.app_event_tx
@@ -5767,6 +5829,7 @@ impl ChatWidget {
                 summary: None,
                 collaboration_mode: None,
                 personality: None,
+                spec_parallel_priority: None,
             }));
             tx.send(AppEvent::UpdateAskForApprovalPolicy(approval));
             tx.send(AppEvent::UpdateSandboxPolicy(sandbox_clone));
@@ -6498,6 +6561,11 @@ impl ChatWidget {
     /// Set the personality in the widget's config copy.
     pub(crate) fn set_personality(&mut self, personality: Personality) {
         self.config.personality = Some(personality);
+    }
+
+    /// Set the parallel-priority spec toggle in the widget's config copy.
+    pub(crate) fn set_spec_parallel_priority(&mut self, enabled: bool) {
+        self.config.spec.parallel_priority = enabled;
     }
 
     /// Set the model in the widget's config copy and stored collaboration mode.

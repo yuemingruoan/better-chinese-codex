@@ -981,6 +981,18 @@
       },
       "type": "object"
     },
+    "SpecConfig": {
+      "additionalProperties": false,
+      "description": "Configuration for built-in instruction specs injected at request time.",
+      "properties": {
+        "parallel_priority": {
+          "default": false,
+          "description": "When enabled, inject the \"Parallel Priority\" guidance into model requests.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "ToolsToml": {
       "additionalProperties": false,
       "properties": {
@@ -1572,6 +1584,15 @@
         }
       ],
       "description": "User-level skill config entries keyed by SKILL.md path."
+    },
+    "spec": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/SpecConfig"
+        }
+      ],
+      "default": null,
+      "description": "Built-in spec toggles for request-time instruction injection."
     },
     "suppress_unstable_features_warning": {
       "description": "Suppress warnings about unstable (under development) features.",

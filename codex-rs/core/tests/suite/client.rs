@@ -16,6 +16,7 @@ use codex_core::auth::AuthCredentialsStoreMode;
 use codex_core::built_in_model_providers;
 use codex_core::default_client::originator;
 use codex_core::error::CodexErr;
+use codex_core::i18n::tr;
 use codex_core::models_manager::manager::ModelsManager;
 use codex_core::protocol::EventMsg;
 use codex_core::protocol::Op;
@@ -23,6 +24,7 @@ use codex_core::protocol::SessionSource;
 use codex_otel::OtelManager;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::CollaborationMode;
+use codex_protocol::config_types::Language;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::config_types::Settings;
@@ -663,6 +665,94 @@ async fn includes_user_instructions_message_in_request() {
     assert_message_role(&request_body["input"][2], "user");
     assert_message_starts_with(&request_body["input"][2], "<environment_context>");
     assert_message_ends_with(&request_body["input"][2], "</environment_context>");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn parallel_priority_spec_injected_when_enabled_and_removed_after_override() {
+    skip_if_no_network!();
+    let server = MockServer::start().await;
+
+    let resp_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![ev_response_created("resp1"), ev_completed("resp1")]),
+            sse(vec![ev_response_created("resp2"), ev_completed("resp2")]),
+        ],
+    )
+    .await;
+
+    let mut builder = test_codex()
+        .with_auth(CodexAuth::from_api_key("Test API Key"))
+        .with_config(|config| {
+            config.spec.parallel_priority = true;
+        });
+    let codex = builder
+        .build(&server)
+        .await
+        .expect("create new conversation")
+        .codex;
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "hello".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+        })
+        .await
+        .unwrap();
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    codex
+        .submit(Op::OverrideTurnContext {
+            cwd: None,
+            approval_policy: None,
+            sandbox_policy: None,
+            windows_sandbox_level: None,
+            model: None,
+            effort: None,
+            summary: None,
+            collaboration_mode: None,
+            personality: None,
+            spec_parallel_priority: Some(false),
+        })
+        .await
+        .expect("override spec toggle");
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "hello again".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+        })
+        .await
+        .unwrap();
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    let requests = resp_mock.requests();
+    assert_eq!(requests.len(), 2);
+
+    let spec_text = tr(Language::En, "prompt.spec.parallel_priority");
+    let first_has_spec = requests[0]
+        .message_input_texts("user")
+        .iter()
+        .any(|text| text.contains(spec_text));
+    let second_has_spec = requests[1]
+        .message_input_texts("user")
+        .iter()
+        .any(|text| text.contains(spec_text));
+
+    assert!(
+        first_has_spec,
+        "first request should include Parallel Priority spec"
+    );
+    assert!(
+        !second_has_spec,
+        "second request should not include Parallel Priority spec after disabling"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

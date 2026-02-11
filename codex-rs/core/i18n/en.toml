@@ -17,6 +17,7 @@ logout = "log out of Codex"
 mcp = "list configured MCP tools"
 mention = "mention a file"
 model = "choose what model and reasoning effort to use"
+spec = "configure built-in request specs"
 new = "start a new chat during a conversation"
 ps = "list background terminals"
 resume = "resume a saved chat"
@@ -110,6 +111,10 @@ Commit & Pull Request Guidelines
 
 (Optional) Add other sections if relevant, such as Security & Configuration Tips, Architecture Overview, or Agent-Specific Instructions.
 '''
+
+spec.parallel_priority = '''Parallel Priority is enabled for this session.
+
+When planning and executing work, prefer independent tasks that can run concurrently. Split work into minimal verifiable increments, avoid unnecessary sequential blocking, and keep shared-state edits explicit and coordinated.'''
 
 sdd_plan = '''You are a senior development planner. Based on the "Requirement description", first determine whether the information is sufficient:
 - Before asking the user, **you must read relevant project code/docs** to clarify context; only ask when the code cannot confirm it or there are multiple plausible interpretations.
@@ -520,6 +525,13 @@ profile_suffix = " for ${profile} profile"
 save_default_failed = "Failed to save default model: ${error}"
 save_profile_failed = "Failed to save model for profile `${profile}`: ${error}"
 
+[app.spec.parallel_priority]
+disabled = "Parallel Priority disabled."
+enabled = "Parallel Priority enabled."
+profile_suffix = " for ${profile} profile"
+save_default_failed = "Failed to save Parallel Priority preference: ${error}"
+save_profile_failed = "Failed to save Parallel Priority for profile `${profile}`: ${error}"
+
 [app.model_migration]
 save_pref_failed = "Failed to save model migration prompt preference: ${error}"
 
@@ -631,6 +643,14 @@ continue_remember_desc = "Enable full access and remember this choice"
 chinese_desc = "Use Simplified Chinese for UI and prompts"
 english_desc = "Use English for UI and prompts"
 title = "Select language"
+
+[chatwidget.spec_popup]
+parallel_priority_off = "Disable Parallel Priority"
+parallel_priority_off_desc = "Do not inject the Parallel Priority guidance into model requests."
+parallel_priority_on = "Enable Parallel Priority"
+parallel_priority_on_desc = "Inject built-in guidance so the agent prefers parallelizable work when possible."
+subtitle = "This setting is embedded in requests and does not create .codex/spec files."
+title = "Spec: Parallel Priority"
 
 [chatwidget.mcp]
 starting_server_single = "Booting MCP server: ${server}"

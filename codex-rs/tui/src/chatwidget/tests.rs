@@ -2518,6 +2518,58 @@ async fn slash_fork_requests_current_fork() {
 }
 
 #[tokio::test]
+async fn slash_spec_selection_enables_parallel_priority() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
+    chat.config.spec.parallel_priority = false;
+
+    chat.dispatch_command(SlashCommand::Spec);
+    chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::CodexOp(Op::OverrideTurnContext {
+            spec_parallel_priority: Some(true),
+            ..
+        }))
+    );
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::UpdateSpecParallelPriority(true))
+    );
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::PersistSpecParallelPriority { enabled: true })
+    );
+}
+
+#[tokio::test]
+async fn slash_spec_selection_disables_parallel_priority() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
+    chat.config.spec.parallel_priority = true;
+
+    chat.dispatch_command(SlashCommand::Spec);
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::CodexOp(Op::OverrideTurnContext {
+            spec_parallel_priority: Some(false),
+            ..
+        }))
+    );
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::UpdateSpecParallelPriority(false))
+    );
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::PersistSpecParallelPriority { enabled: false })
+    );
+}
+
+#[tokio::test]
 async fn slash_rollout_displays_current_path() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
     let rollout_path = PathBuf::from("/tmp/codex-test-rollout.jsonl");

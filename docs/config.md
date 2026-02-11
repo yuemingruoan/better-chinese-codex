@@ -37,6 +37,19 @@ language = "en"
 
 当 `language` 缺失或无法识别时，默认使用英文。
 
+## 内置规范（Spec）
+
+可在 `~/.codex/config.toml` 中配置内置规范开关：
+
+```toml
+[spec]
+parallel_priority = true
+```
+
+- `parallel_priority = true`：在请求构建阶段动态注入内置 `Parallel Priority` 提示词。
+- `parallel_priority = false`（默认）：不注入该提示词。
+- 提示词文本由程序内置并按当前 `language` 选择中英文，不依赖 `.codex/spec/AGENTS.md` 外部文件。
+
 ## JSON Schema
 
 `config.toml` 对应的 JSON Schema 生成在 `codex-rs/core/config.schema.json`。
