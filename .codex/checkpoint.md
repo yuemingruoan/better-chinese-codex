@@ -198,3 +198,12 @@
 
 - 当前待办：
   - 等待用户确认 `.codex/task.md` 规划内容或提出调整意见。
+
+## 2026-02-11 20:25:14 CST
+- 已将分支 `sdd/spec-ai-parallel-priority-codex` 推送为远端 `sdd-spec-ai-parallel-priority-codex`（因远端存在 `sdd` 分支名冲突，无法使用斜杠分支名）。
+- 已创建并合并 PR #15（Merge commit）：https://github.com/yuemingruoan/better-chinese-codex/pull/15，合并提交 `5e1bfdf9126c6ef00a45da5ad154392044d70db2`，目标分支 `develop-main`。
+- 已完成收尾清理：删除 `.codex/task.md` 与临时 PR 草稿文件，拉取最新 `develop-main` 并删除本地开发分支 `sdd/spec-ai-parallel-priority-codex`，远端特性分支已删除。
+- 测试记录：任务计划内定向测试均通过；补充执行 `cargo test --all-features` 时 `codex-network-proxy` 有 4 个既有失败，但单独执行 `cargo test -p codex-network-proxy --all-features --lib` 通过。
+
+- 当前待办：
+  - 跟踪 `cargo test --all-features` 下 `codex-network-proxy` 的 4 个不稳定用例（非本次 `/spec` 变更范围）。
