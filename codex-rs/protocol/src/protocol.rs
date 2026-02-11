@@ -189,6 +189,10 @@ pub enum Op {
         /// Updated personality preference.
         #[serde(skip_serializing_if = "Option::is_none")]
         personality: Option<Personality>,
+
+        /// Updated built-in spec toggle for "Parallel Priority" request guidance.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        spec_parallel_priority: Option<bool>,
     },
 
     /// Approve a command execution

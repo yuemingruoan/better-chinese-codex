@@ -121,6 +121,7 @@ use crate::feedback_tags;
 use crate::file_watcher::FileWatcher;
 use crate::file_watcher::FileWatcherEvent;
 use crate::git_info::get_git_repo_root;
+use crate::i18n::tr;
 use crate::instructions::UserInstructions;
 use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
 use crate::mcp::auth::compute_auth_statuses;
@@ -362,6 +363,7 @@ impl Codex {
             model_reasoning_summary: config.model_reasoning_summary,
             developer_instructions: config.developer_instructions.clone(),
             user_instructions,
+            spec_parallel_priority: config.spec.parallel_priority,
             personality: config.personality,
             base_instructions,
             compact_prompt: config.compact_prompt.clone(),
@@ -587,6 +589,9 @@ pub(crate) struct SessionConfiguration {
     /// Model instructions that are appended to the base instructions.
     user_instructions: Option<String>,
 
+    /// Whether to inject the built-in "Parallel Priority" spec guidance.
+    spec_parallel_priority: bool,
+
     /// Personality preference for the model.
     personality: Option<Personality>,
 
@@ -663,6 +668,9 @@ impl SessionConfiguration {
         if let Some(cwd) = updates.cwd.clone() {
             next_configuration.cwd = cwd;
         }
+        if let Some(spec_parallel_priority) = updates.spec_parallel_priority {
+            next_configuration.spec_parallel_priority = spec_parallel_priority;
+        }
         Ok(next_configuration)
     }
 }
@@ -677,6 +685,7 @@ pub(crate) struct SessionSettingsUpdate {
     pub(crate) reasoning_summary: Option<ReasoningSummaryConfig>,
     pub(crate) final_output_json_schema: Option<Option<Value>>,
     pub(crate) personality: Option<Personality>,
+    pub(crate) spec_parallel_priority: Option<bool>,
 }
 
 impl Session {
@@ -716,6 +725,7 @@ impl Session {
             session_configuration.collaboration_mode.reasoning_effort();
         per_turn_config.model_reasoning_summary = session_configuration.model_reasoning_summary;
         per_turn_config.personality = session_configuration.personality;
+        per_turn_config.spec.parallel_priority = session_configuration.spec_parallel_priority;
         per_turn_config.web_search_mode = Some(resolve_web_search_mode_for_turn(
             per_turn_config.web_search_mode,
             session_configuration.provider.is_azure_responses_endpoint(),
@@ -2580,6 +2590,7 @@ async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiv
                 summary,
                 collaboration_mode,
                 personality,
+                spec_parallel_priority,
             } => {
                 let collaboration_mode = if let Some(collab_mode) = collaboration_mode {
                     collab_mode
@@ -2602,6 +2613,7 @@ async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiv
                         collaboration_mode: Some(collaboration_mode),
                         reasoning_summary: summary,
                         personality,
+                        spec_parallel_priority,
                         ..Default::default()
                     },
                 )
@@ -2819,6 +2831,7 @@ mod handlers {
                         reasoning_summary: Some(summary),
                         final_output_json_schema: Some(final_output_json_schema),
                         personality,
+                        spec_parallel_priority: None,
                     },
                 )
             }
@@ -3932,6 +3945,11 @@ async fn run_sampling_request(
     tool_selection: SamplingRequestToolSelection<'_>,
     cancellation_token: CancellationToken,
 ) -> CodexResult<SamplingRequestResult> {
+    let mut input = input;
+    if let Some(item) = spec_parallel_priority_instruction_item(turn_context.as_ref()) {
+        input.push(item);
+    }
+
     let mut mcp_tools = sess
         .services
         .mcp_connection_manager
@@ -4055,6 +4073,20 @@ async fn run_sampling_request(
             return Err(err);
         }
     }
+}
+
+fn spec_parallel_priority_instruction_item(turn_context: &TurnContext) -> Option<ResponseItem> {
+    if !turn_context.config.spec.parallel_priority {
+        return None;
+    }
+
+    let text = tr(
+        turn_context.config.language,
+        "prompt.spec.parallel_priority",
+    )
+    .to_string();
+    let directory = turn_context.cwd.to_string_lossy().into_owned();
+    Some(UserInstructions { directory, text }.into())
 }
 
 #[derive(Debug)]
@@ -5336,6 +5368,7 @@ mod tests {
             model_reasoning_summary: config.model_reasoning_summary,
             developer_instructions: config.developer_instructions.clone(),
             user_instructions: config.user_instructions.clone(),
+            spec_parallel_priority: config.spec.parallel_priority,
             personality: config.personality,
             base_instructions: config
                 .base_instructions
@@ -5419,6 +5452,7 @@ mod tests {
             model_reasoning_summary: config.model_reasoning_summary,
             developer_instructions: config.developer_instructions.clone(),
             user_instructions: config.user_instructions.clone(),
+            spec_parallel_priority: config.spec.parallel_priority,
             personality: config.personality,
             base_instructions: config
                 .base_instructions
@@ -5692,6 +5726,7 @@ mod tests {
             model_reasoning_summary: config.model_reasoning_summary,
             developer_instructions: config.developer_instructions.clone(),
             user_instructions: config.user_instructions.clone(),
+            spec_parallel_priority: config.spec.parallel_priority,
             personality: config.personality,
             base_instructions: config
                 .base_instructions
@@ -5822,6 +5857,7 @@ mod tests {
             model_reasoning_summary: config.model_reasoning_summary,
             developer_instructions: config.developer_instructions.clone(),
             user_instructions: config.user_instructions.clone(),
+            spec_parallel_priority: config.spec.parallel_priority,
             personality: config.personality,
             base_instructions: config
                 .base_instructions

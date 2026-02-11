@@ -756,6 +756,14 @@ impl ConfigEditsBuilder {
         self
     }
 
+    pub fn set_spec_parallel_priority(mut self, enabled: bool) -> Self {
+        self.edits.push(ConfigEdit::SetPath {
+            segments: vec!["spec".to_string(), "parallel_priority".to_string()],
+            value: value(enabled),
+        });
+        self
+    }
+
     pub fn set_personality(mut self, personality: Option<Personality>) -> Self {
         self.edits
             .push(ConfigEdit::SetModelPersonality { personality });
@@ -953,6 +961,26 @@ model_reasoning_effort = "high"
         let contents =
             std::fs::read_to_string(codex_home.join(CONFIG_TOML_FILE)).expect("read config");
         assert_eq!(contents, "language = \"zh-cn\"\n");
+    }
+
+    #[test]
+    fn blocking_set_spec_parallel_priority_nested() {
+        let tmp = tempdir().expect("tmpdir");
+        let codex_home = tmp.path();
+
+        ConfigEditsBuilder::new(codex_home)
+            .set_spec_parallel_priority(true)
+            .apply_blocking()
+            .expect("persist");
+
+        let raw = std::fs::read_to_string(codex_home.join(CONFIG_TOML_FILE)).expect("read config");
+        let value: TomlValue = toml::from_str(&raw).expect("parse config");
+        let enabled = value
+            .get("spec")
+            .and_then(TomlValue::as_table)
+            .and_then(|table| table.get("parallel_priority"))
+            .and_then(TomlValue::as_bool);
+        assert_eq!(enabled, Some(true));
     }
 
     #[test]

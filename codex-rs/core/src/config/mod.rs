@@ -16,6 +16,7 @@ use crate::config::types::SandboxWorkspaceWrite;
 use crate::config::types::ShellEnvironmentPolicy;
 use crate::config::types::ShellEnvironmentPolicyToml;
 use crate::config::types::SkillsConfig;
+use crate::config::types::SpecConfig;
 use crate::config::types::Tui;
 use crate::config::types::UriBasedFileOpener;
 use crate::config_loader::CloudRequirementsLoader;
@@ -189,6 +190,9 @@ pub struct Config {
 
     /// User-provided instructions from AGENTS.md.
     pub user_instructions: Option<String>,
+
+    /// Built-in spec toggles that affect request-time instruction injection.
+    pub spec: SpecConfig,
 
     /// Preferred UI language.
     pub language: Language,
@@ -985,6 +989,10 @@ pub struct ConfigToml {
     /// Agent-related settings (thread limits, etc.).
     pub agents: Option<AgentsToml>,
 
+    /// Built-in spec toggles for request-time instruction injection.
+    #[serde(default)]
+    pub spec: Option<SpecConfig>,
+
     /// User-level skill config entries keyed by SKILL.md path.
     pub skills: Option<SkillsConfig>,
 
@@ -1677,6 +1685,7 @@ impl Config {
             shell_environment_policy,
             notify: cfg.notify,
             user_instructions,
+            spec: cfg.spec.unwrap_or_default(),
             language: cfg.language.unwrap_or_default(),
             base_instructions,
             personality,
@@ -3917,6 +3926,7 @@ model_verbosity = "high"
                 forced_auto_mode_downgraded_on_windows: false,
                 shell_environment_policy: ShellEnvironmentPolicy::default(),
                 user_instructions: None,
+                spec: SpecConfig::default(),
                 notify: None,
                 cwd: fixture.cwd(),
                 cli_auth_credentials_store_mode: Default::default(),
@@ -4010,6 +4020,7 @@ model_verbosity = "high"
             forced_auto_mode_downgraded_on_windows: false,
             shell_environment_policy: ShellEnvironmentPolicy::default(),
             user_instructions: None,
+            spec: SpecConfig::default(),
             notify: None,
             cwd: fixture.cwd(),
             cli_auth_credentials_store_mode: Default::default(),
@@ -4118,6 +4129,7 @@ model_verbosity = "high"
             forced_auto_mode_downgraded_on_windows: false,
             shell_environment_policy: ShellEnvironmentPolicy::default(),
             user_instructions: None,
+            spec: SpecConfig::default(),
             notify: None,
             cwd: fixture.cwd(),
             cli_auth_credentials_store_mode: Default::default(),
@@ -4212,6 +4224,7 @@ model_verbosity = "high"
             forced_auto_mode_downgraded_on_windows: false,
             shell_environment_policy: ShellEnvironmentPolicy::default(),
             user_instructions: None,
+            spec: SpecConfig::default(),
             notify: None,
             cwd: fixture.cwd(),
             cli_auth_credentials_store_mode: Default::default(),

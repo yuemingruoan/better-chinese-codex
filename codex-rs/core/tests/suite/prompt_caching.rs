@@ -390,6 +390,7 @@ async fn overrides_turn_context_but_keeps_cached_prefix_and_key_constant() -> an
             summary: Some(ReasoningSummary::Detailed),
             collaboration_mode: None,
             personality: None,
+            spec_parallel_priority: None,
         })
         .await?;
 
@@ -469,6 +470,7 @@ async fn override_before_first_turn_emits_environment_context() -> anyhow::Resul
             summary: None,
             collaboration_mode: Some(collaboration_mode),
             personality: None,
+            spec_parallel_priority: None,
         })
         .await?;
 

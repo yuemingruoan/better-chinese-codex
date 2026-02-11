@@ -509,6 +509,15 @@ const fn default_true() -> bool {
     true
 }
 
+/// Configuration for built-in instruction specs injected at request time.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct SpecConfig {
+    /// When enabled, inject the "Parallel Priority" guidance into model requests.
+    #[serde(default)]
+    pub parallel_priority: bool,
+}
+
 /// Settings for notices we display to users via the tui and app-server clients
 /// (primarily the Codex IDE extension). NOTE: these are different from
 /// notifications - notices are warnings, NUX screens, acknowledgements, etc.
