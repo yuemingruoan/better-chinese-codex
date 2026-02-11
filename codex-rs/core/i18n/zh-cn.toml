@@ -16,6 +16,7 @@ lang = "切换界面语言"
 mcp = "列出已配置的 MCP 工具"
 mention = "在消息中提及文件"
 model = "选择模型及推理强度"
+spec = "配置内置请求规范"
 new = "在对话中开始新的聊天"
 ps = "列出后台终端"
 resume = "恢复已保存的会话"
@@ -107,6 +108,10 @@ init = '''请生成一个名为 AGENTS.md 的文件，为本仓库贡献者提�
 
 （可选）根据实际情况补充其他章节，如安全与配置提示、架构概览、面向代理的特别说明等。
 '''
+
+spec.parallel_priority = '''本会话已启用 Parallel Priority。
+
+在规划与执行任务时，优先识别并组织可并行推进的独立工作。将任务拆分为最小可验证增量，避免不必要的串行阻塞；涉及共享状态时，明确标注依赖与同步点。'''
 
 sdd_plan = '''你是资深开发规划师。请根据“需求描述”先判断信息是否充分：  
 - 在向用户提问前，**必须先阅读项目内相关代码/文档**以澄清上下文；仅当代码中无法确认或存在多个合理语义时才提问。  
@@ -516,6 +521,13 @@ profile_suffix = "（配置档：${profile}）"
 save_default_failed = "保存默认模型失败：${error}"
 save_profile_failed = "为配置档 `${profile}` 保存模型失败：${error}"
 
+[app.spec.parallel_priority]
+disabled = "已关闭 Parallel Priority。"
+enabled = "已开启 Parallel Priority。"
+profile_suffix = "（配置档：${profile}）"
+save_default_failed = "保存 Parallel Priority 偏好失败：${error}"
+save_profile_failed = "为配置档 `${profile}` 保存 Parallel Priority 失败：${error}"
+
 [app.model_migration]
 save_pref_failed = "保存模型迁移提示偏好失败：${error}"
 
@@ -627,6 +639,14 @@ continue_remember_desc = "启用完全访问并记住该选择"
 chinese_desc = "界面与提示使用简体中文"
 english_desc = "界面与提示使用英语"
 title = "选择语言"
+
+[chatwidget.spec_popup]
+parallel_priority_off = "关闭 Parallel Priority"
+parallel_priority_off_desc = "不在模型请求中注入 Parallel Priority 规范提示词。"
+parallel_priority_on = "开启 Parallel Priority"
+parallel_priority_on_desc = "注入内置规范提示词，让代理在可行时优先组织可并行执行的工作。"
+subtitle = "该设置会直接随请求携带，不会创建 .codex/spec 文件。"
+title = "规范：Parallel Priority"
 
 [chatwidget.mcp]
 starting_server_single = "正在启动 MCP 服务器：${server}"
