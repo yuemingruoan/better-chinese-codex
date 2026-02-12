@@ -199,6 +199,66 @@
 - 当前待办：
   - 等待用户确认 `.codex/task.md` 规划内容或提出调整意见。
 
+## 2026-02-12 20:39:22 CST
+- 新增 Claude Code 风格工具集重构的任务规划 `.codex/task.md`，覆盖范围、里程碑、测试与风险。
+- 明确新工具集清单与 WebFetch/WebSearch 不重构的范围说明。
+
+- 当前待办：
+  - 等待用户确认本次工具系统重构计划或提出调整意见。
+
+## 2026-02-12 20:45:28 CST
+- 按用户要求补充 `.codex/task.md`，新增每个工具的具体移植方案与映射关系。
+- 明确各工具对应的现有 handler/模块与预期改造点。
+
+- 当前待办：
+  - 等待用户确认每个工具的移植方案或提出调整意见。
+
+## 2026-02-12 20:47:17 CST
+- 按反馈补充 TUI/TUI2 渲染适配要求，重点覆盖 TodoWrite/AskUserQuestion 相关输出。
+- 更新验收与测试计划，明确 TUI/TUI2 需要可渲染且信息不丢失。
+
+- 当前待办：
+  - 等待用户确认渲染适配要求或提出调整意见。
+
+## 2026-02-12 20:50:13 CST
+- 按用户要求更新规划：明确 sub_agent 相关工具无需修改内核实现，仅通过新工具层做兼容映射。
+- 在 `.codex/task.md` 补充 sub_agent 兼容范围、非范围、风险、验收与专项测试项。
+
+- 当前待办：
+  - 等待用户确认 sub_agent 兼容策略或提出进一步约束。
+
+## 2026-02-12 20:57:20 CST
+- 根据最新约束重写 `.codex/task.md`，补充工具系统重构的技术细节与实现路径。
+- 明确 sub_agent 策略为“可统一入参格式，但功能语义不变”，并加入 Task/TaskOutput/TaskStop 兼容专项。
+- 增补 TUI/TUI2 渲染落地细节与测试矩阵（重点覆盖 TodoWrite、AskUserQuestion）。
+
+- 当前待办：
+  - 等待用户确认详细技术方案或提出需调整的工具级设计。
+
+## 2026-02-12 21:00:14 CST
+- 按用户要求将任务规划改为“sub_agent 单元化并行执行”结构，重写 `.codex/task.md`。
+- 新增并行波次、sub_agent 分工矩阵、主 Agent 冲突裁决职责与 Task/TaskOutput/TaskStop 协同策略。
+- 保留“可统一入参但 sub_agent 功能语义不变”边界，并落实到任务与验收项。
+
+- 当前待办：
+  - 等待用户确认 sub_agent 分工与并行节奏是否需要进一步调整。
+
+## 2026-02-12 21:03:11 CST
+- 按用户要求将任务拆分方式改为“按功能全链路分配到具体 sub_agent（例如 Write 全链路、Read 全链路）”。
+- 重写 `.codex/task.md` 的工作项与里程碑，改为工具级 Agent 拆分（T2-T19）+ 主 Agent 集成裁决（T20）。
+- 补充每个功能 Agent 的交付边界、并行波次与冲突处理规则。
+
+- 当前待办：
+  - 等待用户确认功能型 Agent 列表与并行波次是否还需微调。
+
+## 2026-02-12 21:07:57 CST
+- 基于代码审计补充并发系统问题清单，并将修复项并入 `.codex/task.md`（T21-T25）。
+- 新增修复范围：工具并行锁放大、wait 语义分叉、close 状态不准确与错误吞掉、TaskOutput 非阻塞语义、request_user_input 中断渲染缺口。
+- 更新里程碑，新增并发稳定性修复波次（M4）与专项测试项。
+
+- 当前待办：
+  - 等待用户确认并发修复优先级与是否与工具重构同批实施。
+
 ## 2026-02-11 20:25:14 CST
 - 已将分支 `sdd/spec-ai-parallel-priority-codex` 推送为远端 `sdd-spec-ai-parallel-priority-codex`（因远端存在 `sdd` 分支名冲突，无法使用斜杠分支名）。
 - 已创建并合并 PR #15（Merge commit）：https://github.com/yuemingruoan/better-chinese-codex/pull/15，合并提交 `5e1bfdf9126c6ef00a45da5ad154392044d70db2`，目标分支 `develop-main`。
@@ -270,3 +330,11 @@
 
 - 当前待办：
   - 无。
+
+## 2026-02-12 21:12:45 CST
+- 已完成 Claude Code 风格工具系统重构规划收口：`.codex/task.md` 覆盖 T1-T26、M0-M6、工具全链路分工与冲突裁决规则。
+- 已纳入并发修复与批量协作能力设计：P1-P6 问题、`TaskBatch`/`TaskSendBatch` 参数与返回语义、TUI/TUI2 批量摘要渲染要求。
+- 已明确边界：WebFetch/WebSearch 仅做接口适配，不重构网络内核；sub_agent 既有语义保持不变，仅做兼容映射层统一。
+
+- 当前待办：
+  - 等待用户确认 `.codex/task.md`，确认后进入 T1（基线冻结与裁决规则）执行阶段。
