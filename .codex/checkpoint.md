@@ -199,6 +199,15 @@
 - 当前待办：
   - 等待用户确认 `.codex/task.md` 规划内容或提出调整意见。
 
+## 2026-02-13 00:51:55 CST
+- 采用多 sub-agent 并行完成 T18/T19/T25 收口，提交 `97cca18bc`：修复 TUI/TUI2 编译兼容、补齐 request_user_input 中断渲染链路并同步快照。
+- 新增 Claude 风格工具迁移（T2-T11），提交 `a6747d9ed`：落地 `Write/Edit/Glob/NotebookEdit` 新 handler，扩展 `AskUserQuestion/Bash/Read/Grep/TodoWrite/EnterPlanMode/ExitPlanMode` 适配与 spec/注册。
+- 已完成验证：`just fmt`、`cargo test -p codex-tui --quiet`、`cargo test -p codex-tui2 --quiet`、`cargo test -p codex-core tools::handlers::claude_`、`cargo test -p codex-core tools::spec::`、`cargo test -p codex-core --quiet`、`just fix -p codex-core`。
+
+- 当前待办：
+  - T17（WebFetch/WebSearch 适配）待确认是否按“网络工具不重构”策略保持现状。
+  - T20（整体收尾与文档矩阵）待最终验收后勾选。
+
 ## 2026-02-12 20:39:22 CST
 - 新增 Claude Code 风格工具集重构的任务规划 `.codex/task.md`，覆盖范围、里程碑、测试与风险。
 - 明确新工具集清单与 WebFetch/WebSearch 不重构的范围说明。
