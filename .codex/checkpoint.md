@@ -338,3 +338,16 @@
 
 - 当前待办：
   - 等待用户确认 `.codex/task.md`，确认后进入 T1（基线冻结与裁决规则）执行阶段。
+
+## 2026-02-12 22:50:02 CST
+- 按多 Agent 并行模式完成本轮实现收口：落地 `Task/TaskOutput/TaskStop/ToolSearch/Skill` Claude 风格 alias，新增 `task_batch`/`task_send_batch`（含 `fail_fast` 与部分成功语义）。
+- 完成并发/稳定性修复：`wait`/`wait_agents` 统一 `wakeup_reason`，支持 `timeout_ms=0` 非阻塞快照；`close_agent` 返回与事件改为关闭后最终状态；`shutdown_agent_with_descendants` 不再吞掉关闭错误。
+- 完成渲染链路补洞：TUI request_user_input 中断结果持久化；TUI2 新增 `RequestUserInput` 事件接线、pending 队列与中断后可见状态渲染（最小闭环）。
+- 已更新 `.codex/task.md` 进度：勾选 `T12/T13/T14/T15/T16/T22/T23/T24/T26` 为完成，保留 `T18/T19/T25` 待最终 UI 回归验证。
+- 验证记录：
+  - 通过：`just fmt`、`cargo test -p codex-core`、`cargo test -p codex-core tools::spec::`、`cargo test -p codex-core tools::handlers::claude_tool_adapter::`、`cargo test -p codex-core collab_batch::tests::`、`cargo test -p codex-core wait_`、`cargo test -p codex-core close_agent_`、`cargo test -p codex-core shutdown_agent_reports_close_errors`。
+  - 阻塞：`cargo test -p codex-tui request_user_input` 在当前分支存在既有编译错误（大量与本次改动无关的 i18n/签名不匹配）；`cargo test --manifest-path codex-rs/tui2/Cargo.toml chatwidget` 因 workspace 缺少 `mcp-types` 依赖映射无法启动。
+
+- 当前待办：
+  - 收敛 `codex-tui` 既有编译错误后，复跑 T18/T25 相关测试并决定是否勾选。
+  - 处理 `codex-rs/tui2/Cargo.toml` workspace 依赖缺口后，复跑 T19/T25 相关测试并决定是否勾选。
