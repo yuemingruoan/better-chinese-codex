@@ -30,7 +30,7 @@
 |---|---|---|---|---|---|
 | T1 | 基线与分支准备 | [x] | Codex | 1) `git switch develop-main`；2) 新建工作分支（建议 `sync/upstream-rust-v0.99`）；3) 检查工作区状态并记录基线。 | `git branch --show-current` 为工作分支；`git status --short --branch` 无异常未跟踪风险。 |
 | T2 | 上游源与版本窗口确认 | [x] | Codex | 1) 配置并校验 OpenAI 官方 `upstream` 远端；2) 拉取 tags；3) 确认 `rust-v0.98.0` 与 `rust-v0.99.0` 都可解析。 | `git remote -v` 出现 `upstream`；`git rev-parse rust-v0.99.0` 成功；`git log --oneline rust-v0.98.0..rust-v0.99.0` 有输出。 |
-| T3 | 差异盘点与测试先行计划 | [ ] | Codex | 1) 生成变更文件清单并按模块分类（core/tui/tui2/docs/workflows/assets）；2) 标记高风险冲突点；3) 先定义需补充/调整的回归测试项（先测后改）。 | 输出差异盘点清单；每个高风险点绑定至少一个验证命令或测试用例。 |
+| T3 | 差异盘点与测试先行计划 | [x] | Codex | 1) 生成变更文件清单并按模块分类（core/tui/tui2/docs/workflows/assets）；2) 标记高风险冲突点；3) 先定义需补充/调整的回归测试项（先测后改）。 | 输出差异盘点清单；每个高风险点绑定至少一个验证命令或测试用例。 |
 | T4 | 机械合并与策略过滤 | [ ] | Codex | 1) 执行上游合并（merge/cherry-pick 按实际冲突量选择）；2) 按策略过滤：保留中文提示词、保留 README、仅保留允许工作流；3) 文件修改优先 `apply_patch`。 | `git status` 仅剩待处理冲突或已合并变更；`.github/workflows` 仅包含允许文件；README 未被覆盖。 |
 | T5 | 功能冲突裁决关卡 | [ ] | 你（用户）+ Codex | 1) Codex 输出“冲突点+候选方案+影响范围+推荐”；2) 你逐项裁决；3) 未裁决项不进入最终提交。 | 每个功能冲突项都有明确“你的决定”；无“语义未定”条目残留。 |
 | T6 | 按裁决落地与 i18n 收口 | [ ] | Codex | 1) 落地冲突处理代码；2) 新增/变更交互文本同步 en/zh；3) 文档（README 除外）与上游一致并完成中文化。 | `cargo test -p codex-core i18n::tests::catalogs_share_keys` 通过；`rg` 检查新增 key 在中英文均存在；文档变更可审阅。 |
@@ -38,6 +38,21 @@
 | T8 | 全量回归（条件触发） | [ ] | Codex + 你（确认） | 若变更涉及 `common/core/protocol`：先征求你同意，再执行 `cargo test --all-features`；失败则分组定位并回填任务状态。 | 得到你的“允许执行”确认；全量测试通过，或失败项有明确归因与修复/豁免决策。 |
 | T9 | 发布素材与收尾同步 | [ ] | Codex | 1) 更新 `docs/release/notes.md`（中英文）记录本轮同步；2) 复核版本号策略（保持 fork 版本，不对齐上游）；3) 清点交付物与剩余风险。 | 发布说明可读且双语一致；版本策略检查通过；交付清单完整。 |
 | T10 | 任务状态与阶段记录 | [ ] | Codex | 1) 按实际完成进度更新本文件勾选；2) 追加 `.codex/checkpoint.md` 阶段日志；3) 汇报分支、进展、测试、阻塞。 | `task.md` 勾选与实际一致；checkpoint 追加成功且结构符合规范。 |
+
+### T3 盘点结果（已完成）
+- 版本窗口：`rust-v0.98.0..rust-v0.99.0`，上游改动文件 `498` 个。
+- 顶层目录分布：`codex-rs 477`、`patches 5`、`.github 5`、`codex-cli 3`、`docs 1`。
+- `codex-rs` 主要改动：`core 169`、`app-server-protocol 83`、`tui 70`、`app-server 32`、`network-proxy 15`。
+- 与 fork 自身改动重叠文件：`216` 个（高冲突概率），重点集中在 `codex-rs/core`、`codex-rs/tui`、`codex-rs/app-server`。
+
+#### 高风险冲突点与测试先行映射
+| 风险点 | 影响范围 | 先行/回归验证命令 | 通过信号 |
+|---|---|---|---|
+| 工作流策略冲突（上游变更了多条 workflow） | `.github/workflows/*` | `ls .github/workflows` | 仅保留 `build-platform-binaries.yml` 与 `release.yml` |
+| README/文档策略冲突 | `README.md`、`docs/**`、`codex-rs/**/README.md` | `git diff -- README.md docs/` | 根 README 不被覆盖；docs 按策略对齐且中文化 |
+| fork 特性与上游 core/tui 同时改动 | `codex-rs/core/**`、`codex-rs/tui/**`、`codex-rs/tui2/**` | `cargo test -p codex-core`、`cargo test -p codex-tui`、`cargo test -p codex-tui2` | 关键测试无新增失败，快照差异可解释 |
+| 协议层变更引发 API 兼容风险 | `codex-rs/app-server-protocol/**`、`codex-rs/app-server/**` | `cargo test -p codex-app-server-protocol`、`cargo test -p codex-app-server` | 协议测试通过，schema/README 与实现一致 |
+| i18n 覆盖遗漏（新增交互文本） | `codex-rs/core/i18n/*.toml`、TUI 文案 | `cargo test -p codex-core i18n::tests::catalogs_share_keys`、`rg -n \"<新 key>\" codex-rs/core/i18n` | en/zh key 成对存在，i18n 测试通过 |
 
 ## 5) 里程碑与顺序
 - 里程碑 M1：基线与上游窗口确认（T1 -> T2）。
