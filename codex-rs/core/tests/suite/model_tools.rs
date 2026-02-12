@@ -140,5 +140,5 @@ async fn model_selects_expected_tools() {
     assert_has_common_tools("exp-5.1", &exp_tools);
     assert!(has_tool(&exp_tools, "exec_command"));
     assert!(has_tool(&exp_tools, "write_stdin"));
-    assert_has_apply_patch("exp-5.1", &exp_tools);
+    assert_no_apply_patch("exp-5.1", &exp_tools);
 }

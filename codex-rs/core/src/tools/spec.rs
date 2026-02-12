@@ -2384,8 +2384,8 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "request_user_input",
-                "batches_read_file",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
@@ -2461,30 +2461,6 @@ mod tests {
     }
 
     #[test]
-    fn test_exp_5_1_defaults() {
-        let mut features = Features::with_defaults();
-        features.enable(Feature::CollaborationModes);
-        assert_model_tools(
-            "exp-5.1",
-            &features,
-            Some(WebSearchMode::Cached),
-            &[
-                "exec_command",
-                "write_stdin",
-                "list_mcp_resources",
-                "list_mcp_resource_templates",
-                "read_mcp_resource",
-                "update_plan",
-                "request_user_input",
-                "apply_patch",
-                "batches_read_file",
-                "web_search",
-                "view_image",
-            ],
-        );
-    }
-
-    #[test]
     fn test_gpt_5_1_codex_max_unified_exec_web_search() {
         let mut features = Features::with_defaults();
         features.enable(Feature::UnifiedExec);
@@ -2501,8 +2477,8 @@ mod tests {
                 "read_mcp_resource",
                 "update_plan",
                 "request_user_input",
-                "batches_read_file",
                 "apply_patch",
+                "batches_read_file",
                 "web_search",
                 "view_image",
             ],
