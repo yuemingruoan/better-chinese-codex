@@ -7,9 +7,11 @@ use crate::thread_manager::AgentSpawnMetadata;
 use crate::thread_manager::ThreadManagerState;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::Op;
+use codex_protocol::protocol::SessionSource;
 use codex_protocol::user_input::UserInput;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Weak;
 use tokio::sync::watch;
@@ -38,41 +40,49 @@ impl AgentControl {
         }
     }
 
-    #[allow(dead_code)] // Kept for compatibility with existing call sites/tests.
-    /// Spawn a new agent thread and submit the initial prompt.
+    /// Spawn a new agent thread and submit the initial input items.
     pub(crate) async fn spawn_agent(
         &self,
         config: crate::config::Config,
-        prompt: String,
-        session_source: Option<codex_protocol::protocol::SessionSource>,
+        items: Vec<UserInput>,
+        session_source: Option<SessionSource>,
     ) -> CodexResult<ThreadId> {
         self.spawn_agent_with_metadata_and_source(
             config,
-            prompt,
             AgentSpawnMetadata::default(),
+            items,
             session_source,
         )
         .await
     }
 
     #[allow(dead_code)] // Kept for compatibility with existing call sites/tests.
-    /// Spawn a new agent thread and submit the initial prompt.
+    /// Spawn a new agent thread using a plain-text prompt.
     pub(crate) async fn spawn_agent_with_metadata(
         &self,
         config: crate::config::Config,
         prompt: String,
         metadata: AgentSpawnMetadata,
     ) -> CodexResult<ThreadId> {
-        self.spawn_agent_with_metadata_and_source(config, prompt, metadata, None)
-            .await
+        self.spawn_agent_with_metadata_and_source(
+            config,
+            metadata,
+            vec![UserInput::Text {
+                text: prompt,
+                // Agent control prompts are plain text with no UI text elements.
+                text_elements: Vec::new(),
+            }],
+            None,
+        )
+        .await
     }
 
     pub(crate) async fn spawn_agent_with_metadata_and_source(
         &self,
         config: crate::config::Config,
-        prompt: String,
         metadata: AgentSpawnMetadata,
-        session_source: Option<codex_protocol::protocol::SessionSource>,
+        items: Vec<UserInput>,
+        session_source: Option<SessionSource>,
     ) -> CodexResult<ThreadId> {
         let state = self.upgrade()?;
         let reservation = self.state.reserve_spawn_slot(config.agent_max_threads)?;
@@ -94,9 +104,35 @@ impl AgentControl {
         state.notify_thread_created(new_thread.thread_id);
         state.register_agent(new_thread.thread_id, metadata).await;
 
-        self.send_prompt(new_thread.thread_id, prompt).await?;
+        self.send_input(new_thread.thread_id, items).await?;
 
         Ok(new_thread.thread_id)
+    }
+
+    /// Resume an existing agent thread from a recorded rollout file.
+    pub(crate) async fn resume_agent_from_rollout(
+        &self,
+        config: crate::config::Config,
+        rollout_path: PathBuf,
+        session_source: SessionSource,
+    ) -> CodexResult<ThreadId> {
+        let state = self.upgrade()?;
+        let reservation = self.state.reserve_spawn_slot(config.agent_max_threads)?;
+
+        let resumed_thread = state
+            .resume_thread_from_rollout_with_source(
+                config,
+                rollout_path,
+                self.clone(),
+                session_source,
+            )
+            .await?;
+        reservation.commit(resumed_thread.thread_id);
+        // Resumed threads are re-registered in-memory and need the same listener
+        // attachment path as freshly spawned threads.
+        state.notify_thread_created(resumed_thread.thread_id);
+
+        Ok(resumed_thread.thread_id)
     }
 
     /// Interrupt the current task for an existing agent thread.
@@ -105,22 +141,18 @@ impl AgentControl {
         state.send_op(agent_id, Op::Interrupt).await
     }
 
-    /// Send a `user` prompt to an existing agent thread.
-    pub(crate) async fn send_prompt(
+    /// Send rich user input items to an existing agent thread.
+    pub(crate) async fn send_input(
         &self,
         agent_id: ThreadId,
-        prompt: String,
+        items: Vec<UserInput>,
     ) -> CodexResult<String> {
         let state = self.upgrade()?;
         let result = state
             .send_op(
                 agent_id,
                 Op::UserInput {
-                    items: vec![UserInput::Text {
-                        text: prompt,
-                        // Agent control prompts are plain text with no UI text elements.
-                        text_elements: Vec::new(),
-                    }],
+                    items,
                     final_output_json_schema: None,
                 },
             )
@@ -130,6 +162,24 @@ impl AgentControl {
             self.state.release_spawned_thread(agent_id);
         }
         result
+    }
+
+    #[allow(dead_code)] // Kept for compatibility with existing call sites/tests.
+    /// Send a `user` prompt to an existing agent thread.
+    pub(crate) async fn send_prompt(
+        &self,
+        agent_id: ThreadId,
+        prompt: String,
+    ) -> CodexResult<String> {
+        self.send_input(
+            agent_id,
+            vec![UserInput::Text {
+                text: prompt,
+                // Agent control prompts are plain text with no UI text elements.
+                text_elements: Vec::new(),
+            }],
+        )
+        .await
     }
 
     #[allow(dead_code)] // Kept for compatibility with existing call sites/tests.
@@ -283,6 +333,13 @@ mod tests {
         test_config_with_cli_overrides(Vec::new()).await
     }
 
+    fn text_input(text: &str) -> Vec<UserInput> {
+        vec![UserInput::Text {
+            text: text.to_string(),
+            text_elements: Vec::new(),
+        }]
+    }
+
     struct AgentControlHarness {
         _home: TempDir,
         config: Config,
@@ -387,7 +444,7 @@ mod tests {
         let control = AgentControl::default();
         let (_home, config) = test_config().await;
         let err = control
-            .spawn_agent(config, "hello".to_string(), None)
+            .spawn_agent(config, text_input("hello"), None)
             .await
             .expect_err("spawn_agent should fail without a manager");
         assert_eq!(
@@ -489,7 +546,7 @@ mod tests {
         let harness = AgentControlHarness::new().await;
         let thread_id = harness
             .control
-            .spawn_agent(harness.config.clone(), "spawned".to_string(), None)
+            .spawn_agent(harness.config.clone(), text_input("spawned"), None)
             .await
             .expect("spawn_agent should succeed");
         let _thread = harness
@@ -523,7 +580,7 @@ mod tests {
 
         let first = harness
             .control
-            .spawn_agent(config.clone(), "first".to_string(), None)
+            .spawn_agent(config.clone(), text_input("first"), None)
             .await
             .expect("first spawn should succeed");
 
@@ -535,7 +592,7 @@ mod tests {
 
         let second = harness
             .control
-            .spawn_agent(config, "second".to_string(), None)
+            .spawn_agent(config, text_input("second"), None)
             .await
             .expect("second spawn should succeed after slot release");
 
