@@ -215,3 +215,43 @@
 
 - 当前待办：
   - 等待你确认 `.codex/task.md` 规划内容或提出调整意见。
+
+## 2026-02-12 16:31:04 CST
+- 已完成 11 个冲突文件的人工收敛并清除 unmerged 状态，`git diff --name-only --diff-filter=U` 结果为空。
+- 已按你的裁决落地 collab `items` 语义：`spawn_agent` / `send_input` 转为必填 `items`，并同步更新对应单测与工具 schema。
+- 已执行 `just fmt`、`just write-config-schema`，并补齐本轮编译阻塞修复（`tasks/sdd_git.rs` 的 `ExecRequest` 适配、`codex.rs` 会话配置字段补齐）。
+- 定向验证通过：`spawn_agent_requires_items`、`send_input_requires_items`、`test_build_specs_collab_tools_enabled`、`config_schema_matches_fixture`、`suite::client::parallel_priority_spec_injected_when_enabled_and_removed_after_override`。
+- `cargo test -p codex-core` 全量仍失败（20 项），主要阻塞集中在 `models.json` 新 schema 兼容（`shell_type` 缺失）及其连锁用例。
+
+- 当前待办：
+  - 继续清理 `models.json` / `models_manager` 相关失败，收敛 `codex-core` 全量回归。
+  - 进入 T5/T6：补齐冲突裁决记录与剩余实现落地。
+
+## 2026-02-12 16:57:30 CST
+- 已完成 `core` 测试收敛：同步 `models.json` 到上游 `rust-v0.99.0`，更新 `tools/spec` 与相关 suite 断言（`exp-5.1` 用例移除、`apply_patch`/`batches_read_file` 顺序对齐、`exp-5.1` 不再要求 `apply_patch`）。
+- 已修复 `grep_files` 集成测试前置条件：在 `grep_files` suite 内挂载远端模型并显式开启 `experimental_supported_tools=["grep_files"]`，避免 fallback 模型导致 `unsupported call: grep_files`。
+- 已完成验证：`just fmt`、`cargo test -p codex-core grep_files_tool_`、`cargo test -p codex-core` 全量通过（unit + `tests/all.rs` + `responses_headers.rs`）。
+- 已提交：`953ab7716`（`完成 core v0.99 模型与工具测试收敛`）。
+- 已更新任务状态：`.codex/task.md` 中 `T7` 勾选为 `[x]`。
+
+- 当前待办：
+  - 进入 `T5/T6`：补齐“冲突点-候选方案-影响-推荐”的裁决记录并收口剩余落地项。
+  - 进入 `T9`：更新 `docs/release/notes.md`（中英文）与版本策略复核。
+
+## 2026-02-12 17:00:39 CST
+- 已完成 `T5/T6/T9` 收口：将已裁决冲突（collab `items` 语义、network 字段共存、models.json 合并策略）写入双语发布说明并同步任务勾选。
+- 已更新 `docs/release/notes.md`，新增 “Unreleased (rust-v0.99.0 upstream sync)” 中英文小节，覆盖同步范围、冲突处理与验证记录。
+- 已复核版本策略：`codex-rs/Cargo.toml`、`codex-cli/package.json`、`sdk/typescript/package.json`、`shell-tool-mcp/package.json`、`codex-rs/responses-api-proxy/npm/package.json` 均保持 `1.7.1`（未对齐上游版本号）。
+- 已补充验证：`cargo test -p codex-core i18n::tests::catalogs_share_keys` 通过。
+
+- 当前待办：
+  - `T8`：如需执行 `cargo test --all-features`，等待你明确授权后再跑。
+  - `T10`：最终阶段汇总与交付清单确认。
+
+## 2026-02-12 17:19:15 CST
+- 已收到你的明确决策：不执行 `cargo test --all-features`，仅保留针对性测试。
+- 已按豁免策略完成任务收尾：`T8` 标记为“用户确认跳过全量回归”，`T10` 标记完成并同步阶段记录。
+- 本轮最终测试基线维持为针对性验证（core 相关与 i18n 一致性），不新增全量回归执行记录。
+
+- 当前待办：
+  - 无（等待你选择后续动作：继续新需求或发起合并流程）。

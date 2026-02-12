@@ -26,8 +26,13 @@ use codex_protocol::protocol::CollabAgentSpawnBeginEvent;
 use codex_protocol::protocol::CollabAgentSpawnEndEvent;
 use codex_protocol::protocol::CollabCloseBeginEvent;
 use codex_protocol::protocol::CollabCloseEndEvent;
+use codex_protocol::protocol::CollabResumeBeginEvent;
+use codex_protocol::protocol::CollabResumeEndEvent;
 use codex_protocol::protocol::CollabWaitingBeginEvent;
 use codex_protocol::protocol::CollabWaitingEndEvent;
+use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::SubAgentSource;
+use codex_protocol::user_input::UserInput;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -84,6 +89,7 @@ impl ToolHandler for CollabHandler {
         match tool_name.as_str() {
             "spawn_agent" => spawn::handle(session, turn, call_id, arguments).await,
             "send_input" => send_input::handle(session, turn, call_id, arguments).await,
+            "resume_agent" => resume_agent::handle(session, turn, call_id, arguments).await,
             "wait" => wait::handle(session, turn, call_id, arguments).await,
             "wait_agents" => wait_agents::handle(session, turn, call_id, arguments).await,
             "list_agents" => list_agents::handle(session, call_id, arguments).await,
@@ -102,13 +108,11 @@ mod spawn {
 
     use crate::agent::exceeds_thread_spawn_depth_limit;
     use crate::agent::next_thread_spawn_depth;
-    use codex_protocol::protocol::SessionSource;
-    use codex_protocol::protocol::SubAgentSource;
     use std::sync::Arc;
 
     #[derive(Debug, Deserialize)]
     struct SpawnAgentArgs {
-        message: String,
+        items: Option<Vec<UserInput>>,
         agent_type: Option<AgentRole>,
         label: Option<String>,
         acceptance_criteria: Option<Vec<String>>,
@@ -134,12 +138,8 @@ mod spawn {
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: SpawnAgentArgs = parse_arguments(&arguments)?;
         let agent_role = args.agent_type.unwrap_or(AgentRole::Default);
-        let prompt = args.message;
-        if prompt.trim().is_empty() {
-            return Err(FunctionCallError::RespondToModel(
-                "Empty message can't be sent to an agent".to_string(),
-            ));
-        }
+        let input_items = parse_collab_input(args.items)?;
+        let prompt = input_preview(&input_items);
         let session_source = turn.session_source.clone();
         let child_depth = next_thread_spawn_depth(&session_source);
         if exceeds_thread_spawn_depth_limit(child_depth) {
@@ -189,12 +189,9 @@ mod spawn {
             .agent_control
             .spawn_agent_with_metadata_and_source(
                 config,
-                prompt.clone(),
                 metadata,
-                Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
-                    parent_thread_id: session.conversation_id,
-                    depth: child_depth,
-                })),
+                input_items,
+                Some(thread_spawn_source(session.conversation_id, child_depth)),
             )
             .await
             .map_err(collab_spawn_error);
@@ -241,7 +238,7 @@ mod send_input {
     #[derive(Debug, Deserialize)]
     struct SendInputArgs {
         id: String,
-        message: String,
+        items: Option<Vec<UserInput>>,
         #[serde(default)]
         interrupt: bool,
     }
@@ -259,12 +256,8 @@ mod send_input {
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: SendInputArgs = parse_arguments(&arguments)?;
         let receiver_thread_id = agent_id(&args.id)?;
-        let prompt = args.message;
-        if prompt.trim().is_empty() {
-            return Err(FunctionCallError::RespondToModel(
-                "Empty message can't be sent to an agent".to_string(),
-            ));
-        }
+        let input_items = parse_collab_input(args.items)?;
+        let prompt = input_preview(&input_items);
         if args.interrupt {
             session
                 .services
@@ -288,7 +281,7 @@ mod send_input {
         let result = session
             .services
             .agent_control
-            .send_prompt(receiver_thread_id, prompt.clone())
+            .send_input(receiver_thread_id, input_items)
             .await
             .map_err(|err| collab_agent_error(receiver_thread_id, err));
         let status = session
@@ -319,6 +312,153 @@ mod send_input {
             body: FunctionCallOutputBody::Text(content),
             success: Some(true),
         })
+    }
+}
+
+mod resume_agent {
+    use super::*;
+    use crate::agent::exceeds_thread_spawn_depth_limit;
+    use crate::agent::next_thread_spawn_depth;
+    use crate::rollout::find_thread_path_by_id_str;
+    use std::sync::Arc;
+
+    #[derive(Debug, Deserialize)]
+    struct ResumeAgentArgs {
+        id: String,
+    }
+
+    #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+    pub(super) struct ResumeAgentResult {
+        pub(super) status: AgentStatus,
+    }
+
+    pub async fn handle(
+        session: Arc<Session>,
+        turn: Arc<TurnContext>,
+        call_id: String,
+        arguments: String,
+    ) -> Result<ToolOutput, FunctionCallError> {
+        let args: ResumeAgentArgs = parse_arguments(&arguments)?;
+        let receiver_thread_id = agent_id(&args.id)?;
+        let child_depth = next_thread_spawn_depth(&turn.session_source);
+        if exceeds_thread_spawn_depth_limit(child_depth) {
+            return Err(FunctionCallError::RespondToModel(
+                "Agent depth limit reached. Solve the task yourself.".to_string(),
+            ));
+        }
+
+        session
+            .send_event(
+                &turn,
+                CollabResumeBeginEvent {
+                    call_id: call_id.clone(),
+                    sender_thread_id: session.conversation_id,
+                    receiver_thread_id,
+                }
+                .into(),
+            )
+            .await;
+
+        let mut status = session
+            .services
+            .agent_control
+            .get_status(receiver_thread_id)
+            .await;
+        let error = if matches!(status, AgentStatus::NotFound) {
+            // If the thread is no longer active, attempt to restore it from rollout.
+            match try_resume_closed_agent(
+                &session,
+                &turn,
+                receiver_thread_id,
+                &args.id,
+                child_depth,
+            )
+            .await
+            {
+                Ok(resumed_status) => {
+                    status = resumed_status;
+                    None
+                }
+                Err(err) => {
+                    status = session
+                        .services
+                        .agent_control
+                        .get_status(receiver_thread_id)
+                        .await;
+                    Some(err)
+                }
+            }
+        } else {
+            None
+        };
+
+        session
+            .send_event(
+                &turn,
+                CollabResumeEndEvent {
+                    call_id,
+                    sender_thread_id: session.conversation_id,
+                    receiver_thread_id,
+                    status: status.clone(),
+                }
+                .into(),
+            )
+            .await;
+
+        if let Some(err) = error {
+            return Err(err);
+        }
+
+        let content = serde_json::to_string(&ResumeAgentResult { status }).map_err(|err| {
+            FunctionCallError::Fatal(format!("failed to serialize resume_agent result: {err}"))
+        })?;
+
+        Ok(ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(content),
+            success: Some(true),
+        })
+    }
+
+    async fn try_resume_closed_agent(
+        session: &Arc<Session>,
+        turn: &Arc<TurnContext>,
+        receiver_thread_id: ThreadId,
+        receiver_id: &str,
+        child_depth: i32,
+    ) -> Result<AgentStatus, FunctionCallError> {
+        let rollout_path = find_thread_path_by_id_str(
+            turn.config.codex_home.as_path(),
+            receiver_id,
+        )
+        .await
+        .map_err(|err| {
+            FunctionCallError::RespondToModel(format!(
+                "tool failed: failed to locate rollout for agent {receiver_thread_id}: {err}"
+            ))
+        })?
+        .ok_or_else(|| {
+            FunctionCallError::RespondToModel(format!(
+                "agent with id {receiver_thread_id} not found"
+            ))
+        })?;
+
+        let config = build_agent_resume_config(turn.as_ref(), child_depth)?;
+        let resumed_thread_id = session
+            .services
+            .agent_control
+            .resume_agent_from_rollout(
+                config,
+                rollout_path,
+                thread_spawn_source(session.conversation_id, child_depth),
+            )
+            .await
+            .map_err(|err| collab_agent_error(receiver_thread_id, err))?;
+
+        Ok(session
+            .services
+            .agent_control
+            .get_status(resumed_thread_id)
+            .await)
     }
 }
 
@@ -1202,7 +1342,7 @@ async fn build_agent_spawn_config(
     turn: &TurnContext,
     overrides: &SpawnConfigOverrides,
 ) -> Result<Config, FunctionCallError> {
-    let mut config = (*turn.config).clone();
+    let mut config = build_agent_shared_config(turn)?;
     config.base_instructions = Some(session.get_base_instructions().await.text);
     config.model = Some(turn.model_info.slug.clone());
     config.model_provider = turn.provider.clone();
@@ -1236,6 +1376,79 @@ async fn build_agent_spawn_config(
     )?;
 
     Ok(config)
+}
+
+fn build_agent_resume_config(
+    turn: &TurnContext,
+    _child_depth: i32,
+) -> Result<Config, FunctionCallError> {
+    let mut config = build_agent_shared_config(turn)?;
+    // For resume, keep base instructions sourced from rollout/session metadata.
+    config.base_instructions = None;
+    Ok(config)
+}
+
+fn build_agent_shared_config(turn: &TurnContext) -> Result<Config, FunctionCallError> {
+    let mut config = (*turn.config).clone();
+    config.model = Some(turn.model_info.slug.clone());
+    config.model_provider = turn.provider.clone();
+    config.model_reasoning_effort = turn.reasoning_effort;
+    config.model_reasoning_summary = turn.reasoning_summary;
+    config.developer_instructions = turn.developer_instructions.clone();
+    config.compact_prompt = turn.compact_prompt.clone();
+    config.shell_environment_policy = turn.shell_environment_policy.clone();
+    config.codex_linux_sandbox_exe = turn.codex_linux_sandbox_exe.clone();
+    config.cwd = turn.cwd.clone();
+    config
+        .approval_policy
+        .set(turn.approval_policy)
+        .map_err(|err| {
+            FunctionCallError::RespondToModel(format!("approval_policy is invalid: {err}"))
+        })?;
+    config
+        .sandbox_policy
+        .set(turn.sandbox_policy.clone())
+        .map_err(|err| {
+            FunctionCallError::RespondToModel(format!("sandbox_policy is invalid: {err}"))
+        })?;
+    Ok(config)
+}
+
+fn thread_spawn_source(parent_thread_id: ThreadId, depth: i32) -> SessionSource {
+    SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+        parent_thread_id,
+        depth,
+    })
+}
+
+fn parse_collab_input(items: Option<Vec<UserInput>>) -> Result<Vec<UserInput>, FunctionCallError> {
+    match items {
+        None => Err(FunctionCallError::RespondToModel(
+            "Provide required field: items".to_string(),
+        )),
+        Some(items) if items.is_empty() => Err(FunctionCallError::RespondToModel(
+            "Items can't be empty".to_string(),
+        )),
+        Some(items) => Ok(items),
+    }
+}
+
+fn input_preview(items: &[UserInput]) -> String {
+    let parts: Vec<String> = items
+        .iter()
+        .map(|item| match item {
+            UserInput::Text { text, .. } => text.clone(),
+            UserInput::Image { .. } => "[image]".to_string(),
+            UserInput::LocalImage { path } => format!("[local_image:{}]", path.display()),
+            UserInput::Skill { name, path } => {
+                format!("[skill:${name}]({})", path.display())
+            }
+            UserInput::Mention { name, path } => format!("[mention:${name}]({path})"),
+            _ => "[input]".to_string(),
+        })
+        .collect();
+
+    parts.join("\n")
 }
 
 async fn apply_spawn_model_overrides(
@@ -1399,8 +1612,10 @@ fn sandbox_mode_from_policy(policy: &SandboxPolicy) -> SandboxMode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AuthManager;
     use crate::CodexAuth;
     use crate::ThreadManager;
+    use crate::agent::MAX_THREAD_SPAWN_DEPTH;
     use crate::built_in_model_providers;
     use crate::codex::make_session_and_context;
     use crate::config::Config;
@@ -1411,6 +1626,10 @@ mod tests {
     use crate::protocol::SandboxPolicy;
     use crate::turn_diff_tracker::TurnDiffTracker;
     use codex_protocol::ThreadId;
+    use codex_protocol::models::ContentItem;
+    use codex_protocol::models::ResponseItem;
+    use codex_protocol::protocol::InitialHistory;
+    use codex_protocol::protocol::RolloutItem;
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use serde_json::json;
@@ -1497,22 +1716,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn spawn_agent_rejects_empty_message() {
+    async fn spawn_agent_requires_items() {
         let (session, turn) = make_session_and_context().await;
         let invocation = invocation(
             Arc::new(session),
             Arc::new(turn),
             "spawn_agent",
-            function_payload(json!({"message": "   "})),
+            function_payload(json!({})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
-            panic!("empty message should be rejected");
+            panic!("missing items should be rejected");
         };
         assert_eq!(
             err,
-            FunctionCallError::RespondToModel(
-                "Empty message can't be sent to an agent".to_string()
-            )
+            FunctionCallError::RespondToModel("Provide required field: items".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_rejects_empty_items() {
+        let (session, turn) = make_session_and_context().await;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({"items": []})),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("empty items should be rejected");
+        };
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel("Items can't be empty".to_string())
         );
     }
 
@@ -1523,7 +1758,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "spawn_agent",
-            function_payload(json!({"message": "hello"})),
+            function_payload(json!({"items": [{"type": "text", "text": "hello"}]})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("spawn should fail without a manager");
@@ -1543,7 +1778,9 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "spawn_agent",
-            function_payload(json!({"message": "hello", "model": "not-a-real-model"})),
+            function_payload(
+                json!({"items": [{"type": "text", "text": "hello"}], "model": "not-a-real-model"}),
+            ),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("unknown model should be rejected");
@@ -1563,7 +1800,9 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "spawn_agent",
-            function_payload(json!({"message": "hello", "reasoning_effort": "invalid"})),
+            function_payload(
+                json!({"items": [{"type": "text", "text": "hello"}], "reasoning_effort": "invalid"}),
+            ),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("invalid reasoning_effort should be rejected");
@@ -1607,7 +1846,7 @@ mod tests {
             Arc::new(turn),
             "spawn_agent",
             function_payload(json!({
-                "message": "hello",
+                "items": [{"type": "text", "text": "hello"}],
                 "reasoning_effort": unsupported_effort.to_string(),
             })),
         );
@@ -1646,7 +1885,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "spawn_agent",
-            function_payload(json!({"message": "grandchild"})),
+            function_payload(json!({"items": [{"type": "text", "text": "grandchild"}]})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("nested spawn should be rejected");
@@ -1684,7 +1923,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "spawn_agent",
-            function_payload(json!({"message": "grandchild"})),
+            function_payload(json!({"items": [{"type": "text", "text": "grandchild"}]})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("spawn depth limit should reject");
@@ -1730,7 +1969,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "spawn_agent",
-            function_payload(json!({"message": "grandchild"})),
+            function_payload(json!({"items": [{"type": "text", "text": "grandchild"}]})),
         );
         let output = CollabHandler
             .handle(invocation)
@@ -1785,7 +2024,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "spawn_agent",
-            function_payload(json!({"message": "one more child"})),
+            function_payload(json!({"items": [{"type": "text", "text": "one more child"}]})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("active subagent limit should reject");
@@ -1825,7 +2064,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "spawn_agent",
-            function_payload(json!({"message": "one more child"})),
+            function_payload(json!({"items": [{"type": "text", "text": "one more child"}]})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("active subagent limit should reject");
@@ -1939,22 +2178,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn send_input_rejects_empty_message() {
+    async fn send_input_requires_items() {
         let (session, turn) = make_session_and_context().await;
         let invocation = invocation(
             Arc::new(session),
             Arc::new(turn),
             "send_input",
-            function_payload(json!({"id": ThreadId::new().to_string(), "message": ""})),
+            function_payload(json!({"id": ThreadId::new().to_string()})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
-            panic!("empty message should be rejected");
+            panic!("missing items should be rejected");
         };
         assert_eq!(
             err,
-            FunctionCallError::RespondToModel(
-                "Empty message can't be sent to an agent".to_string()
-            )
+            FunctionCallError::RespondToModel("Provide required field: items".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn send_input_rejects_empty_items() {
+        let (session, turn) = make_session_and_context().await;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "send_input",
+            function_payload(json!({
+                "id": ThreadId::new().to_string(),
+                "items": []
+            })),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("empty items should be rejected");
+        };
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel("Items can't be empty".to_string())
         );
     }
 
@@ -1965,7 +2223,9 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "send_input",
-            function_payload(json!({"id": "not-a-uuid", "message": "hi"})),
+            function_payload(
+                json!({"id": "not-a-uuid", "items": [{"type": "text", "text": "hi"}]}),
+            ),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("invalid id should be rejected");
@@ -1986,7 +2246,9 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "send_input",
-            function_payload(json!({"id": agent_id.to_string(), "message": "hi"})),
+            function_payload(
+                json!({"id": agent_id.to_string(), "items": [{"type": "text", "text": "hi"}]}),
+            ),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("missing agent should be reported");
@@ -2011,7 +2273,7 @@ mod tests {
             "send_input",
             function_payload(json!({
                 "id": agent_id.to_string(),
-                "message": "hi",
+                "items": [{"type": "text", "text": "hi"}],
                 "interrupt": true
             })),
         );
@@ -2034,6 +2296,261 @@ mod tests {
             .submit(Op::Shutdown {})
             .await
             .expect("shutdown should submit");
+    }
+
+    #[tokio::test]
+    async fn send_input_accepts_structured_items() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let config = turn.config.as_ref().clone();
+        let thread = manager.start_thread(config).await.expect("start thread");
+        let agent_id = thread.thread_id;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "send_input",
+            function_payload(json!({
+                "id": agent_id.to_string(),
+                "items": [
+                    {"type": "mention", "name": "drive", "path": "app://google_drive"},
+                    {"type": "text", "text": "read the folder"}
+                ]
+            })),
+        );
+        CollabHandler
+            .handle(invocation)
+            .await
+            .expect("send_input should succeed");
+
+        let expected = Op::UserInput {
+            items: vec![
+                UserInput::Mention {
+                    name: "drive".to_string(),
+                    path: "app://google_drive".to_string(),
+                },
+                UserInput::Text {
+                    text: "read the folder".to_string(),
+                    text_elements: Vec::new(),
+                },
+            ],
+            final_output_json_schema: None,
+        };
+        let captured = manager
+            .captured_ops()
+            .into_iter()
+            .find(|(id, op)| *id == agent_id && *op == expected);
+        assert_eq!(captured, Some((agent_id, expected)));
+
+        let _ = thread
+            .thread
+            .submit(Op::Shutdown {})
+            .await
+            .expect("shutdown should submit");
+    }
+
+    #[tokio::test]
+    async fn resume_agent_rejects_invalid_id() {
+        let (session, turn) = make_session_and_context().await;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "resume_agent",
+            function_payload(json!({"id": "not-a-uuid"})),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("invalid id should be rejected");
+        };
+        let FunctionCallError::RespondToModel(msg) = err else {
+            panic!("expected respond-to-model error");
+        };
+        assert!(msg.starts_with("invalid agent id not-a-uuid:"));
+    }
+
+    #[tokio::test]
+    async fn resume_agent_reports_missing_agent() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let agent_id = ThreadId::new();
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "resume_agent",
+            function_payload(json!({"id": agent_id.to_string()})),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("missing agent should be reported");
+        };
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(format!("agent with id {agent_id} not found"))
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_agent_noops_for_active_agent() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let config = turn.config.as_ref().clone();
+        let thread = manager.start_thread(config).await.expect("start thread");
+        let agent_id = thread.thread_id;
+        let status_before = manager.agent_control().get_status(agent_id).await;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "resume_agent",
+            function_payload(json!({"id": agent_id.to_string()})),
+        );
+
+        let output = CollabHandler
+            .handle(invocation)
+            .await
+            .expect("resume_agent should succeed");
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let result: resume_agent::ResumeAgentResult =
+            serde_json::from_str(&content).expect("resume_agent result should be json");
+        assert_eq!(result.status, status_before);
+        assert_eq!(success, Some(true));
+
+        let thread_ids = manager.list_thread_ids().await;
+        assert_eq!(thread_ids, vec![agent_id]);
+
+        let _ = thread
+            .thread
+            .submit(Op::Shutdown {})
+            .await
+            .expect("shutdown should submit");
+    }
+
+    #[tokio::test]
+    async fn resume_agent_restores_closed_agent_and_accepts_send_input() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let config = turn.config.as_ref().clone();
+        let thread = manager
+            .resume_thread_with_history(
+                config,
+                InitialHistory::Forked(vec![RolloutItem::ResponseItem(ResponseItem::Message {
+                    id: None,
+                    role: "user".to_string(),
+                    content: vec![ContentItem::InputText {
+                        text: "materialized".to_string(),
+                    }],
+                    end_turn: None,
+                    phase: None,
+                })]),
+                AuthManager::from_auth_for_testing(CodexAuth::from_api_key("dummy")),
+            )
+            .await
+            .expect("start thread");
+        let agent_id = thread.thread_id;
+        let _ = manager
+            .agent_control()
+            .shutdown_agent(agent_id)
+            .await
+            .expect("shutdown agent");
+        assert_eq!(
+            manager.agent_control().get_status(agent_id).await,
+            AgentStatus::NotFound
+        );
+        let session = Arc::new(session);
+        let turn = Arc::new(turn);
+
+        let resume_invocation = invocation(
+            session.clone(),
+            turn.clone(),
+            "resume_agent",
+            function_payload(json!({"id": agent_id.to_string()})),
+        );
+        let output = CollabHandler
+            .handle(resume_invocation)
+            .await
+            .expect("resume_agent should succeed");
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let result: resume_agent::ResumeAgentResult =
+            serde_json::from_str(&content).expect("resume_agent result should be json");
+        assert_ne!(result.status, AgentStatus::NotFound);
+        assert_eq!(success, Some(true));
+
+        let send_invocation = invocation(
+            session,
+            turn,
+            "send_input",
+            function_payload(
+                json!({"id": agent_id.to_string(), "items": [{"type": "text", "text": "hello"}]}),
+            ),
+        );
+        let output = CollabHandler
+            .handle(send_invocation)
+            .await
+            .expect("send_input should succeed after resume");
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let result: serde_json::Value =
+            serde_json::from_str(&content).expect("send_input result should be json");
+        let submission_id = result
+            .get("submission_id")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        assert!(!submission_id.is_empty());
+        assert_eq!(success, Some(true));
+
+        let _ = manager
+            .agent_control()
+            .shutdown_agent(agent_id)
+            .await
+            .expect("shutdown resumed agent");
+    }
+
+    #[tokio::test]
+    async fn resume_agent_rejects_when_depth_limit_exceeded() {
+        let (mut session, mut turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+
+        turn.session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+            parent_thread_id: session.conversation_id,
+            depth: MAX_THREAD_SPAWN_DEPTH,
+        });
+
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "resume_agent",
+            function_payload(json!({"id": ThreadId::new().to_string()})),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("resume should fail when depth limit exceeded");
+        };
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(
+                "Agent depth limit reached. Solve the task yourself.".to_string()
+            )
+        );
     }
 
     #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -2621,7 +3138,9 @@ mod tests {
             session.clone(),
             turn.clone(),
             "spawn_agent",
-            function_payload(json!({ "message": "first worker" })),
+            function_payload(json!({
+                "items": [{"type": "text", "text": "first worker"}]
+            })),
         );
         let first_output = CollabHandler
             .handle(first_spawn)
@@ -2667,7 +3186,9 @@ mod tests {
             session,
             turn,
             "spawn_agent",
-            function_payload(json!({ "message": "second worker" })),
+            function_payload(json!({
+                "items": [{"type": "text", "text": "second worker"}]
+            })),
         );
         let second_output = CollabHandler
             .handle(second_spawn)
@@ -2842,8 +3363,6 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         turn.cwd = temp_dir.path().to_path_buf();
         turn.codex_linux_sandbox_exe = Some(PathBuf::from("/bin/echo"));
-        turn.approval_policy = AskForApproval::Never;
-        turn.sandbox_policy = SandboxPolicy::DangerFullAccess;
 
         let config = build_agent_spawn_config(&session, &turn, &SpawnConfigOverrides::default())
             .await
@@ -3002,5 +3521,36 @@ mod tests {
             config.sandbox_policy.get(),
             SandboxPolicy::WorkspaceWrite { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn build_agent_resume_config_clears_base_instructions() {
+        let (_session, mut turn) = make_session_and_context().await;
+        let mut base_config = (*turn.config).clone();
+        base_config.base_instructions = Some("caller-base".to_string());
+        turn.config = Arc::new(base_config);
+
+        let config = build_agent_resume_config(&turn, 0).expect("resume config");
+
+        let mut expected = (*turn.config).clone();
+        expected.base_instructions = None;
+        expected.model = Some(turn.model_info.slug.clone());
+        expected.model_provider = turn.provider.clone();
+        expected.model_reasoning_effort = turn.reasoning_effort;
+        expected.model_reasoning_summary = turn.reasoning_summary;
+        expected.developer_instructions = turn.developer_instructions.clone();
+        expected.compact_prompt = turn.compact_prompt.clone();
+        expected.shell_environment_policy = turn.shell_environment_policy.clone();
+        expected.codex_linux_sandbox_exe = turn.codex_linux_sandbox_exe.clone();
+        expected.cwd = turn.cwd.clone();
+        expected
+            .approval_policy
+            .set(turn.approval_policy)
+            .expect("approval policy set");
+        expected
+            .sandbox_policy
+            .set(turn.sandbox_policy)
+            .expect("sandbox policy set");
+        assert_eq!(config, expected);
     }
 }

@@ -1,5 +1,7 @@
 #![cfg(not(debug_assertions))]
 
+use crate::update_action;
+use crate::update_action::UpdateAction;
 use chrono::DateTime;
 use chrono::Duration;
 use chrono::Utc;
@@ -53,12 +55,18 @@ struct VersionInfo {
 }
 
 const VERSION_FILENAME: &str = "version.json";
-const LATEST_RELEASE_URL: &str =
-    "https://api.github.com/repos/yuemingruoan/better-chinese-codex/releases/latest";
+// We use the latest version from the cask if installation is via homebrew - homebrew does not immediately pick up the latest release and can lag behind.
+const HOMEBREW_CASK_API_URL: &str = "https://formulae.brew.sh/api/cask/codex.json";
+const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/openai/codex/releases/latest";
 
 #[derive(Deserialize, Debug, Clone)]
 struct ReleaseInfo {
     tag_name: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct HomebrewCaskInfo {
+    version: String,
 }
 
 fn version_filepath(config: &Config) -> PathBuf {
@@ -71,16 +79,30 @@ fn read_version_info(version_file: &Path) -> anyhow::Result<VersionInfo> {
 }
 
 async fn check_for_update(version_file: &Path) -> anyhow::Result<()> {
-    let ReleaseInfo {
-        tag_name: latest_tag_name,
-    } = create_client()
-        .get(LATEST_RELEASE_URL)
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<ReleaseInfo>()
-        .await?;
-    let latest_version = extract_version_from_latest_tag(&latest_tag_name)?;
+    let latest_version = match update_action::get_update_action() {
+        Some(UpdateAction::BrewUpgrade) => {
+            let HomebrewCaskInfo { version } = create_client()
+                .get(HOMEBREW_CASK_API_URL)
+                .send()
+                .await?
+                .error_for_status()?
+                .json::<HomebrewCaskInfo>()
+                .await?;
+            version
+        }
+        _ => {
+            let ReleaseInfo {
+                tag_name: latest_tag_name,
+            } = create_client()
+                .get(LATEST_RELEASE_URL)
+                .send()
+                .await?
+                .error_for_status()?
+                .json::<ReleaseInfo>()
+                .await?;
+            extract_version_from_latest_tag(&latest_tag_name)?
+        }
+    };
 
     // Preserve any previously dismissed version if present.
     let prev_info = read_version_info(version_file).ok();
@@ -106,22 +128,10 @@ fn is_newer(latest: &str, current: &str) -> Option<bool> {
 }
 
 fn extract_version_from_latest_tag(latest_tag_name: &str) -> anyhow::Result<String> {
-    let trimmed = latest_tag_name.trim();
-    for prefix in ["rust-v", "v"] {
-        if let Some(stripped) = trimmed.strip_prefix(prefix) {
-            if parse_version(stripped).is_some() {
-                return Ok(stripped.to_string());
-            }
-        }
-    }
-
-    if parse_version(trimmed).is_some() {
-        Ok(trimmed.to_string())
-    } else {
-        Err(anyhow::anyhow!(
-            "Failed to parse latest tag name '{latest_tag_name}'"
-        ))
-    }
+    latest_tag_name
+        .strip_prefix("rust-v")
+        .map(str::to_owned)
+        .ok_or_else(|| anyhow::anyhow!("Failed to parse latest tag name '{latest_tag_name}'"))
 }
 
 /// Returns the latest version to show in a popup, if it should be shown.
@@ -172,6 +182,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn extract_version_from_brew_api_json() {
+        //
+        // https://formulae.brew.sh/api/cask/codex.json
+        let cask_json = r#"{
+            "token": "codex",
+            "full_token": "codex",
+            "tap": "homebrew/cask",
+            "version": "0.96.0",
+        }"#;
+        let HomebrewCaskInfo { version } = serde_json::from_str::<HomebrewCaskInfo>(cask_json)
+            .expect("failed to parse version from cask json");
+        assert_eq!(version, "0.96.0");
+    }
+
+    #[test]
     fn extracts_version_from_latest_tag() {
         assert_eq!(
             extract_version_from_latest_tag("rust-v1.5.0").expect("failed to parse version"),
@@ -180,19 +205,8 @@ mod tests {
     }
 
     #[test]
-    fn extracts_version_with_v_prefix() {
-        assert_eq!(
-            extract_version_from_latest_tag("v2.0.1").expect("failed to parse version"),
-            "2.0.1"
-        );
-    }
-
-    #[test]
-    fn extracts_version_without_prefix() {
-        assert_eq!(
-            extract_version_from_latest_tag("3.1.4").expect("failed to parse version"),
-            "3.1.4"
-        );
+    fn latest_tag_without_prefix_is_invalid() {
+        assert!(extract_version_from_latest_tag("v1.5.0").is_err());
     }
 
     #[test]

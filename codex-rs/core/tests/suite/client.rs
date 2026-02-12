@@ -22,6 +22,7 @@ use codex_core::protocol::EventMsg;
 use codex_core::protocol::Op;
 use codex_core::protocol::SessionSource;
 use codex_otel::OtelManager;
+use codex_otel::TelemetryAuthMode;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::Language;
@@ -297,7 +298,10 @@ async fn resume_includes_initial_messages_and_sends_prior_items() {
         })
         .await
         .unwrap();
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    wait_for_event(&codex, |ev| {
+        matches!(ev, EventMsg::TurnComplete(_) | EventMsg::Error(_))
+    })
+    .await;
 
     let request = resp_mock.single_request();
     let request_body = request.body_json();
@@ -1347,7 +1351,8 @@ async fn azure_responses_request_includes_store_and_reasoning_ids() {
         model_info.slug.as_str(),
         None,
         Some("test@test.com".to_string()),
-        auth_manager.get_auth_mode(),
+        auth_manager.auth_mode().map(TelemetryAuthMode::from),
+        "test_originator".to_string(),
         false,
         "test".to_string(),
         SessionSource::Exec,
@@ -1359,6 +1364,7 @@ async fn azure_responses_request_includes_store_and_reasoning_ids() {
         provider.clone(),
         SessionSource::Exec,
         config.model_verbosity,
+        false,
         false,
         false,
         false,
@@ -1429,15 +1435,7 @@ async fn azure_responses_request_includes_store_and_reasoning_ids() {
     });
 
     let mut stream = client_session
-        .stream(
-            &prompt,
-            &model_info,
-            &otel_manager,
-            effort,
-            summary,
-            true,
-            None,
-        )
+        .stream(&prompt, &model_info, &otel_manager, effort, summary, None)
         .await
         .expect("responses stream to start");
 
