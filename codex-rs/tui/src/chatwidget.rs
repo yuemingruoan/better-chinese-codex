@@ -116,6 +116,7 @@ use codex_protocol::account::PlanType;
 use codex_protocol::approvals::ElicitationRequestEvent;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::CollaborationModeMask;
+use codex_protocol::config_types::Language;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::Settings;
@@ -1142,6 +1143,7 @@ impl ChatWidget {
             self.app_event_tx.clone(),
             include_logs,
             self.feedback_audience,
+            self.config.language,
         );
         self.bottom_pane.show_view(Box::new(view));
         self.request_redraw();
@@ -1172,6 +1174,7 @@ impl ChatWidget {
             self.app_event_tx.clone(),
             category,
             self.current_rollout_path.clone(),
+            self.config.language,
         );
         self.bottom_pane.show_selection_view(params);
         self.request_redraw();
@@ -1446,7 +1449,7 @@ impl ChatWidget {
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some(PLAN_IMPLEMENTATION_TITLE.to_string()),
             subtitle: None,
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             ..Default::default()
         });
@@ -1550,7 +1553,11 @@ impl ChatWidget {
                 self.rate_limit_switch_prompt = RateLimitSwitchPromptState::Pending;
             }
 
-            let display = crate::status::rate_limit_snapshot_display(&snapshot, Local::now());
+            let display = crate::status::rate_limit_snapshot_display(
+                &snapshot,
+                Local::now(),
+                self.config.language,
+            );
             self.rate_limit_snapshot = Some(display);
 
             if !warnings.is_empty() {
@@ -2318,6 +2325,7 @@ impl ChatWidget {
                 source,
                 ev.interaction_input.clone(),
                 self.config.animations,
+                self.config.language,
             )));
         }
 
@@ -2479,6 +2487,7 @@ impl ChatWidget {
                 ev.source,
                 interaction_input,
                 self.config.animations,
+                self.config.language,
             )));
             self.bump_active_cell_revision();
         }
@@ -2594,6 +2603,7 @@ impl ChatWidget {
                 disable_paste_burst: config.disable_paste_burst,
                 animations_enabled: config.animations,
                 skills: None,
+                language: config.language,
             }),
             active_cell,
             active_cell_revision: 0,
@@ -2759,6 +2769,7 @@ impl ChatWidget {
                 disable_paste_burst: config.disable_paste_burst,
                 animations_enabled: config.animations,
                 skills: None,
+                language: config.language,
             }),
             active_cell,
             active_cell_revision: 0,
@@ -2913,6 +2924,7 @@ impl ChatWidget {
                 disable_paste_burst: config.disable_paste_burst,
                 animations_enabled: config.animations,
                 skills: None,
+                language: config.language,
             }),
             active_cell: None,
             active_cell_revision: 0,
@@ -3209,14 +3221,16 @@ impl ChatWidget {
         match cmd {
             SlashCommand::Feedback => {
                 if !self.config.feedback_enabled {
-                    let params = crate::bottom_pane::feedback_disabled_params();
+                    let params = crate::bottom_pane::feedback_disabled_params(self.config.language);
                     self.bottom_pane.show_selection_view(params);
                     self.request_redraw();
                     return;
                 }
                 // Step 1: pick a category (UI built in feedback_view)
-                let params =
-                    crate::bottom_pane::feedback_selection_params(self.app_event_tx.clone());
+                let params = crate::bottom_pane::feedback_selection_params(
+                    self.app_event_tx.clone(),
+                    self.config.language,
+                );
                 self.bottom_pane.show_selection_view(params);
                 self.request_redraw();
             }
@@ -3241,6 +3255,12 @@ impl ChatWidget {
                 const INIT_PROMPT: &str = include_str!("../prompt_for_init_command.md");
                 self.submit_user_message(INIT_PROMPT.to_string().into());
             }
+            SlashCommand::Checkpoint => {
+                self.add_info_message(
+                    "Checkpoint is not available in this build.".to_string(),
+                    None,
+                );
+            }
             SlashCommand::Compact => {
                 self.clear_token_usage();
                 self.app_event_tx.send(AppEvent::CodexOp(Op::Compact));
@@ -3254,6 +3274,18 @@ impl ChatWidget {
             }
             SlashCommand::Model => {
                 self.open_model_popup();
+            }
+            SlashCommand::Lang => {
+                self.add_info_message(
+                    "Language selection is not available in this build.".to_string(),
+                    None,
+                );
+            }
+            SlashCommand::Spec => {
+                self.add_info_message(
+                    "Spec options are not available in this build.".to_string(),
+                    None,
+                );
             }
             SlashCommand::Personality => {
                 self.open_personality_popup();
@@ -3357,8 +3389,9 @@ impl ChatWidget {
             SlashCommand::Diff => {
                 self.add_diff_in_progress();
                 let tx = self.app_event_tx.clone();
+                let language = self.config.language;
                 tokio::spawn(async move {
-                    let text = match get_git_diff().await {
+                    let text = match get_git_diff(language).await {
                         Ok((is_git_repo, diff_text)) => {
                             if is_git_repo {
                                 diff_text
@@ -3379,6 +3412,12 @@ impl ChatWidget {
             }
             SlashCommand::Status => {
                 self.add_status_output();
+            }
+            SlashCommand::SddDevelop | SlashCommand::SddDevelopParallels => {
+                self.add_info_message(
+                    "SDD workflow is not available in this build.".to_string(),
+                    None,
+                );
             }
             SlashCommand::DebugConfig => {
                 self.add_debug_config_output();
@@ -3552,6 +3591,7 @@ impl ChatWidget {
             title.to_string(),
             "Type a name and press Enter".to_string(),
             None,
+            self.config.language,
             Box::new(move |name: String| {
                 let Some(name) = codex_core::util::normalize_thread_name(&name) else {
                     tx.send(AppEvent::InsertHistoryCell(Box::new(
@@ -4080,9 +4120,9 @@ impl ChatWidget {
             self.bottom_pane.set_task_running(true);
         }
         self.is_review_mode = true;
-        let hint = review
-            .user_facing_hint
-            .unwrap_or_else(|| codex_core::review_prompts::user_facing_hint(&review.target));
+        let hint = review.user_facing_hint.unwrap_or_else(|| {
+            codex_core::review_prompts::user_facing_hint(&review.target, self.config.language)
+        });
         let banner = format!(">> Code review started: {hint} <<");
         self.add_to_history(history_cell::new_review_status_line(banner));
         self.request_redraw();
@@ -4650,6 +4690,7 @@ impl ChatWidget {
                 summary: None,
                 collaboration_mode: None,
                 personality: None,
+                spec_parallel_priority: None,
             }));
             tx.send(AppEvent::UpdateModel(switch_model.clone()));
             tx.send(AppEvent::UpdateReasoningEffort(Some(default_effort)));
@@ -4701,7 +4742,7 @@ impl ChatWidget {
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some("Approaching rate limits".to_string()),
             subtitle: Some(format!("Switch to {display_name} for lower credit usage?")),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             ..Default::default()
         });
@@ -4770,6 +4811,7 @@ impl ChatWidget {
                         collaboration_mode: None,
                         windows_sandbox_level: None,
                         personality: Some(personality),
+                        spec_parallel_priority: None,
                     }));
                     tx.send(AppEvent::UpdatePersonality(personality));
                     tx.send(AppEvent::PersistPersonalitySelection { personality });
@@ -4792,7 +4834,7 @@ impl ChatWidget {
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
             header: Box::new(header),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             ..Default::default()
         });
@@ -4911,7 +4953,7 @@ impl ChatWidget {
             "Pick a quick auto mode or browse all models.",
         );
         self.bottom_pane.show_selection_view(SelectionViewParams {
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             header,
             ..Default::default()
@@ -5015,7 +5057,7 @@ impl ChatWidget {
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some("Select Collaboration Mode".to_string()),
             subtitle: Some("Pick a collaboration preset.".to_string()),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             ..Default::default()
         });
@@ -5039,6 +5081,7 @@ impl ChatWidget {
                 summary: None,
                 collaboration_mode: None,
                 personality: None,
+                spec_parallel_priority: None,
             }));
             tx.send(AppEvent::UpdateModel(model_for_action.clone()));
             tx.send(AppEvent::UpdateReasoningEffort(effort_for_action));
@@ -5183,7 +5226,7 @@ impl ChatWidget {
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
             header: Box::new(header),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             initial_selected_idx,
             ..Default::default()
@@ -5213,6 +5256,7 @@ impl ChatWidget {
                 summary: None,
                 collaboration_mode: None,
                 personality: None,
+                spec_parallel_priority: None,
             }));
         self.app_event_tx.send(AppEvent::UpdateModel(model.clone()));
         self.app_event_tx
@@ -5356,7 +5400,7 @@ impl ChatWidget {
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some("Update Model Permissions".to_string()),
             footer_note,
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             header: Box::new(()),
             ..Default::default()
@@ -5398,6 +5442,7 @@ impl ChatWidget {
                 summary: None,
                 collaboration_mode: None,
                 personality: None,
+                spec_parallel_priority: None,
             }));
             tx.send(AppEvent::UpdateAskForApprovalPolicy(approval));
             tx.send(AppEvent::UpdateSandboxPolicy(sandbox_clone));
@@ -5521,7 +5566,7 @@ impl ChatWidget {
         ];
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             header: Box::new(header),
             ..Default::default()
@@ -5622,7 +5667,7 @@ impl ChatWidget {
         ];
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             header: Box::new(header),
             ..Default::default()
@@ -5682,7 +5727,7 @@ impl ChatWidget {
 
             self.bottom_pane.show_selection_view(SelectionViewParams {
                 title: None,
-                footer_hint: Some(standard_popup_hint_line()),
+                footer_hint: Some(standard_popup_hint_line(self.config.language)),
                 items,
                 header: Box::new(header),
                 ..Default::default()
@@ -5764,7 +5809,7 @@ impl ChatWidget {
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: None,
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             header: Box::new(header),
             ..Default::default()
@@ -5878,7 +5923,7 @@ impl ChatWidget {
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: None,
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             header: Box::new(header),
             ..Default::default()
@@ -5950,6 +5995,15 @@ impl ChatWidget {
         if let Err(err) = self.config.approval_policy.set(policy) {
             tracing::warn!(%err, "failed to set approval_policy on chat config");
         }
+    }
+
+    pub(crate) fn set_language(&mut self, language: Language) {
+        self.config.language = language;
+        self.bottom_pane.set_language(language);
+    }
+
+    pub(crate) fn set_spec_parallel_priority(&mut self, enabled: bool) {
+        self.config.spec.parallel_priority = enabled;
     }
 
     /// Set the sandbox policy in the widget's config copy.
@@ -6821,7 +6875,7 @@ impl ChatWidget {
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some("Select a review preset".into()),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             ..Default::default()
         });
@@ -6856,7 +6910,7 @@ impl ChatWidget {
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some("Select a base branch".to_string()),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             is_searchable: true,
             search_placeholder: Some("Type to search branches".to_string()),
@@ -6894,7 +6948,7 @@ impl ChatWidget {
 
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some("Select a commit to review".to_string()),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             is_searchable: true,
             search_placeholder: Some("Type to search commits".to_string()),
@@ -6908,6 +6962,7 @@ impl ChatWidget {
             "Custom review instructions".to_string(),
             "Type instructions and press Enter".to_string(),
             None,
+            self.config.language,
             Box::new(move |prompt: String| {
                 let trimmed = prompt.trim().to_string();
                 if trimmed.is_empty() {
@@ -7194,7 +7249,7 @@ pub(crate) fn show_review_commit_picker_with_entries(
 
     chat.bottom_pane.show_selection_view(SelectionViewParams {
         title: Some("Select a commit to review".to_string()),
-        footer_hint: Some(standard_popup_hint_line()),
+        footer_hint: Some(standard_popup_hint_line(chat.config.language)),
         items,
         is_searchable: true,
         search_placeholder: Some("Type to search commits".to_string()),

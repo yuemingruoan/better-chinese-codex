@@ -28,9 +28,12 @@ use crate::bottom_pane::scroll_state::ScrollState;
 use crate::bottom_pane::selection_popup_common::GenericDisplayRow;
 use crate::bottom_pane::selection_popup_common::measure_rows_height;
 use crate::history_cell;
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::render::renderable::Renderable;
 
 use codex_core::protocol::Op;
+use codex_protocol::config_types::Language;
 use codex_protocol::request_user_input::RequestUserInputAnswer;
 use codex_protocol::request_user_input::RequestUserInputEvent;
 use codex_protocol::request_user_input::RequestUserInputResponse;
@@ -133,6 +136,7 @@ pub(crate) struct RequestUserInputOverlay {
     done: bool,
     pending_submission_draft: Option<ComposerDraft>,
     confirm_unanswered: Option<ScrollState>,
+    language: Language,
 }
 
 impl RequestUserInputOverlay {
@@ -166,11 +170,16 @@ impl RequestUserInputOverlay {
             done: false,
             pending_submission_draft: None,
             confirm_unanswered: None,
+            language: Language::En,
         };
         overlay.reset_for_request();
         overlay.ensure_focus_available();
         overlay.restore_current_draft();
         overlay
+    }
+
+    pub(crate) fn set_language(&mut self, language: Language) {
+        self.language = language;
     }
 
     fn current_index(&self) -> usize {
@@ -817,6 +826,22 @@ impl RequestUserInputOverlay {
 
     fn unanswered_question_count(&self) -> usize {
         self.unanswered_count()
+    }
+
+    fn unanswered_confirmation_subtitle(&self) -> String {
+        let count = self.unanswered_question_count();
+        let count_str = count.to_string();
+        let suffix_key = if count == 1 {
+            "request_user_input.confirm_unanswered.submit_desc_singular"
+        } else {
+            "request_user_input.confirm_unanswered.submit_desc_plural"
+        };
+        let suffix = tr(self.language, suffix_key);
+        tr_args(
+            self.language,
+            "request_user_input.confirm_unanswered.subtitle",
+            &[("count", count_str.as_str()), ("suffix", suffix)],
+        )
     }
 
     fn unanswered_submit_description(&self) -> String {

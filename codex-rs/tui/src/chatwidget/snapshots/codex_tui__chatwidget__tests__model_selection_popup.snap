@@ -12,5 +12,7 @@ expression: popup
                               knowledge, reasoning and coding
   4. gpt-5.1-codex-mini       Optimized for codex. Cheaper, faster, but less
                               capable.
+  5. gpt-5.3                  Latest frontier model with improvements across
+                              knowledge, reasoning and coding
 
   Press enter to select reasoning effort, or esc to dismiss.

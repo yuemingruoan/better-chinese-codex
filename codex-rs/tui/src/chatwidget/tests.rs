@@ -1031,6 +1031,7 @@ async fn make_chatwidget_manual(
         disable_paste_burst: false,
         animations_enabled: cfg.animations,
         skills: None,
+        language: cfg.language,
     });
     bottom.set_steer_enabled(true);
     bottom.set_collaboration_modes_enabled(cfg.features.enabled(Feature::CollaborationModes));

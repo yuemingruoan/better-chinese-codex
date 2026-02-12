@@ -460,6 +460,7 @@ async fn handle_model_migration_prompt_if_needed(
             heading_label,
             target_description,
             can_opt_out,
+            config.language,
         );
         match run_model_migration_prompt(tui, prompt_copy).await {
             ModelMigrationOutcome::Accepted => {
@@ -824,7 +825,7 @@ impl App {
         self.chat_widget.show_selection_view(SelectionViewParams {
             title: Some("Agents".to_string()),
             subtitle: Some("Select a thread to focus".to_string()),
-            footer_hint: Some(standard_popup_hint_line()),
+            footer_hint: Some(standard_popup_hint_line(self.config.language)),
             items,
             initial_selected_idx,
             ..Default::default()
@@ -1592,6 +1593,7 @@ impl App {
                 self.overlay = Some(Overlay::new_static_with_lines(
                     pager_lines,
                     "D I F F".to_string(),
+                    self.config.language,
                 ));
                 tui.frame_requester().schedule_frame();
             }
@@ -1622,6 +1624,13 @@ impl App {
             AppEvent::FileSearchResult { query, matches } => {
                 self.chat_widget.apply_file_search_result(query, matches);
             }
+            AppEvent::OpenSddPlanOptions
+            | AppEvent::SddPlanApproved
+            | AppEvent::SddPlanRework
+            | AppEvent::OpenSddDevOptions
+            | AppEvent::SddDevRequestMoreChanges
+            | AppEvent::SddDevMergeBranch
+            | AppEvent::SddDevAbandonBranch => {}
             AppEvent::RateLimitSnapshotFetched(snapshot) => {
                 self.chat_widget.on_rate_limit_snapshot(Some(snapshot));
             }
@@ -1635,6 +1644,15 @@ impl App {
             AppEvent::UpdateModel(model) => {
                 self.chat_widget.set_model(&model);
                 self.refresh_status_line();
+            }
+            AppEvent::UpdateLanguage(language) => {
+                self.config.language = language;
+                self.chat_widget.set_language(language);
+                self.refresh_status_line();
+            }
+            AppEvent::UpdateSpecParallelPriority(enabled) => {
+                self.config.spec.parallel_priority = enabled;
+                self.chat_widget.set_spec_parallel_priority(enabled);
             }
             AppEvent::UpdateCollaborationMode(mask) => {
                 self.chat_widget.set_collaboration_mask(mask);
@@ -1843,6 +1861,7 @@ impl App {
                                         summary: None,
                                         collaboration_mode: None,
                                         personality: None,
+                                        spec_parallel_priority: None,
                                     },
                                 ));
                                 self.app_event_tx.send(
@@ -1865,6 +1884,7 @@ impl App {
                                         summary: None,
                                         collaboration_mode: None,
                                         personality: None,
+                                        spec_parallel_priority: None,
                                     },
                                 ));
                                 self.app_event_tx
@@ -1935,6 +1955,42 @@ impl App {
                                 .add_error_message(format!("Failed to save default model: {err}"));
                         }
                     }
+                }
+            }
+            AppEvent::PersistLanguageSelection { language } => {
+                if let Err(err) = ConfigEditsBuilder::new(&self.config.codex_home)
+                    .set_language(language)
+                    .apply()
+                    .await
+                {
+                    tracing::error!(error = %err, "failed to persist language selection");
+                }
+            }
+            AppEvent::PersistSpecParallelPriority { enabled } => {
+                if let Err(err) = ConfigEditsBuilder::new(&self.config.codex_home)
+                    .with_profile(self.active_profile.as_deref())
+                    .set_spec_parallel_priority(enabled)
+                    .apply()
+                    .await
+                {
+                    tracing::error!(
+                        error = %err,
+                        "failed to persist parallel priority spec selection"
+                    );
+                }
+            }
+            AppEvent::PersistApprovalSelection {
+                approval_policy,
+                sandbox_mode,
+            } => {
+                if let Err(err) = ConfigEditsBuilder::new(&self.config.codex_home)
+                    .with_profile(self.active_profile.as_deref())
+                    .set_approval_policy(approval_policy)
+                    .set_sandbox_mode(sandbox_mode)
+                    .apply()
+                    .await
+                {
+                    tracing::error!(error = %err, "failed to persist approval selection");
                 }
             }
             AppEvent::PersistPersonalitySelection { personality } => {
@@ -2092,6 +2148,7 @@ impl App {
                                 summary: None,
                                 collaboration_mode: None,
                                 personality: None,
+                                spec_parallel_priority: None,
                             }));
                     }
                 }
@@ -2243,6 +2300,7 @@ impl App {
                     self.overlay = Some(Overlay::new_static_with_renderables(
                         vec![diff_summary.into()],
                         "P A T C H".to_string(),
+                        self.config.language,
                     ));
                 }
                 ApprovalRequest::Exec { command, .. } => {
@@ -2252,6 +2310,7 @@ impl App {
                     self.overlay = Some(Overlay::new_static_with_lines(
                         full_cmd_lines,
                         "E X E C".to_string(),
+                        self.config.language,
                     ));
                 }
                 ApprovalRequest::McpElicitation {
@@ -2269,6 +2328,7 @@ impl App {
                     self.overlay = Some(Overlay::new_static_with_renderables(
                         vec![Box::new(paragraph)],
                         "E L I C I T A T I O N".to_string(),
+                        self.config.language,
                     ));
                 }
             },
@@ -2514,7 +2574,10 @@ impl App {
             } => {
                 // Enter alternate screen and set viewport to full size.
                 let _ = tui.enter_alt_screen();
-                self.overlay = Some(Overlay::new_transcript(self.transcript_cells.clone()));
+                self.overlay = Some(Overlay::new_transcript(
+                    self.transcript_cells.clone(),
+                    self.config.language,
+                ));
                 tui.frame_requester().schedule_frame();
             }
             KeyEvent {
@@ -2997,6 +3060,7 @@ mod tests {
             target.display_name.clone(),
             target_description,
             can_opt_out,
+            config.language,
         );
 
         // Snapshot the copy we would show; rendering is covered by model_migration snapshots.
@@ -3320,7 +3384,10 @@ mod tests {
                 false,
             )) as Arc<dyn HistoryCell>,
         ];
-        app.overlay = Some(Overlay::new_transcript(app.transcript_cells.clone()));
+        app.overlay = Some(Overlay::new_transcript(
+            app.transcript_cells.clone(),
+            app.config.language,
+        ));
         app.deferred_history_lines = vec![Line::from("stale buffered line")];
         app.backtrack.overlay_preview_active = true;
         app.backtrack.nth_user_message = 1;

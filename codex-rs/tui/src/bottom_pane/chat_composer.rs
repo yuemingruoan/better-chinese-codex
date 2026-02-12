@@ -153,6 +153,7 @@ use crate::render::renderable::Renderable;
 use crate::slash_command::SlashCommand;
 use crate::style::user_message_style;
 use codex_common::fuzzy_match::fuzzy_match;
+use codex_protocol::config_types::Language;
 use codex_protocol::custom_prompts::CustomPrompt;
 use codex_protocol::custom_prompts::PROMPTS_CMD_PREFIX;
 use codex_protocol::models::local_image_label_text;
@@ -303,6 +304,7 @@ pub(crate) struct ChatComposer {
     steer_enabled: bool,
     collaboration_modes_enabled: bool,
     config: ChatComposerConfig,
+    language: Language,
     collaboration_mode_indicator: Option<CollaborationModeIndicator>,
     connectors_enabled: bool,
     personality_command_enabled: bool,
@@ -401,6 +403,7 @@ impl ChatComposer {
             steer_enabled: false,
             collaboration_modes_enabled: false,
             config,
+            language: Language::En,
             collaboration_mode_indicator: None,
             connectors_enabled: false,
             personality_command_enabled: false,
@@ -428,6 +431,16 @@ impl ChatComposer {
     pub fn set_connector_mentions(&mut self, connectors_snapshot: Option<ConnectorsSnapshot>) {
         self.connectors_snapshot = connectors_snapshot;
         self.sync_popups();
+    }
+
+    pub(crate) fn set_language(&mut self, language: Language) {
+        if self.language == language {
+            return;
+        }
+        self.language = language;
+        if let ActivePopup::Command(popup) = &mut self.active_popup {
+            popup.set_language(language);
+        }
     }
 
     pub(crate) fn take_mention_bindings(&mut self) -> Vec<MentionBinding> {
@@ -2988,7 +3001,9 @@ impl ChatComposer {
                             connectors_enabled,
                             personality_command_enabled,
                             windows_degraded_sandbox_active: self.windows_degraded_sandbox_active,
+                            skills_enabled: self.skills.is_some(),
                         },
+                        self.language,
                     );
                     command_popup.on_composer_text_change(first_line.to_string());
                     self.active_popup = ActivePopup::Command(command_popup);
@@ -5345,7 +5360,7 @@ mod tests {
             false,
         );
 
-        type_chars_humanlike(&mut composer, &['/', 'c']);
+        type_chars_humanlike(&mut composer, &['/', 'c', 'o']);
 
         let (_result, _needs_redraw) =
             composer.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));

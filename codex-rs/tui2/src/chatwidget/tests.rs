@@ -82,6 +82,7 @@ use insta::assert_snapshot;
 use pretty_assertions::assert_eq;
 #[cfg(target_os = "windows")]
 use serial_test::serial;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
@@ -138,6 +139,9 @@ async fn resumed_initial_messages_render_history() {
         reasoning_effort: Some(ReasoningEffortConfig::default()),
         history_log_id: 0,
         history_entry_count: 0,
+        network_proxy: None,
+        forked_from_id: None,
+        thread_name: None,
         initial_messages: Some(vec![
             EventMsg::UserMessage(UserMessageEvent {
                 message: "hello from user".to_string(),
@@ -149,7 +153,7 @@ async fn resumed_initial_messages_render_history() {
                 message: "assistant reply".to_string(),
             }),
         ]),
-        rollout_path: rollout_file.path().to_path_buf(),
+        rollout_path: Some(rollout_file.path().to_path_buf()),
     };
 
     chat.handle_codex_event(Event {
@@ -207,9 +211,11 @@ async fn collab_events_emit_history_lines() {
         id: "collab-wait-end".into(),
         msg: EventMsg::CollabWaitingEnd(CollabWaitingEndEvent {
             sender_thread_id,
-            receiver_thread_id,
             call_id: "call-2".to_string(),
-            status: AgentStatus::Completed(Some("done".to_string())),
+            statuses: HashMap::from([(
+                receiver_thread_id,
+                AgentStatus::Completed(Some("done".to_string())),
+            )]),
         }),
     });
     let cells = drain_insert_history(&mut rx);
@@ -1966,6 +1972,7 @@ async fn interrupted_turn_error_message_snapshot() {
         id: "task-1".into(),
         msg: EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: Default::default(),
         }),
     });
 
@@ -1997,7 +2004,11 @@ async fn request_user_input_event_renders_history_cell() {
     });
 
     let cells = drain_insert_history(&mut rx);
-    assert_eq!(cells.len(), 1, "expected one request_user_input history cell");
+    assert_eq!(
+        cells.len(),
+        1,
+        "expected one request_user_input history cell"
+    );
 
     let unanswered_count = event.questions.len().to_string();
     let rendered = lines_to_single_string(&cells[0]);
@@ -2038,6 +2049,7 @@ async fn interrupted_turn_renders_queued_request_user_input_status() {
         id: "turn-2".into(),
         msg: EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: Default::default(),
         }),
     });
     chat.handle_codex_event(Event {
@@ -2244,10 +2256,12 @@ async fn model_picker_hides_show_in_picker_false_models_from_cache() {
             effort: ReasoningEffortConfig::Medium,
             description: "medium".to_string(),
         }],
+        supports_personality: false,
         is_default: false,
         upgrade: None,
         show_in_picker,
         supported_in_api: true,
+        input_modalities: Vec::new(),
     };
 
     chat.open_model_popup_with_presets(vec![
@@ -2496,10 +2510,12 @@ async fn single_reasoning_option_skips_selection() {
         description: "".to_string(),
         default_reasoning_effort: ReasoningEffortConfig::High,
         supported_reasoning_efforts: single_effort,
+        supports_personality: false,
         is_default: false,
         upgrade: None,
         show_in_picker: true,
         supported_in_api: true,
+        input_modalities: Vec::new(),
     };
     chat.open_reasoning_popup(preset);
 
@@ -2913,6 +2929,7 @@ async fn ui_snapshots_small_heights_task_running() {
         id: "task-1".into(),
         msg: EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: Default::default(),
         }),
     });
     chat.handle_codex_event(Event {
@@ -2944,6 +2961,7 @@ async fn status_widget_and_approval_modal_snapshot() {
         id: "task-1".into(),
         msg: EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: Default::default(),
         }),
     });
     // Provide a deterministic header for the status line.
@@ -2996,6 +3014,7 @@ async fn status_widget_active_snapshot() {
         id: "task-1".into(),
         msg: EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: Default::default(),
         }),
     });
     // Provide a deterministic header via a bold reasoning chunk.
@@ -3045,6 +3064,7 @@ async fn mcp_startup_complete_does_not_clear_running_task() {
         id: "task-1".into(),
         msg: EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: Default::default(),
         }),
     });
 
@@ -3599,6 +3619,7 @@ async fn stream_recovery_restores_previous_status_header() {
         id: "task".into(),
         msg: EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: Default::default(),
         }),
     });
     drain_insert_history(&mut rx);
@@ -3636,6 +3657,7 @@ async fn multiple_agent_messages_in_single_turn_emit_multiple_headers() {
         id: "s1".into(),
         msg: EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: Default::default(),
         }),
     });
 
@@ -3830,6 +3852,7 @@ async fn chatwidget_exec_and_status_layout_vt100_snapshot() {
         id: "t1".into(),
         msg: EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: Default::default(),
         }),
     });
     chat.handle_codex_event(Event {
@@ -3874,6 +3897,7 @@ async fn chatwidget_markdown_code_blocks_vt100_snapshot() {
         id: "t1".into(),
         msg: EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: Default::default(),
         }),
     });
     // Build a vt100 visual from the history insertions only (no UI overlay)
@@ -3963,6 +3987,7 @@ async fn chatwidget_tall() {
         id: "t1".into(),
         msg: EventMsg::TurnStarted(TurnStartedEvent {
             model_context_window: None,
+            collaboration_mode_kind: Default::default(),
         }),
     });
     for i in 0..30 {

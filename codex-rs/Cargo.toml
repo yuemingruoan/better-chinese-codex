@@ -30,6 +30,7 @@ members = [
     "lmstudio",
     "login",
     "mcp-server",
+    "mcp-types",
     "network-proxy",
     "ollama",
     "process-hardening",
@@ -39,6 +40,7 @@ members = [
     "stdio-to-uds",
     "otel",
     "tui",
+    "tui2",
     "utils/absolute-path",
     "utils/cargo-bin",
     "utils/git",
@@ -121,6 +123,7 @@ codex-utils-string = { path = "utils/string" }
 codex-windows-sandbox = { path = "windows-sandbox-rs" }
 core_test_support = { path = "core/tests/common" }
 exec_server_test_support = { path = "exec-server/tests/common" }
+mcp-types = { path = "mcp-types" }
 mcp_test_support = { path = "mcp-server/tests/common" }
 
 # External
@@ -200,6 +203,7 @@ pretty_assertions = "1.4.1"
 pulldown-cmark = "0.10"
 rand = "0.9"
 ratatui = "0.29.0"
+ratatui-core = "0.1.0"
 ratatui-macros = "0.6.0"
 regex = "1.12.3"
 regex-lite = "0.1.8"
@@ -251,6 +255,7 @@ tree-sitter-bash = "0.25"
 zstd = "0.13"
 tree-sitter-highlight = "0.25.10"
 ts-rs = "11"
+tui-scrollbar = "0.2.1"
 uds_windows = "1.1.0"
 unicode-segmentation = "1.12.0"
 unicode-width = "0.2"

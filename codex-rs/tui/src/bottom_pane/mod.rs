@@ -687,8 +687,7 @@ impl BottomPane {
             return;
         }
 
-        self.token_usage = usage.clone();
-        self.composer.set_token_usage(usage);
+        self.token_usage = usage;
         self.request_redraw();
     }
 
@@ -798,12 +797,7 @@ impl BottomPane {
         };
 
         // Otherwise create a new approval modal overlay.
-        let modal = ApprovalOverlay::new(
-            request,
-            self.app_event_tx.clone(),
-            features.clone(),
-            self.language,
-        );
+        let modal = ApprovalOverlay::new(request, self.app_event_tx.clone(), features.clone());
         self.pause_status_timer_for_modal();
         self.push_view(Box::new(modal));
     }
@@ -822,14 +816,14 @@ impl BottomPane {
             request
         };
 
-        let modal = RequestUserInputOverlay::new(
+        let mut modal = RequestUserInputOverlay::new(
             request,
             self.app_event_tx.clone(),
             self.has_input_focus,
             self.enhanced_keys_supported,
             self.disable_paste_burst,
-            self.language,
         );
+        modal.set_language(self.language);
         self.pause_status_timer_for_modal();
         self.set_composer_input_enabled(
             false,
@@ -1264,6 +1258,7 @@ mod tests {
             disable_paste_burst: false,
             animations_enabled: true,
             skills: Some(Vec::new()),
+            language: Language::En,
         });
 
         pane.set_task_running(true);

@@ -1043,8 +1043,7 @@ mod tests {
                 content: "hello\nworld\n".to_string(),
             },
         );
-        let approval_cell: Arc<dyn HistoryCell> =
-            Arc::new(new_patch_event(approval_changes, &cwd, Language::En));
+        let approval_cell: Arc<dyn HistoryCell> = Arc::new(new_patch_event(approval_changes, &cwd));
         cells.push(approval_cell);
 
         let mut apply_changes = HashMap::new();
@@ -1054,16 +1053,12 @@ mod tests {
                 content: "hello\nworld\n".to_string(),
             },
         );
-        let apply_begin_cell: Arc<dyn HistoryCell> =
-            Arc::new(new_patch_event(apply_changes, &cwd, Language::En));
+        let apply_begin_cell: Arc<dyn HistoryCell> = Arc::new(new_patch_event(apply_changes, &cwd));
         cells.push(apply_begin_cell);
 
-        let apply_end_cell: Arc<dyn HistoryCell> = history_cell::new_approval_decision_cell(
-            vec!["ls".into()],
-            ReviewDecision::Approved,
-            Language::ZhCn,
-        )
-        .into();
+        let apply_end_cell: Arc<dyn HistoryCell> =
+            history_cell::new_approval_decision_cell(vec!["ls".into()], ReviewDecision::Approved)
+                .into();
         cells.push(apply_end_cell);
 
         let mut exec_cell = crate::exec_cell::new_active_exec_command(

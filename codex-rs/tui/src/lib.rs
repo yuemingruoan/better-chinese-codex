@@ -76,6 +76,7 @@ mod file_search;
 mod frames;
 mod get_git_diff;
 mod history_cell;
+mod i18n;
 pub mod insert_history;
 mod key_hint;
 pub mod live_wrap;
@@ -215,6 +216,7 @@ pub async fn run_main(
     {
         tracing::warn!(error = %err, "failed to run personality migration");
     }
+    let language = config_toml.language.unwrap_or_default();
 
     let cloud_auth_manager = AuthManager::shared(
         codex_home.to_path_buf(),
@@ -238,7 +240,7 @@ pub async fn run_main(
             Some(provider)
         } else {
             // No provider configured, prompt the user
-            let provider = oss_selection::select_oss_provider(&codex_home).await?;
+            let provider = oss_selection::select_oss_provider(&codex_home, language).await?;
             if provider == "__CANCELLED__" {
                 return Err(std::io::Error::other(
                     "OSS provider selection was cancelled by user",
@@ -286,7 +288,9 @@ pub async fn run_main(
     .await;
     set_default_client_residency_requirement(config.enforce_residency.value());
 
-    if let Some(warning) = add_dir_warning_message(&cli.add_dir, config.sandbox_policy.get()) {
+    if let Some(warning) =
+        add_dir_warning_message(&cli.add_dir, config.sandbox_policy.get(), config.language)
+    {
         #[allow(clippy::print_stderr)]
         {
             eprintln!("Error adding directories: {warning}");
@@ -430,7 +434,7 @@ async fn run_ratatui_app(
         tracing::error!("panic: {info}");
         prev_hook(info);
     }));
-    let mut terminal = tui::init()?;
+    let mut terminal = tui::init(initial_config.language)?;
     terminal.clear()?;
 
     let mut tui = Tui::new(terminal);

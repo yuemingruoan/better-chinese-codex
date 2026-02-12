@@ -28,7 +28,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use codex_app_server_protocol::AuthMode;
 use codex_backend_client::Client as BackendClient;
 use codex_core::config::Config;
 use codex_core::config::ConstraintResult;
@@ -96,7 +95,10 @@ use codex_core::protocol::ViewImageToolCallEvent;
 use codex_core::protocol::WarningEvent;
 use codex_core::protocol::WebSearchBeginEvent;
 use codex_core::protocol::WebSearchEndEvent;
+use codex_core::skills::model::SkillDependencies;
+use codex_core::skills::model::SkillInterface;
 use codex_core::skills::model::SkillMetadata;
+use codex_core::skills::model::SkillToolDependency;
 use codex_protocol::ThreadId;
 use codex_protocol::account::PlanType;
 use codex_protocol::approvals::ElicitationRequestEvent;
@@ -654,7 +656,7 @@ impl ChatWidget {
             .set_history_metadata(event.history_log_id, event.history_entry_count);
         self.set_skills(None);
         self.conversation_id = Some(event.session_id);
-        self.current_rollout_path = Some(event.rollout_path.clone());
+        self.current_rollout_path = event.rollout_path.clone();
         let initial_messages = event.initial_messages.clone();
         let model_for_header = event.model.clone();
         self.model = Some(model_for_header.clone());
@@ -1419,7 +1421,17 @@ impl ChatWidget {
     }
 
     fn on_collab_waiting_begin(&mut self, ev: CollabWaitingBeginEvent) {
-        let receiver_id = ev.receiver_thread_id.to_string();
+        let receiver_id = ev
+            .receiver_thread_ids
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let receiver_id = if receiver_id.is_empty() {
+            "-".to_string()
+        } else {
+            receiver_id
+        };
         let message = tr_args(
             self.config.language,
             "chatwidget.collab.waiting_begin",
@@ -1429,8 +1441,30 @@ impl ChatWidget {
     }
 
     fn on_collab_waiting_end(&mut self, ev: CollabWaitingEndEvent) {
-        let receiver_id = ev.receiver_thread_id.to_string();
-        let status = self.collab_status_label(&ev.status);
+        let mut statuses: Vec<(String, String)> = ev
+            .statuses
+            .iter()
+            .map(|(thread_id, status)| (thread_id.to_string(), self.collab_status_label(status)))
+            .collect();
+        statuses.sort_by(|(left, _), (right, _)| left.cmp(right));
+
+        let (receiver_id, status) = match statuses.as_slice() {
+            [] => ("-".to_string(), "-".to_string()),
+            [(receiver_id, status)] => (receiver_id.clone(), status.clone()),
+            _ => {
+                let receiver_id = statuses
+                    .iter()
+                    .map(|(thread_id, _)| thread_id.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let status = statuses
+                    .iter()
+                    .map(|(thread_id, status)| format!("{thread_id}: {status}"))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                (receiver_id, status)
+            }
+        };
         let message = tr_args(
             self.config.language,
             "chatwidget.collab.waiting_end",
@@ -1910,6 +1944,14 @@ impl ChatWidget {
             duration,
             result,
         } = ev;
+        let result = result.and_then(|result| {
+            serde_json::to_value(result)
+                .map_err(|err| format!("failed to serialize MCP tool result: {err}"))
+                .and_then(|value| {
+                    serde_json::from_value::<mcp_types::CallToolResult>(value)
+                        .map_err(|err| format!("failed to parse MCP tool result: {err}"))
+                })
+        });
 
         let extra_cell = match self
             .active_cell
@@ -3352,6 +3394,7 @@ impl ChatWidget {
 
         match msg {
             EventMsg::AgentMessageDelta(_)
+            | EventMsg::PlanDelta(_)
             | EventMsg::AgentReasoningDelta(_)
             | EventMsg::TerminalInteraction(_)
             | EventMsg::ExecCommandOutputDelta(_) => {}
@@ -3362,6 +3405,7 @@ impl ChatWidget {
 
         match msg {
             EventMsg::SessionConfigured(e) => self.on_session_configured(e),
+            EventMsg::ThreadNameUpdated(_) => {}
             EventMsg::AgentMessage(AgentMessageEvent { message }) => self.on_agent_message(message),
             EventMsg::AgentMessageDelta(AgentMessageDeltaEvent { delta }) => {
                 self.on_agent_message_delta(delta)
@@ -3401,6 +3445,7 @@ impl ChatWidget {
                 }
             },
             EventMsg::PlanUpdate(update) => self.on_plan_update(update),
+            EventMsg::PlanDelta(_) => {}
             EventMsg::ExecApprovalRequest(ev) => {
                 // For replayed events, synthesize an empty id (these should not occur).
                 self.on_exec_approval_request(id.unwrap_or_default(), ev)
@@ -3429,6 +3474,7 @@ impl ChatWidget {
             EventMsg::McpListToolsResponse(ev) => self.on_list_mcp_tools(ev),
             EventMsg::ListCustomPromptsResponse(ev) => self.on_list_custom_prompts(ev),
             EventMsg::ListSkillsResponse(ev) => self.on_list_skills(ev),
+            EventMsg::ListRemoteSkillsResponse(_) | EventMsg::RemoteSkillDownloaded(_) => {}
             EventMsg::SkillsUpdateAvailable => {
                 self.submit_op(Op::ListSkills {
                     cwds: Vec::new(),
@@ -3468,13 +3514,15 @@ impl ChatWidget {
             EventMsg::CollabWaitingEnd(ev) => self.on_collab_waiting_end(ev),
             EventMsg::CollabCloseBegin(ev) => self.on_collab_close_begin(ev),
             EventMsg::CollabCloseEnd(ev) => self.on_collab_close_end(ev),
+            EventMsg::CollabResumeBegin(_) | EventMsg::CollabResumeEnd(_) => {}
             EventMsg::RawResponseItem(_)
             | EventMsg::ThreadRolledBack(_)
             | EventMsg::ItemStarted(_)
             | EventMsg::ItemCompleted(_)
             | EventMsg::AgentMessageContentDelta(_)
             | EventMsg::ReasoningContentDelta(_)
-            | EventMsg::ReasoningRawContentDelta(_) => {}
+            | EventMsg::ReasoningRawContentDelta(_)
+            | EventMsg::DynamicToolCallRequest(_) => {}
         }
     }
 
@@ -3653,7 +3701,11 @@ impl ChatWidget {
     fn prefetch_rate_limits(&mut self) {
         self.stop_rate_limit_poller();
 
-        if self.auth_manager.auth_cached().map(|auth| auth.mode) != Some(AuthMode::ChatGPT) {
+        if !self
+            .auth_manager
+            .auth_cached()
+            .is_some_and(|auth| auth.is_chatgpt_auth())
+        {
             return;
         }
 
@@ -3666,7 +3718,7 @@ impl ChatWidget {
 
             loop {
                 if let Some(auth) = auth_manager.auth().await
-                    && auth.mode == AuthMode::ChatGPT
+                    && auth.is_chatgpt_auth()
                     && let Some(snapshot) = fetch_rate_limits(base_url.clone(), auth).await
                 {
                     app_event_tx.send(AppEvent::RateLimitSnapshotFetched(snapshot));
@@ -3855,11 +3907,7 @@ impl ChatWidget {
             SelectionItem {
                 name: tr(language, "chatwidget.spec_popup.parallel_priority_on").to_string(),
                 description: Some(
-                    tr(
-                        language,
-                        "chatwidget.spec_popup.parallel_priority_on_desc",
-                    )
-                    .to_string(),
+                    tr(language, "chatwidget.spec_popup.parallel_priority_on_desc").to_string(),
                 ),
                 is_current: current,
                 actions: Self::spec_parallel_priority_selection_actions(true),
@@ -3869,11 +3917,7 @@ impl ChatWidget {
             SelectionItem {
                 name: tr(language, "chatwidget.spec_popup.parallel_priority_off").to_string(),
                 description: Some(
-                    tr(
-                        language,
-                        "chatwidget.spec_popup.parallel_priority_off_desc",
-                    )
-                    .to_string(),
+                    tr(language, "chatwidget.spec_popup.parallel_priority_off_desc").to_string(),
                 ),
                 is_current: !current,
                 actions: Self::spec_parallel_priority_selection_actions(false),
@@ -5351,12 +5395,31 @@ impl ChatWidget {
     }
 
     fn on_list_mcp_tools(&mut self, ev: McpListToolsResponseEvent) {
+        let McpListToolsResponseEvent {
+            tools,
+            resources,
+            resource_templates,
+            auth_statuses,
+        } = ev;
+        let tools = serde_json::to_value(tools)
+            .and_then(serde_json::from_value::<HashMap<String, mcp_types::Tool>>);
+        let resources = serde_json::to_value(resources)
+            .and_then(serde_json::from_value::<HashMap<String, Vec<mcp_types::Resource>>>);
+        let resource_templates = serde_json::to_value(resource_templates)
+            .and_then(serde_json::from_value::<HashMap<String, Vec<mcp_types::ResourceTemplate>>>);
+
+        let (Ok(tools), Ok(resources), Ok(resource_templates)) =
+            (tools, resources, resource_templates)
+        else {
+            tracing::warn!("failed to convert MCP tools response payloads");
+            return;
+        };
         self.add_to_history(history_cell::new_mcp_tools_output(
             &self.config,
-            ev.tools,
-            ev.resources,
-            ev.resource_templates,
-            &ev.auth_statuses,
+            tools,
+            resources,
+            resource_templates,
+            &auth_statuses,
         ));
     }
 
@@ -5839,6 +5902,31 @@ fn skills_for_cwd(cwd: &Path, skills_entries: &[SkillsListEntry]) -> Vec<SkillMe
                     name: skill.name.clone(),
                     description: skill.description.clone(),
                     short_description: skill.short_description.clone(),
+                    interface: skill.interface.clone().map(|interface| SkillInterface {
+                        display_name: interface.display_name,
+                        short_description: interface.short_description,
+                        icon_small: interface.icon_small,
+                        icon_large: interface.icon_large,
+                        brand_color: interface.brand_color,
+                        default_prompt: interface.default_prompt,
+                    }),
+                    dependencies: skill.dependencies.clone().map(|dependencies| {
+                        SkillDependencies {
+                            tools: dependencies
+                                .tools
+                                .into_iter()
+                                .map(|tool| SkillToolDependency {
+                                    r#type: tool.r#type,
+                                    value: tool.value,
+                                    description: tool.description,
+                                    transport: tool.transport,
+                                    command: tool.command,
+                                    url: tool.url,
+                                })
+                                .collect(),
+                        }
+                    }),
+                    policy: None,
                     path: skill.path.clone(),
                     scope: skill.scope,
                 })
