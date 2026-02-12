@@ -215,3 +215,14 @@
 
 - 当前待办：
   - 等待你确认 `.codex/task.md` 规划内容或提出调整意见。
+
+## 2026-02-12 16:31:04 CST
+- 已完成 11 个冲突文件的人工收敛并清除 unmerged 状态，`git diff --name-only --diff-filter=U` 结果为空。
+- 已按你的裁决落地 collab `items` 语义：`spawn_agent` / `send_input` 转为必填 `items`，并同步更新对应单测与工具 schema。
+- 已执行 `just fmt`、`just write-config-schema`，并补齐本轮编译阻塞修复（`tasks/sdd_git.rs` 的 `ExecRequest` 适配、`codex.rs` 会话配置字段补齐）。
+- 定向验证通过：`spawn_agent_requires_items`、`send_input_requires_items`、`test_build_specs_collab_tools_enabled`、`config_schema_matches_fixture`、`suite::client::parallel_priority_spec_injected_when_enabled_and_removed_after_override`。
+- `cargo test -p codex-core` 全量仍失败（20 项），主要阻塞集中在 `models.json` 新 schema 兼容（`shell_type` 缺失）及其连锁用例。
+
+- 当前待办：
+  - 继续清理 `models.json` / `models_manager` 相关失败，收敛 `codex-core` 全量回归。
+  - 进入 T5/T6：补齐冲突裁决记录与剩余实现落地。
