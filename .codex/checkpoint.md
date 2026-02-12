@@ -255,3 +255,11 @@
 
 - 当前待办：
   - 无（等待你选择后续动作：继续新需求或发起合并流程）。
+
+## 2026-02-12 17:19:15 CST
+- 已通过 PR 流程完成合并：PR #16（Merge commit）`https://github.com/yuemingruoan/better-chinese-codex/pull/16`，目标分支 `develop-main`，合并提交 `3ea5285d588b58a4a945fbfaf3311571b6441456`。
+- 已确认测试基线沿用本轮针对测试（按用户指令豁免 `--all-features`）：`just fmt`、`cargo test -p codex-core grep_files_tool_`、`cargo test -p codex-core`、`cargo test -p codex-core i18n::tests::catalogs_share_keys`。
+- 已完成收尾清理：删除 `.codex/task.md`，保留并追加 `.codex/checkpoint.md` 阶段记录。
+
+- 当前待办：
+  - 删除合并完成后的本地/远端特性分支（按团队分支清理流程执行）。
