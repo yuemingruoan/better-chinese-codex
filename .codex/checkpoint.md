@@ -207,3 +207,11 @@
 
 - 当前待办：
   - 跟踪 `cargo test --all-features` 下 `codex-network-proxy` 的 4 个不稳定用例（非本次 `/spec` 变更范围）。
+
+## 2026-02-12 13:17:38 CST
+- 已阅读并核对项目上下文（`AGENTS.md`、`docs/release/notes.md`、`.github/workflows`、当前 git 分支/远端状态），确认当前同步基线为 `rust-v0.98.0`。
+- 已按“合并 OpenAI 官方仓库至 `rust-v0.99.0`”需求重写 `.codex/task.md`，覆盖范围/非范围、任务拆分、冲突裁决关卡、测试与回滚方案。
+- 已将功能冲突处理流程明确为“你逐项裁决后再落地”，并在任务表中加入强制决策节点与汇报节奏。
+
+- 当前待办：
+  - 等待你确认 `.codex/task.md` 规划内容或提出调整意见。
