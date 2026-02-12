@@ -34,7 +34,7 @@
 | T4 | 机械合并与策略过滤 | [x] | Codex | 1) 执行上游合并（merge/cherry-pick 按实际冲突量选择）；2) 按策略过滤：保留中文提示词、保留 README、仅保留允许工作流；3) 文件修改优先 `apply_patch`。 | `git status` 仅剩待处理冲突或已合并变更；`.github/workflows` 仅包含允许文件；README 未被覆盖。 |
 | T5 | 功能冲突裁决关卡 | [ ] | 你（用户）+ Codex | 1) Codex 输出“冲突点+候选方案+影响范围+推荐”；2) 你逐项裁决；3) 未裁决项不进入最终提交。 | 每个功能冲突项都有明确“你的决定”；无“语义未定”条目残留。 |
 | T6 | 按裁决落地与 i18n 收口 | [ ] | Codex | 1) 落地冲突处理代码；2) 新增/变更交互文本同步 en/zh；3) 文档（README 除外）与上游一致并完成中文化。 | `cargo test -p codex-core i18n::tests::catalogs_share_keys` 通过；`rg` 检查新增 key 在中英文均存在；文档变更可审阅。 |
-| T7 | 规范化与分模块验证 | [ ] | Codex | 1) Rust 变更后执行 `just fmt`；2) 大改动按 crate 执行 `just fix -p <project>`；3) 逐模块跑测试（`cargo test -p <crate>`）；4) 快照按 `cargo insta pending-snapshots/show/accept` 流程处理。 | 格式化与 lint 命令成功；受影响 crate 测试通过；无遗留 `.snap.new`（或有明确说明待确认）。 |
+| T7 | 规范化与分模块验证 | [x] | Codex | 1) Rust 变更后执行 `just fmt`；2) 大改动按 crate 执行 `just fix -p <project>`；3) 逐模块跑测试（`cargo test -p <crate>`）；4) 快照按 `cargo insta pending-snapshots/show/accept` 流程处理。 | 格式化与 lint 命令成功；受影响 crate 测试通过；无遗留 `.snap.new`（或有明确说明待确认）。 |
 | T8 | 全量回归（条件触发） | [ ] | Codex + 你（确认） | 若变更涉及 `common/core/protocol`：先征求你同意，再执行 `cargo test --all-features`；失败则分组定位并回填任务状态。 | 得到你的“允许执行”确认；全量测试通过，或失败项有明确归因与修复/豁免决策。 |
 | T9 | 发布素材与收尾同步 | [ ] | Codex | 1) 更新 `docs/release/notes.md`（中英文）记录本轮同步；2) 复核版本号策略（保持 fork 版本，不对齐上游）；3) 清点交付物与剩余风险。 | 发布说明可读且双语一致；版本策略检查通过；交付清单完整。 |
 | T10 | 任务状态与阶段记录 | [ ] | Codex | 1) 按实际完成进度更新本文件勾选；2) 追加 `.codex/checkpoint.md` 阶段日志；3) 汇报分支、进展、测试、阻塞。 | `task.md` 勾选与实际一致；checkpoint 追加成功且结构符合规范。 |

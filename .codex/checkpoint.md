@@ -226,3 +226,14 @@
 - 当前待办：
   - 继续清理 `models.json` / `models_manager` 相关失败，收敛 `codex-core` 全量回归。
   - 进入 T5/T6：补齐冲突裁决记录与剩余实现落地。
+
+## 2026-02-12 16:57:30 CST
+- 已完成 `core` 测试收敛：同步 `models.json` 到上游 `rust-v0.99.0`，更新 `tools/spec` 与相关 suite 断言（`exp-5.1` 用例移除、`apply_patch`/`batches_read_file` 顺序对齐、`exp-5.1` 不再要求 `apply_patch`）。
+- 已修复 `grep_files` 集成测试前置条件：在 `grep_files` suite 内挂载远端模型并显式开启 `experimental_supported_tools=["grep_files"]`，避免 fallback 模型导致 `unsupported call: grep_files`。
+- 已完成验证：`just fmt`、`cargo test -p codex-core grep_files_tool_`、`cargo test -p codex-core` 全量通过（unit + `tests/all.rs` + `responses_headers.rs`）。
+- 已提交：`953ab7716`（`完成 core v0.99 模型与工具测试收敛`）。
+- 已更新任务状态：`.codex/task.md` 中 `T7` 勾选为 `[x]`。
+
+- 当前待办：
+  - 进入 `T5/T6`：补齐“冲突点-候选方案-影响-推荐”的裁决记录并收口剩余落地项。
+  - 进入 `T9`：更新 `docs/release/notes.md`（中英文）与版本策略复核。
