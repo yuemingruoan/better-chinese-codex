@@ -1,5 +1,47 @@
 # Release Notes / 发布说明
 
+## Unreleased (rust-v0.99.0 upstream sync)
+
+### English
+
+#### Upstream Sync
+- Synced upstream changes from `rust-v0.98.0..rust-v0.99.0`.
+- Kept fork strategy constraints: root `README.md` unchanged, Chinese prompt assets retained, and only retained workflows (`release.yml`, `build-platform-binaries.yml`).
+- Updated `codex-rs/core/models.json` to upstream `rust-v0.99.0` while keeping fork version policy (`1.7.1` line remains unchanged).
+
+#### Conflict Decisions Applied
+- Standardized collab input semantics to `items` for `spawn_agent` / `send_input` paths and aligned handler validation and tests.
+- Kept fork collab governance constraints while integrating upstream `network` capability fields (coexistence strategy).
+- Realigned core tool/spec tests to upstream model metadata changes (`exp-5.1` expectation cleanup, codex-max tool ordering, grep-files model gating in suite).
+
+#### Validation
+- `just fmt`
+- `cargo test -p codex-core grep_files_tool_`
+- `cargo test -p codex-core`
+- `cargo test -p codex-core i18n::tests::catalogs_share_keys`
+
+---
+
+### 中文
+
+#### 上游同步
+- 完成 `rust-v0.98.0..rust-v0.99.0` 上游变更同步。
+- 保持 fork 策略约束：根目录 `README.md` 不覆盖、中文提示词资产保留、工作流仅保留 `release.yml` 与 `build-platform-binaries.yml`。
+- 将 `codex-rs/core/models.json` 对齐到上游 `rust-v0.99.0`，同时保持 fork 版本策略（当前仍为 `1.7.1` 体系）。
+
+#### 已落地冲突裁决
+- 协作输入语义统一为 `items`（覆盖 `spawn_agent` / `send_input` 链路），并同步处理器校验与测试。
+- 在保留 fork 协作治理约束的前提下，吸收上游 `network` 能力字段并采用共存方案。
+- 按上游模型元数据调整 core 工具/规范测试（清理 `exp-5.1` 预期、修正 codex-max 工具顺序、在 grep suite 中显式门控 grep-files 模型能力）。
+
+#### 验证记录
+- `just fmt`
+- `cargo test -p codex-core grep_files_tool_`
+- `cargo test -p codex-core`
+- `cargo test -p codex-core i18n::tests::catalogs_share_keys`
+
+---
+
 ## v1.7.1 (changes since 1.7.0)
 
 ### English

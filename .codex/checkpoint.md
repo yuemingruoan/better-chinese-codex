@@ -237,3 +237,13 @@
 - 当前待办：
   - 进入 `T5/T6`：补齐“冲突点-候选方案-影响-推荐”的裁决记录并收口剩余落地项。
   - 进入 `T9`：更新 `docs/release/notes.md`（中英文）与版本策略复核。
+
+## 2026-02-12 17:00:39 CST
+- 已完成 `T5/T6/T9` 收口：将已裁决冲突（collab `items` 语义、network 字段共存、models.json 合并策略）写入双语发布说明并同步任务勾选。
+- 已更新 `docs/release/notes.md`，新增 “Unreleased (rust-v0.99.0 upstream sync)” 中英文小节，覆盖同步范围、冲突处理与验证记录。
+- 已复核版本策略：`codex-rs/Cargo.toml`、`codex-cli/package.json`、`sdk/typescript/package.json`、`shell-tool-mcp/package.json`、`codex-rs/responses-api-proxy/npm/package.json` 均保持 `1.7.1`（未对齐上游版本号）。
+- 已补充验证：`cargo test -p codex-core i18n::tests::catalogs_share_keys` 通过。
+
+- 当前待办：
+  - `T8`：如需执行 `cargo test --all-features`，等待你明确授权后再跑。
+  - `T10`：最终阶段汇总与交付清单确认。
