@@ -1,14 +1,23 @@
 use async_trait::async_trait;
+use codex_protocol::config_types::CollaborationMode;
+use codex_protocol::config_types::ModeKind;
+use codex_protocol::models::FunctionCallOutputBody;
 use serde::Deserialize;
 use serde_json::Map as JsonMap;
 use serde_json::Value as JsonValue;
 use serde_json::json;
 
+use crate::codex::SessionSettingsUpdate;
 use crate::function_tool::FunctionCallError;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
+use crate::tools::handlers::GrepFilesHandler;
+use crate::tools::handlers::PlanHandler;
+use crate::tools::handlers::ReadFileHandler;
+use crate::tools::handlers::RequestUserInputHandler;
 use crate::tools::handlers::SearchToolBm25Handler;
+use crate::tools::handlers::UnifiedExecHandler;
 use crate::tools::handlers::collab::CollabHandler;
 use crate::tools::handlers::parse_arguments;
 use crate::tools::registry::ToolHandler;
@@ -21,6 +30,13 @@ const TASK_OUTPUT_TOOL_NAME: &str = "TaskOutput";
 const TASK_STOP_TOOL_NAME: &str = "TaskStop";
 const TOOL_SEARCH_TOOL_NAME: &str = "ToolSearch";
 const SKILL_TOOL_NAME: &str = "Skill";
+const ASK_USER_QUESTION_TOOL_NAME: &str = "AskUserQuestion";
+const BASH_TOOL_NAME: &str = "Bash";
+const READ_TOOL_NAME: &str = "Read";
+const GREP_TOOL_NAME: &str = "Grep";
+const TODO_WRITE_TOOL_NAME: &str = "TodoWrite";
+const ENTER_PLAN_MODE_TOOL_NAME: &str = "EnterPlanMode";
+const EXIT_PLAN_MODE_TOOL_NAME: &str = "ExitPlanMode";
 
 fn default_block() -> bool {
     true
@@ -64,6 +80,68 @@ struct ToolSearchArgs {
 struct SkillArgs {
     skill: Option<String>,
     args: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AskUserQuestionArgs {
+    questions: Option<Vec<AskUserQuestion>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AskUserQuestion {
+    id: Option<String>,
+    header: Option<String>,
+    question: Option<String>,
+    #[serde(rename = "multiSelect")]
+    multi_select: Option<bool>,
+    options: Option<Vec<AskUserQuestionOption>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AskUserQuestionOption {
+    label: Option<String>,
+    description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BashArgs {
+    command: Option<String>,
+    timeout: Option<i64>,
+    description: Option<String>,
+    run_in_background: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReadArgs {
+    file_path: Option<String>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+    mode: Option<String>,
+    indentation: Option<JsonValue>,
+    pages: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GrepArgs {
+    pattern: Option<String>,
+    path: Option<String>,
+    glob: Option<String>,
+    head_limit: Option<usize>,
+    output_mode: Option<String>,
+    offset: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TodoWriteArgs {
+    todos: Option<Vec<TodoEntry>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TodoEntry {
+    content: Option<String>,
+    #[serde(rename = "activeForm")]
+    active_form: Option<String>,
+    status: Option<String>,
 }
 
 #[async_trait]
@@ -112,6 +190,37 @@ impl ToolHandler for ClaudeToolAdapterHandler {
                 let args: SkillArgs = parse_arguments(&arguments)?;
                 let mapped_args = map_skill_to_spawn_payload(args)?;
                 dispatch_to_collab(invocation, "spawn_agent", mapped_args).await
+            }
+            ASK_USER_QUESTION_TOOL_NAME => {
+                let args: AskUserQuestionArgs = parse_arguments(&arguments)?;
+                let mapped_args = map_ask_user_question_to_request_payload(args)?;
+                dispatch_to_request_user_input(invocation, mapped_args).await
+            }
+            BASH_TOOL_NAME => {
+                let args: BashArgs = parse_arguments(&arguments)?;
+                let mapped_args = map_bash_to_exec_payload(args)?;
+                dispatch_to_exec_command(invocation, mapped_args).await
+            }
+            READ_TOOL_NAME => {
+                let args: ReadArgs = parse_arguments(&arguments)?;
+                let mapped_args = map_read_to_read_file_payload(args)?;
+                dispatch_to_read_file(invocation, mapped_args).await
+            }
+            GREP_TOOL_NAME => {
+                let args: GrepArgs = parse_arguments(&arguments)?;
+                let mapped_args = map_grep_to_grep_files_payload(args)?;
+                dispatch_to_grep_files(invocation, mapped_args).await
+            }
+            TODO_WRITE_TOOL_NAME => {
+                let args: TodoWriteArgs = parse_arguments(&arguments)?;
+                let mapped_args = map_todo_write_to_update_plan_payload(args)?;
+                dispatch_to_update_plan(invocation, mapped_args).await
+            }
+            ENTER_PLAN_MODE_TOOL_NAME => {
+                switch_collaboration_mode(invocation, ModeKind::Plan).await
+            }
+            EXIT_PLAN_MODE_TOOL_NAME => {
+                switch_collaboration_mode(invocation, ModeKind::Default).await
             }
             other => Err(FunctionCallError::RespondToModel(format!(
                 "unsupported Claude tool alias {other} / 不支持的 Claude 工具别名: {other}"
@@ -236,6 +345,233 @@ fn map_skill_to_spawn_payload(args: SkillArgs) -> Result<JsonValue, FunctionCall
     }))
 }
 
+fn map_ask_user_question_to_request_payload(
+    args: AskUserQuestionArgs,
+) -> Result<JsonValue, FunctionCallError> {
+    let questions = args.questions.ok_or_else(|| {
+        FunctionCallError::RespondToModel(
+            "questions must not be empty / questions 不能为空".to_string(),
+        )
+    })?;
+    if questions.is_empty() {
+        return Err(FunctionCallError::RespondToModel(
+            "questions must not be empty / questions 不能为空".to_string(),
+        ));
+    }
+
+    let mapped_questions = questions
+        .into_iter()
+        .enumerate()
+        .map(|(index, question)| map_single_question(question, index))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(json!({ "questions": mapped_questions }))
+}
+
+fn map_single_question(
+    question: AskUserQuestion,
+    index: usize,
+) -> Result<JsonValue, FunctionCallError> {
+    let AskUserQuestion {
+        id,
+        header,
+        question,
+        multi_select,
+        options,
+    } = question;
+    let _ignore_multi_select = multi_select;
+
+    let header = required_non_empty_text(
+        header.as_deref(),
+        "question.header must not be empty / question.header 不能为空",
+    )?;
+    let question_text = required_non_empty_text(
+        question.as_deref(),
+        "question.question must not be empty / question.question 不能为空",
+    )?;
+    let options = options.ok_or_else(|| {
+        FunctionCallError::RespondToModel(
+            "question.options must not be empty / question.options 不能为空".to_string(),
+        )
+    })?;
+    if options.is_empty() {
+        return Err(FunctionCallError::RespondToModel(
+            "question.options must not be empty / question.options 不能为空".to_string(),
+        ));
+    }
+
+    let mapped_options = options
+        .into_iter()
+        .map(|option| {
+            let label = required_non_empty_text(
+                option.label.as_deref(),
+                "option.label must not be empty / option.label 不能为空",
+            )?;
+            let description = required_non_empty_text(
+                option.description.as_deref(),
+                "option.description must not be empty / option.description 不能为空",
+            )?;
+            Ok(json!({
+                "label": label,
+                "description": description,
+            }))
+        })
+        .collect::<Result<Vec<_>, FunctionCallError>>()?;
+    let question_id = normalize_text(id.as_deref())
+        .or_else(|| slugify_to_identifier(Some(&header)))
+        .unwrap_or_else(|| format!("question_{}", index + 1));
+
+    Ok(json!({
+        "id": question_id,
+        "header": header,
+        "question": question_text,
+        "options": mapped_options,
+    }))
+}
+
+fn map_bash_to_exec_payload(args: BashArgs) -> Result<JsonValue, FunctionCallError> {
+    let command = required_non_empty_text(
+        args.command.as_deref(),
+        "command must not be empty / command 不能为空",
+    )?;
+    if let Some(timeout) = args.timeout
+        && timeout < 0
+    {
+        return Err(FunctionCallError::RespondToModel(
+            "timeout must be greater than or equal to zero / timeout 必须大于等于 0".to_string(),
+        ));
+    }
+
+    let mut payload = JsonMap::new();
+    payload.insert("cmd".to_string(), JsonValue::String(command));
+    if let Some(timeout) = args.timeout {
+        payload.insert("yield_time_ms".to_string(), json!(timeout));
+    }
+    if let Some(description) = normalize_text(args.description.as_deref()) {
+        payload.insert("description".to_string(), JsonValue::String(description));
+    }
+    if let Some(run_in_background) = args.run_in_background {
+        payload.insert(
+            "run_in_background".to_string(),
+            JsonValue::Bool(run_in_background),
+        );
+    }
+    Ok(JsonValue::Object(payload))
+}
+
+fn map_read_to_read_file_payload(args: ReadArgs) -> Result<JsonValue, FunctionCallError> {
+    if args.pages.is_some() {
+        return Err(FunctionCallError::RespondToModel(
+            "Read.pages is not supported yet / 暂不支持 Read.pages".to_string(),
+        ));
+    }
+    if let Some(offset) = args.offset
+        && offset == 0
+    {
+        return Err(FunctionCallError::RespondToModel(
+            "offset must be greater than zero / offset 必须大于 0".to_string(),
+        ));
+    }
+    if let Some(limit) = args.limit
+        && limit == 0
+    {
+        return Err(FunctionCallError::RespondToModel(
+            "limit must be greater than zero / limit 必须大于 0".to_string(),
+        ));
+    }
+
+    let file_path = required_non_empty_text(
+        args.file_path.as_deref(),
+        "file_path must not be empty / file_path 不能为空",
+    )?;
+    let mut payload = JsonMap::new();
+    payload.insert("file_path".to_string(), JsonValue::String(file_path));
+    if let Some(offset) = args.offset {
+        payload.insert("offset".to_string(), json!(offset));
+    }
+    if let Some(limit) = args.limit {
+        payload.insert("limit".to_string(), json!(limit));
+    }
+    if let Some(mode) = normalize_text(args.mode.as_deref()) {
+        payload.insert("mode".to_string(), JsonValue::String(mode));
+    }
+    if let Some(indentation) = args.indentation {
+        payload.insert("indentation".to_string(), indentation);
+    }
+    Ok(JsonValue::Object(payload))
+}
+
+fn map_grep_to_grep_files_payload(args: GrepArgs) -> Result<JsonValue, FunctionCallError> {
+    if let Some(output_mode) = normalize_text(args.output_mode.as_deref())
+        && output_mode != "files_with_matches"
+    {
+        return Err(FunctionCallError::RespondToModel(
+            "Grep.output_mode only supports files_with_matches / Grep.output_mode 仅支持 files_with_matches".to_string(),
+        ));
+    }
+    if let Some(offset) = args.offset
+        && offset > 0
+    {
+        return Err(FunctionCallError::RespondToModel(
+            "Grep.offset is not supported / Grep.offset 暂不支持".to_string(),
+        ));
+    }
+
+    let pattern = required_non_empty_text(
+        args.pattern.as_deref(),
+        "pattern must not be empty / pattern 不能为空",
+    )?;
+    let mut payload = JsonMap::new();
+    payload.insert("pattern".to_string(), JsonValue::String(pattern));
+    if let Some(path) = normalize_text(args.path.as_deref()) {
+        payload.insert("path".to_string(), JsonValue::String(path));
+    }
+    if let Some(include) = normalize_text(args.glob.as_deref()) {
+        payload.insert("include".to_string(), JsonValue::String(include));
+    }
+    if let Some(limit) = args.head_limit {
+        payload.insert("limit".to_string(), json!(limit));
+    }
+    Ok(JsonValue::Object(payload))
+}
+
+fn map_todo_write_to_update_plan_payload(
+    args: TodoWriteArgs,
+) -> Result<JsonValue, FunctionCallError> {
+    let todos = args.todos.ok_or_else(|| {
+        FunctionCallError::RespondToModel("todos must not be empty / todos 不能为空".to_string())
+    })?;
+    if todos.is_empty() {
+        return Err(FunctionCallError::RespondToModel(
+            "todos must not be empty / todos 不能为空".to_string(),
+        ));
+    }
+
+    let mut mapped_plan = Vec::new();
+    for todo in todos {
+        let step = normalize_text(todo.content.as_deref())
+            .or_else(|| normalize_text(todo.active_form.as_deref()))
+            .ok_or_else(|| {
+                FunctionCallError::RespondToModel(
+                    "todo.content or todo.activeForm must not be empty / todo.content 或 todo.activeForm 不能为空".to_string(),
+                )
+            })?;
+        let status = normalize_text(todo.status.as_deref())
+            .unwrap_or_else(|| "pending".to_string())
+            .to_lowercase();
+        if !matches!(status.as_str(), "pending" | "in_progress" | "completed") {
+            return Err(FunctionCallError::RespondToModel(format!(
+                "unsupported todo status `{status}`; expected pending|in_progress|completed / 不支持的 todo status `{status}`，可选值 pending|in_progress|completed"
+            )));
+        }
+        mapped_plan.push(json!({
+            "step": step,
+            "status": status,
+        }));
+    }
+
+    Ok(json!({ "plan": mapped_plan }))
+}
+
 fn required_non_empty_text(
     value: Option<&str>,
     error_message: &'static str,
@@ -249,6 +585,27 @@ fn normalize_text(value: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
+}
+
+fn slugify_to_identifier(value: Option<&str>) -> Option<String> {
+    let text = normalize_text(value)?;
+    let mut out = String::new();
+    let mut previous_was_sep = false;
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            previous_was_sep = false;
+        } else if !previous_was_sep {
+            out.push('_');
+            previous_was_sep = true;
+        }
+    }
+    let trimmed = out.trim_matches('_');
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 fn is_supported_agent_type(value: &str) -> bool {
@@ -312,6 +669,198 @@ async fn dispatch_to_search_tool(
             payload: ToolPayload::Function { arguments },
         })
         .await
+}
+
+async fn dispatch_to_exec_command(
+    invocation: ToolInvocation,
+    mapped_arguments: JsonValue,
+) -> Result<ToolOutput, FunctionCallError> {
+    let ToolInvocation {
+        session,
+        turn,
+        tracker,
+        call_id,
+        ..
+    } = invocation;
+    let arguments = serde_json::to_string(&mapped_arguments).map_err(|err| {
+        FunctionCallError::Fatal(format!(
+            "failed to serialize exec_command alias arguments: {err}"
+        ))
+    })?;
+
+    UnifiedExecHandler
+        .handle(ToolInvocation {
+            session,
+            turn,
+            tracker,
+            call_id,
+            tool_name: "exec_command".to_string(),
+            payload: ToolPayload::Function { arguments },
+        })
+        .await
+}
+
+async fn dispatch_to_read_file(
+    invocation: ToolInvocation,
+    mapped_arguments: JsonValue,
+) -> Result<ToolOutput, FunctionCallError> {
+    let ToolInvocation {
+        session,
+        turn,
+        tracker,
+        call_id,
+        ..
+    } = invocation;
+    let arguments = serde_json::to_string(&mapped_arguments).map_err(|err| {
+        FunctionCallError::Fatal(format!(
+            "failed to serialize read_file alias arguments: {err}"
+        ))
+    })?;
+
+    ReadFileHandler
+        .handle(ToolInvocation {
+            session,
+            turn,
+            tracker,
+            call_id,
+            tool_name: "read_file".to_string(),
+            payload: ToolPayload::Function { arguments },
+        })
+        .await
+}
+
+async fn dispatch_to_grep_files(
+    invocation: ToolInvocation,
+    mapped_arguments: JsonValue,
+) -> Result<ToolOutput, FunctionCallError> {
+    let ToolInvocation {
+        session,
+        turn,
+        tracker,
+        call_id,
+        ..
+    } = invocation;
+    let arguments = serde_json::to_string(&mapped_arguments).map_err(|err| {
+        FunctionCallError::Fatal(format!(
+            "failed to serialize grep_files alias arguments: {err}"
+        ))
+    })?;
+
+    GrepFilesHandler
+        .handle(ToolInvocation {
+            session,
+            turn,
+            tracker,
+            call_id,
+            tool_name: "grep_files".to_string(),
+            payload: ToolPayload::Function { arguments },
+        })
+        .await
+}
+
+async fn dispatch_to_request_user_input(
+    invocation: ToolInvocation,
+    mapped_arguments: JsonValue,
+) -> Result<ToolOutput, FunctionCallError> {
+    let ToolInvocation {
+        session,
+        turn,
+        tracker,
+        call_id,
+        ..
+    } = invocation;
+    let arguments = serde_json::to_string(&mapped_arguments).map_err(|err| {
+        FunctionCallError::Fatal(format!(
+            "failed to serialize request_user_input alias arguments: {err}"
+        ))
+    })?;
+
+    RequestUserInputHandler
+        .handle(ToolInvocation {
+            session,
+            turn,
+            tracker,
+            call_id,
+            tool_name: "request_user_input".to_string(),
+            payload: ToolPayload::Function { arguments },
+        })
+        .await
+}
+
+async fn dispatch_to_update_plan(
+    invocation: ToolInvocation,
+    mapped_arguments: JsonValue,
+) -> Result<ToolOutput, FunctionCallError> {
+    let ToolInvocation {
+        session,
+        turn,
+        tracker,
+        call_id,
+        ..
+    } = invocation;
+    let arguments = serde_json::to_string(&mapped_arguments).map_err(|err| {
+        FunctionCallError::Fatal(format!(
+            "failed to serialize update_plan alias arguments: {err}"
+        ))
+    })?;
+
+    PlanHandler
+        .handle(ToolInvocation {
+            session,
+            turn,
+            tracker,
+            call_id,
+            tool_name: "update_plan".to_string(),
+            payload: ToolPayload::Function { arguments },
+        })
+        .await
+}
+
+async fn switch_collaboration_mode(
+    invocation: ToolInvocation,
+    target_mode: ModeKind,
+) -> Result<ToolOutput, FunctionCallError> {
+    let session = invocation.session;
+    let previous = session.collaboration_mode().await;
+    let mut changed = false;
+    if previous.mode != target_mode {
+        let next_mode = CollaborationMode {
+            mode: target_mode,
+            settings: previous.settings.clone(),
+        };
+        session
+            .update_settings(SessionSettingsUpdate {
+                collaboration_mode: Some(next_mode),
+                ..Default::default()
+            })
+            .await
+            .map_err(|err| {
+                FunctionCallError::RespondToModel(format!(
+                    "failed to switch collaboration mode: {err} / 切换协作模式失败: {err}"
+                ))
+            })?;
+        changed = true;
+    }
+    let current = session.collaboration_mode().await;
+    if current.mode != target_mode {
+        return Err(FunctionCallError::RespondToModel(format!(
+            "failed to reach target mode `{}` / 未能切换到目标模式 `{}`",
+            target_mode.display_name(),
+            target_mode.display_name()
+        )));
+    }
+
+    Ok(ToolOutput::Function {
+        body: FunctionCallOutputBody::Text(
+            json!({
+                "changed": changed,
+                "previous_mode": previous.mode.display_name(),
+                "current_mode": current.mode.display_name(),
+            })
+            .to_string(),
+        ),
+        success: Some(true),
+    })
 }
 
 #[cfg(test)]
@@ -416,6 +965,113 @@ mod tests {
                 "limit": 3,
             })
         );
+    }
+
+    #[test]
+    fn ask_user_question_maps_to_request_user_input_payload() {
+        let payload = map_ask_user_question_to_request_payload(AskUserQuestionArgs {
+            questions: Some(vec![AskUserQuestion {
+                id: None,
+                header: Some("Mode".to_string()),
+                question: Some("Pick one?".to_string()),
+                multi_select: Some(false),
+                options: Some(vec![
+                    AskUserQuestionOption {
+                        label: Some("A".to_string()),
+                        description: Some("opt a".to_string()),
+                    },
+                    AskUserQuestionOption {
+                        label: Some("B".to_string()),
+                        description: Some("opt b".to_string()),
+                    },
+                ]),
+            }]),
+        })
+        .expect("payload should map");
+
+        assert_eq!(
+            payload,
+            json!({
+                "questions": [{
+                    "id": "mode",
+                    "header": "Mode",
+                    "question": "Pick one?",
+                    "options": [
+                        {"label": "A", "description": "opt a"},
+                        {"label": "B", "description": "opt b"}
+                    ],
+                }]
+            })
+        );
+    }
+
+    #[test]
+    fn bash_maps_command_and_timeout() {
+        let payload = map_bash_to_exec_payload(BashArgs {
+            command: Some("ls -la".to_string()),
+            timeout: Some(1234),
+            description: Some("List files".to_string()),
+            run_in_background: Some(true),
+        })
+        .expect("payload should map");
+
+        assert_eq!(
+            payload,
+            json!({
+                "cmd": "ls -la",
+                "yield_time_ms": 1234,
+                "description": "List files",
+                "run_in_background": true
+            })
+        );
+    }
+
+    #[test]
+    fn todo_write_maps_to_update_plan_schema() {
+        let payload = map_todo_write_to_update_plan_payload(TodoWriteArgs {
+            todos: Some(vec![TodoEntry {
+                content: Some("Implement feature".to_string()),
+                active_form: Some("Implementing feature".to_string()),
+                status: Some("in_progress".to_string()),
+            }]),
+        })
+        .expect("payload should map");
+
+        assert_eq!(
+            payload,
+            json!({
+                "plan": [{
+                    "step": "Implement feature",
+                    "status": "in_progress",
+                }]
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn enter_exit_plan_mode_switches_collaboration_mode() {
+        let (session, turn) = make_session_and_context().await;
+        let session = Arc::new(session);
+        let turn = Arc::new(turn);
+
+        let enter = invocation(
+            session.clone(),
+            turn.clone(),
+            ENTER_PLAN_MODE_TOOL_NAME,
+            json!({}),
+        );
+        ClaudeToolAdapterHandler
+            .handle(enter)
+            .await
+            .expect("enter should succeed");
+        assert_eq!(session.collaboration_mode().await.mode, ModeKind::Plan);
+
+        let exit = invocation(session.clone(), turn, EXIT_PLAN_MODE_TOOL_NAME, json!({}));
+        ClaudeToolAdapterHandler
+            .handle(exit)
+            .await
+            .expect("exit should succeed");
+        assert_eq!(session.collaboration_mode().await.mode, ModeKind::Default);
     }
 
     #[test]

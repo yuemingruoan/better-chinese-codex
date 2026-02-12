@@ -1195,6 +1195,477 @@ fn create_claude_skill_alias_tool() -> ToolSpec {
     })
 }
 
+fn create_claude_ask_user_question_alias_tool() -> ToolSpec {
+    let option_properties = BTreeMap::from([
+        (
+            "label".to_string(),
+            JsonSchema::String {
+                description: Some("Choice label / 选项标签".to_string()),
+            },
+        ),
+        (
+            "description".to_string(),
+            JsonSchema::String {
+                description: Some("Choice description / 选项描述".to_string()),
+            },
+        ),
+    ]);
+    let question_properties = BTreeMap::from([
+        (
+            "id".to_string(),
+            JsonSchema::String {
+                description: Some("Optional stable id / 可选稳定 id".to_string()),
+            },
+        ),
+        (
+            "header".to_string(),
+            JsonSchema::String {
+                description: Some("Question header / 问题标题".to_string()),
+            },
+        ),
+        (
+            "question".to_string(),
+            JsonSchema::String {
+                description: Some("Question text / 问题内容".to_string()),
+            },
+        ),
+        (
+            "multiSelect".to_string(),
+            JsonSchema::Boolean {
+                description: Some(
+                    "Whether multiple choices are allowed / 是否允许多选".to_string(),
+                ),
+            },
+        ),
+        (
+            "options".to_string(),
+            JsonSchema::Array {
+                description: Some("Question options / 问题选项".to_string()),
+                items: Box::new(JsonSchema::Object {
+                    properties: option_properties,
+                    required: Some(vec!["label".to_string(), "description".to_string()]),
+                    additional_properties: Some(false.into()),
+                }),
+            },
+        ),
+    ]);
+    let properties = BTreeMap::from([(
+        "questions".to_string(),
+        JsonSchema::Array {
+            description: Some("Question list / 问题列表".to_string()),
+            items: Box::new(JsonSchema::Object {
+                properties: question_properties,
+                required: Some(vec![
+                    "header".to_string(),
+                    "question".to_string(),
+                    "options".to_string(),
+                ]),
+                additional_properties: Some(false.into()),
+            }),
+        },
+    )]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "AskUserQuestion".to_string(),
+        description:
+            "Claude-compatible alias for request_user_input / Claude 兼容的 request_user_input 别名"
+                .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["questions".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_bash_alias_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "command".to_string(),
+            JsonSchema::String {
+                description: Some("Shell command to execute / 要执行的 shell 命令".to_string()),
+            },
+        ),
+        (
+            "timeout".to_string(),
+            JsonSchema::Number {
+                description: Some(
+                    "Optional timeout milliseconds / 可选超时时间（毫秒）".to_string(),
+                ),
+            },
+        ),
+        (
+            "description".to_string(),
+            JsonSchema::String {
+                description: Some("Optional command description / 可选命令描述".to_string()),
+            },
+        ),
+        (
+            "run_in_background".to_string(),
+            JsonSchema::Boolean {
+                description: Some("Whether to run in background / 是否后台运行".to_string()),
+            },
+        ),
+    ]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "Bash".to_string(),
+        description: "Claude-compatible shell alias / Claude 兼容的 shell 别名".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["command".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_read_alias_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "file_path".to_string(),
+            JsonSchema::String {
+                description: Some("Absolute file path / 绝对文件路径".to_string()),
+            },
+        ),
+        (
+            "offset".to_string(),
+            JsonSchema::Number {
+                description: Some("Optional line offset / 可选起始行号".to_string()),
+            },
+        ),
+        (
+            "limit".to_string(),
+            JsonSchema::Number {
+                description: Some("Optional line limit / 可选读取行数上限".to_string()),
+            },
+        ),
+        (
+            "mode".to_string(),
+            JsonSchema::String {
+                description: Some("Read mode (slice/indentation) / 读取模式".to_string()),
+            },
+        ),
+        (
+            "indentation".to_string(),
+            JsonSchema::Object {
+                properties: BTreeMap::new(),
+                required: None,
+                additional_properties: Some(true.into()),
+            },
+        ),
+        (
+            "pages".to_string(),
+            JsonSchema::String {
+                description: Some("Optional PDF page range / 可选 PDF 页范围".to_string()),
+            },
+        ),
+    ]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "Read".to_string(),
+        description: "Claude-compatible alias for read_file / Claude 兼容的 read_file 别名"
+            .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["file_path".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_grep_alias_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "pattern".to_string(),
+            JsonSchema::String {
+                description: Some("Search pattern / 搜索模式".to_string()),
+            },
+        ),
+        (
+            "path".to_string(),
+            JsonSchema::String {
+                description: Some("Search root path / 搜索根路径".to_string()),
+            },
+        ),
+        (
+            "glob".to_string(),
+            JsonSchema::String {
+                description: Some("File glob filter / 文件 glob 过滤".to_string()),
+            },
+        ),
+        (
+            "output_mode".to_string(),
+            JsonSchema::String {
+                description: Some("Output mode / 输出模式".to_string()),
+            },
+        ),
+        (
+            "head_limit".to_string(),
+            JsonSchema::Number {
+                description: Some("Result limit / 结果数量上限".to_string()),
+            },
+        ),
+        (
+            "offset".to_string(),
+            JsonSchema::Number {
+                description: Some("Result offset / 结果偏移量".to_string()),
+            },
+        ),
+    ]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "Grep".to_string(),
+        description: "Claude-compatible alias for grep_files / Claude 兼容的 grep_files 别名"
+            .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["pattern".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_todo_write_alias_tool() -> ToolSpec {
+    let todo_properties = BTreeMap::from([
+        (
+            "content".to_string(),
+            JsonSchema::String {
+                description: Some("Task content / 任务描述".to_string()),
+            },
+        ),
+        (
+            "activeForm".to_string(),
+            JsonSchema::String {
+                description: Some("Task active form / 任务进行式".to_string()),
+            },
+        ),
+        (
+            "status".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "Task status: pending|in_progress|completed / 任务状态".to_string(),
+                ),
+            },
+        ),
+    ]);
+    let properties = BTreeMap::from([(
+        "todos".to_string(),
+        JsonSchema::Array {
+            description: Some("Todo list items / 任务列表".to_string()),
+            items: Box::new(JsonSchema::Object {
+                properties: todo_properties,
+                required: Some(vec!["status".to_string()]),
+                additional_properties: Some(false.into()),
+            }),
+        },
+    )]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "TodoWrite".to_string(),
+        description: "Claude-compatible alias for update_plan / Claude 兼容的 update_plan 别名"
+            .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["todos".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_enter_plan_mode_alias_tool() -> ToolSpec {
+    ToolSpec::Function(ResponsesApiTool {
+        name: "EnterPlanMode".to_string(),
+        description:
+            "Switch current session to plan collaboration mode / 切换当前会话到计划协作模式"
+                .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties: BTreeMap::new(),
+            required: None,
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_exit_plan_mode_alias_tool() -> ToolSpec {
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "allowedPrompts".to_string(),
+        JsonSchema::Array {
+            description: Some(
+                "Optional prompt permissions for execution phase / 执行阶段可选权限提示"
+                    .to_string(),
+            ),
+            items: Box::new(JsonSchema::Object {
+                properties: BTreeMap::new(),
+                required: None,
+                additional_properties: Some(true.into()),
+            }),
+        },
+    );
+    ToolSpec::Function(ResponsesApiTool {
+        name: "ExitPlanMode".to_string(),
+        description: "Switch current session back to default collaboration mode / 切回默认协作模式"
+            .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: None,
+            additional_properties: Some(true.into()),
+        },
+    })
+}
+
+fn create_claude_write_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "file_path".to_string(),
+            JsonSchema::String {
+                description: Some("Absolute file path / 绝对文件路径".to_string()),
+            },
+        ),
+        (
+            "content".to_string(),
+            JsonSchema::String {
+                description: Some("File content to write / 写入文件内容".to_string()),
+            },
+        ),
+    ]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "Write".to_string(),
+        description: "Write file content with overwrite semantics / 覆盖写入文件内容".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["file_path".to_string(), "content".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_edit_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "file_path".to_string(),
+            JsonSchema::String {
+                description: Some("Absolute file path / 绝对文件路径".to_string()),
+            },
+        ),
+        (
+            "old_string".to_string(),
+            JsonSchema::String {
+                description: Some("Original text to replace / 需要替换的原文本".to_string()),
+            },
+        ),
+        (
+            "new_string".to_string(),
+            JsonSchema::String {
+                description: Some("Replacement text / 替换后的文本".to_string()),
+            },
+        ),
+        (
+            "replace_all".to_string(),
+            JsonSchema::Boolean {
+                description: Some("Replace all matches / 是否替换全部匹配".to_string()),
+            },
+        ),
+    ]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "Edit".to_string(),
+        description: "Edit file content by exact string replacement / 通过精确文本替换编辑文件"
+            .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec![
+                "file_path".to_string(),
+                "old_string".to_string(),
+                "new_string".to_string(),
+            ]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_glob_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "pattern".to_string(),
+            JsonSchema::String {
+                description: Some("Glob pattern / 通配符模式".to_string()),
+            },
+        ),
+        (
+            "path".to_string(),
+            JsonSchema::String {
+                description: Some("Optional search base path / 可选搜索根目录".to_string()),
+            },
+        ),
+    ]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "Glob".to_string(),
+        description: "Find files by glob pattern / 按 glob 模式查找文件".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["pattern".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_notebook_edit_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "notebook_path".to_string(),
+            JsonSchema::String {
+                description: Some("Absolute notebook path / 绝对 notebook 路径".to_string()),
+            },
+        ),
+        (
+            "new_source".to_string(),
+            JsonSchema::String {
+                description: Some("New source content / 新的单元内容".to_string()),
+            },
+        ),
+        (
+            "edit_mode".to_string(),
+            JsonSchema::String {
+                description: Some("Edit mode: replace|insert|delete / 编辑模式".to_string()),
+            },
+        ),
+        (
+            "cell_id".to_string(),
+            JsonSchema::String {
+                description: Some("Target cell id / 目标单元 id".to_string()),
+            },
+        ),
+        (
+            "cell_number".to_string(),
+            JsonSchema::Number {
+                description: Some("Target cell index / 目标单元索引".to_string()),
+            },
+        ),
+        (
+            "cell_type".to_string(),
+            JsonSchema::String {
+                description: Some("Cell type override / 单元类型覆盖".to_string()),
+            },
+        ),
+    ]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "NotebookEdit".to_string(),
+        description: "Edit Jupyter notebook cells / 编辑 Jupyter notebook 单元".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["notebook_path".to_string(), "new_source".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
 fn create_test_sync_tool() -> ToolSpec {
     let barrier_properties = BTreeMap::from([
         (
@@ -1951,7 +2422,11 @@ pub(crate) fn build_specs(
 ) -> ToolRegistryBuilder {
     use crate::tools::handlers::ApplyPatchHandler;
     use crate::tools::handlers::BatchesReadFileHandler;
+    use crate::tools::handlers::ClaudeEditHandler;
+    use crate::tools::handlers::ClaudeGlobHandler;
+    use crate::tools::handlers::ClaudeNotebookEditHandler;
     use crate::tools::handlers::ClaudeToolAdapterHandler;
+    use crate::tools::handlers::ClaudeWriteHandler;
     use crate::tools::handlers::CollabBatchHandler;
     use crate::tools::handlers::CollabHandler;
     use crate::tools::handlers::DynamicToolHandler;
@@ -1986,6 +2461,10 @@ pub(crate) fn build_specs(
     let search_tool_handler = Arc::new(SearchToolBm25Handler);
     let collab_batch_handler = Arc::new(CollabBatchHandler);
     let claude_tool_adapter_handler = Arc::new(ClaudeToolAdapterHandler);
+    let claude_write_handler = Arc::new(ClaudeWriteHandler);
+    let claude_edit_handler = Arc::new(ClaudeEditHandler);
+    let claude_glob_handler = Arc::new(ClaudeGlobHandler);
+    let claude_notebook_edit_handler = Arc::new(ClaudeNotebookEditHandler);
 
     match &config.shell_type {
         ConfigShellToolType::Default => {
@@ -2132,6 +2611,19 @@ pub(crate) fn build_specs(
         builder.push_spec_with_parallel_support(create_claude_task_output_alias_tool(), true);
         builder.push_spec(create_claude_task_stop_alias_tool());
         builder.push_spec(create_claude_skill_alias_tool());
+        if config.collaboration_modes_tools {
+            builder.push_spec(create_claude_ask_user_question_alias_tool());
+        }
+        builder.push_spec(create_claude_bash_alias_tool());
+        builder.push_spec_with_parallel_support(create_claude_read_alias_tool(), true);
+        builder.push_spec_with_parallel_support(create_claude_grep_alias_tool(), true);
+        builder.push_spec(create_claude_todo_write_alias_tool());
+        builder.push_spec(create_claude_enter_plan_mode_alias_tool());
+        builder.push_spec(create_claude_exit_plan_mode_alias_tool());
+        builder.push_spec(create_claude_write_tool());
+        builder.push_spec(create_claude_edit_tool());
+        builder.push_spec_with_parallel_support(create_claude_glob_tool(), true);
+        builder.push_spec(create_claude_notebook_edit_tool());
         builder.register_handler("spawn_agent", collab_handler.clone());
         builder.register_handler("send_input", collab_handler.clone());
         builder.register_handler("task_batch", collab_batch_handler.clone());
@@ -2146,6 +2638,19 @@ pub(crate) fn build_specs(
         builder.register_handler("TaskOutput", claude_tool_adapter_handler.clone());
         builder.register_handler("TaskStop", claude_tool_adapter_handler.clone());
         builder.register_handler("Skill", claude_tool_adapter_handler.clone());
+        if config.collaboration_modes_tools {
+            builder.register_handler("AskUserQuestion", claude_tool_adapter_handler.clone());
+        }
+        builder.register_handler("Bash", claude_tool_adapter_handler.clone());
+        builder.register_handler("Read", claude_tool_adapter_handler.clone());
+        builder.register_handler("Grep", claude_tool_adapter_handler.clone());
+        builder.register_handler("TodoWrite", claude_tool_adapter_handler.clone());
+        builder.register_handler("EnterPlanMode", claude_tool_adapter_handler.clone());
+        builder.register_handler("ExitPlanMode", claude_tool_adapter_handler);
+        builder.register_handler("Write", claude_write_handler);
+        builder.register_handler("Edit", claude_edit_handler);
+        builder.register_handler("Glob", claude_glob_handler);
+        builder.register_handler("NotebookEdit", claude_notebook_edit_handler);
     }
 
     if let Some(mcp_tools) = mcp_tools {
@@ -2669,6 +3174,17 @@ mod tests {
                 "TaskOutput",
                 "TaskStop",
                 "Skill",
+                "AskUserQuestion",
+                "Bash",
+                "Read",
+                "Grep",
+                "TodoWrite",
+                "EnterPlanMode",
+                "ExitPlanMode",
+                "Write",
+                "Edit",
+                "Glob",
+                "NotebookEdit",
             ],
         );
     }
@@ -2691,6 +3207,9 @@ mod tests {
         assert!(find_tool(&tools, "wait_agents").supports_parallel_tool_calls);
         assert!(find_tool(&tools, "list_agents").supports_parallel_tool_calls);
         assert!(find_tool(&tools, "TaskOutput").supports_parallel_tool_calls);
+        assert!(find_tool(&tools, "Read").supports_parallel_tool_calls);
+        assert!(find_tool(&tools, "Grep").supports_parallel_tool_calls);
+        assert!(find_tool(&tools, "Glob").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "spawn_agent").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "send_input").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "task_batch").supports_parallel_tool_calls);
@@ -2700,6 +3219,14 @@ mod tests {
         assert!(!find_tool(&tools, "Task").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "TaskStop").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "Skill").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "AskUserQuestion").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "Bash").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "TodoWrite").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "EnterPlanMode").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "ExitPlanMode").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "Write").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "Edit").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "NotebookEdit").supports_parallel_tool_calls);
     }
 
     #[test]
