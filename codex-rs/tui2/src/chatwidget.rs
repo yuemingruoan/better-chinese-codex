@@ -77,6 +77,7 @@ use codex_core::protocol::McpToolCallEndEvent;
 use codex_core::protocol::Op;
 use codex_core::protocol::PatchApplyBeginEvent;
 use codex_core::protocol::RateLimitSnapshot;
+use codex_core::protocol::RequestUserInputEvent;
 use codex_core::protocol::ReviewRequest;
 use codex_core::protocol::ReviewTarget;
 use codex_core::protocol::SddGitAction;
@@ -510,6 +511,8 @@ pub(crate) struct ChatWidget {
     suppress_session_configured_redraw: bool,
     // User messages queued while a turn is in progress
     queued_user_messages: VecDeque<UserMessage>,
+    // request_user_input prompts that have been surfaced but not finalized.
+    pending_request_user_input: VecDeque<RequestUserInputEvent>,
     // Pending notification to show when unfocused on next Draw
     pending_notification: Option<Notification>,
     /// When `Some`, the user has pressed a quit shortcut and the second press
@@ -778,6 +781,7 @@ impl ChatWidget {
     // Raw reasoning uses the same flow as summarized reasoning
 
     fn on_task_started(&mut self) {
+        self.pending_request_user_input.clear();
         self.agent_turn_running = true;
         self.bottom_pane.clear_quit_shortcut_hint();
         self.quit_shortcut_expires_at = None;
@@ -798,6 +802,7 @@ impl ChatWidget {
         self.agent_turn_running = false;
         self.update_task_running_state();
         self.running_commands.clear();
+        self.pending_request_user_input.clear();
         self.suppressed_exec_calls.clear();
         self.last_unified_wait = None;
         self.request_redraw();
@@ -1040,6 +1045,8 @@ impl ChatWidget {
             self.sdd_git_action_failed = true;
         }
         self.finalize_turn();
+        self.pending_request_user_input.clear();
+        self.interrupts.take_request_user_input();
         self.add_to_history(history_cell::new_error_event(message));
         self.request_redraw();
 
@@ -1153,6 +1160,10 @@ impl ChatWidget {
     /// When there are queued user messages, restore them into the composer
     /// separated by newlines rather than auto‑submitting the next one.
     fn on_interrupted_turn(&mut self, reason: TurnAbortReason) {
+        let queued_request_user_input = self.interrupts.take_request_user_input();
+        self.pending_request_user_input
+            .extend(queued_request_user_input);
+
         // Finalize, log a gentle prompt, and clear running state.
         self.finalize_turn();
 
@@ -1181,6 +1192,16 @@ impl ChatWidget {
             // Clear the queue and update the status indicator list.
             self.queued_user_messages.clear();
             self.refresh_queued_user_messages();
+        }
+
+        if reason == TurnAbortReason::Interrupted {
+            let pending_requests: Vec<_> = self.pending_request_user_input.drain(..).collect();
+            for request in pending_requests {
+                let lines = self.request_user_input_history_lines(&request, true);
+                self.add_boxed_history(Box::new(PlainHistoryCell::new(lines)));
+            }
+        } else {
+            self.pending_request_user_input.clear();
         }
 
         self.request_redraw();
@@ -1213,6 +1234,14 @@ impl ChatWidget {
         self.defer_or_handle(
             |q| q.push_elicitation(ev),
             |s| s.handle_elicitation_request_now(ev2),
+        );
+    }
+
+    fn on_request_user_input(&mut self, ev: RequestUserInputEvent) {
+        let ev2 = ev.clone();
+        self.defer_or_handle(
+            |q| q.push_user_input(ev),
+            |s| s.handle_request_user_input_now(ev2),
         );
     }
 
@@ -1699,6 +1728,103 @@ impl ChatWidget {
         self.request_redraw();
     }
 
+    fn request_user_input_history_lines(
+        &self,
+        ev: &RequestUserInputEvent,
+        interrupted: bool,
+    ) -> Vec<Line<'static>> {
+        let language = self.config.language;
+        let question_count = ev.questions.len();
+        let question_count_text = question_count.to_string();
+        let unanswered = tr_args(
+            language,
+            "request_user_input.progress.unanswered",
+            &[("count", &question_count_text)],
+        );
+
+        let mut lines: Vec<Line<'static>> = vec![
+            vec![
+                "• ".dim(),
+                "request_user_input".bold(),
+                format!(" [{}]", ev.call_id).dim(),
+                " ".into(),
+                unanswered.dim(),
+            ]
+            .into(),
+        ];
+
+        let detail = if interrupted {
+            tr(language, "chatwidget.stream.interrupted")
+        } else {
+            tr(language, "request_user_input.hint.answer_questions")
+        };
+        lines.push(vec!["  ".into(), detail.dim()].into());
+
+        if ev.questions.is_empty() {
+            lines.push(
+                vec![
+                    "  ".into(),
+                    tr(language, "request_user_input.progress.none").dim(),
+                ]
+                .into(),
+            );
+            return lines;
+        }
+
+        for (index, question) in ev.questions.iter().enumerate() {
+            let question_index = (index + 1).to_string();
+            let progress = tr_args(
+                language,
+                "request_user_input.progress.question",
+                &[("index", &question_index), ("total", &question_count_text)],
+            );
+            lines.push(vec!["  ".into(), progress.dim()].into());
+
+            if !question.header.trim().is_empty() {
+                lines.push(Line::from(format!("    {}", question.header)));
+            }
+            if !question.question.trim().is_empty() {
+                lines.push(Line::from(format!("    {}", question.question)));
+            }
+
+            if let Some(options) = &question.options {
+                if options.is_empty() {
+                    lines.push(
+                        vec![
+                            "    ".into(),
+                            tr(language, "request_user_input.empty.options").dim(),
+                        ]
+                        .into(),
+                    );
+                } else {
+                    for option in options {
+                        if option.description.trim().is_empty() {
+                            lines.push(Line::from(format!("      - {}", option.label)));
+                        } else {
+                            lines.push(Line::from(format!(
+                                "      - {}: {}",
+                                option.label, option.description
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+
+        lines
+    }
+
+    pub(crate) fn handle_request_user_input_now(&mut self, ev: RequestUserInputEvent) {
+        self.flush_answer_stream_with_separator();
+        self.pending_request_user_input
+            .retain(|pending| pending.call_id != ev.call_id);
+        self.pending_request_user_input.push_back(ev.clone());
+        self.add_boxed_history(Box::new(PlainHistoryCell::new(
+            self.request_user_input_history_lines(&ev, false),
+        )));
+        self.request_redraw();
+    }
+
     pub(crate) fn handle_exec_begin_now(&mut self, ev: ExecCommandBeginEvent) {
         // Ensure the status indicator is visible while the command runs.
         self.running_commands.insert(
@@ -1894,6 +2020,7 @@ impl ChatWidget {
             retry_status_header: None,
             conversation_id: None,
             queued_user_messages: VecDeque::new(),
+            pending_request_user_input: VecDeque::new(),
             show_welcome_banner: is_first_run,
             suppress_session_configured_redraw: false,
             pending_notification: None,
@@ -2003,6 +2130,7 @@ impl ChatWidget {
             retry_status_header: None,
             conversation_id: None,
             queued_user_messages: VecDeque::new(),
+            pending_request_user_input: VecDeque::new(),
             show_welcome_banner: false,
             suppress_session_configured_redraw: true,
             pending_notification: None,
@@ -3282,6 +3410,9 @@ impl ChatWidget {
             }
             EventMsg::ElicitationRequest(ev) => {
                 self.on_elicitation_request(ev);
+            }
+            EventMsg::RequestUserInput(ev) => {
+                self.on_request_user_input(ev);
             }
             EventMsg::ExecCommandBegin(ev) => self.on_exec_command_begin(ev),
             EventMsg::TerminalInteraction(delta) => self.on_terminal_interaction(delta),

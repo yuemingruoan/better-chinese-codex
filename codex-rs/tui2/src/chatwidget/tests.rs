@@ -48,6 +48,7 @@ use codex_core::protocol::Op;
 use codex_core::protocol::PatchApplyBeginEvent;
 use codex_core::protocol::PatchApplyEndEvent;
 use codex_core::protocol::RateLimitWindow;
+use codex_core::protocol::RequestUserInputEvent;
 use codex_core::protocol::ReviewRequest;
 use codex_core::protocol::ReviewTarget;
 use codex_core::protocol::SddGitAction;
@@ -70,6 +71,8 @@ use codex_protocol::plan_tool::PlanItemArg;
 use codex_protocol::plan_tool::StepStatus;
 use codex_protocol::plan_tool::UpdatePlanArgs;
 use codex_protocol::protocol::CodexErrorInfo;
+use codex_protocol::request_user_input::RequestUserInputQuestion;
+use codex_protocol::request_user_input::RequestUserInputQuestionOption;
 use codex_protocol::user_input::UserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use crossterm::event::KeyCode;
@@ -474,6 +477,7 @@ async fn make_chatwidget_manual(
         frame_requester: FrameRequester::test_dummy(),
         show_welcome_banner: true,
         queued_user_messages: VecDeque::new(),
+        pending_request_user_input: VecDeque::new(),
         suppress_session_configured_redraw: false,
         pending_notification: None,
         quit_shortcut_expires_at: None,
@@ -1011,6 +1015,40 @@ fn begin_exec_with_source(
 
 fn begin_exec(chat: &mut ChatWidget, call_id: &str, raw_cmd: &str) -> ExecCommandBeginEvent {
     begin_exec_with_source(chat, call_id, raw_cmd, ExecCommandSource::Agent)
+}
+
+fn sample_request_user_input_event(call_id: &str, turn_id: &str) -> RequestUserInputEvent {
+    RequestUserInputEvent {
+        call_id: call_id.to_string(),
+        turn_id: turn_id.to_string(),
+        questions: vec![
+            RequestUserInputQuestion {
+                id: "auth_method".to_string(),
+                header: "Auth method".to_string(),
+                question: "Which auth method should we use?".to_string(),
+                is_other: false,
+                is_secret: false,
+                options: Some(vec![
+                    RequestUserInputQuestionOption {
+                        label: "OAuth".to_string(),
+                        description: "Use browser-based OAuth flow.".to_string(),
+                    },
+                    RequestUserInputQuestionOption {
+                        label: "API Key".to_string(),
+                        description: "Use static API key from env var.".to_string(),
+                    },
+                ]),
+            },
+            RequestUserInputQuestion {
+                id: "account_id".to_string(),
+                header: "Account".to_string(),
+                question: "What account id should be used?".to_string(),
+                is_other: false,
+                is_secret: true,
+                options: None,
+            },
+        ],
+    }
 }
 
 fn end_exec(
@@ -1946,6 +1984,117 @@ async fn interrupted_turn_error_message_snapshot() {
     );
     let last = lines_to_single_string(cells.last().unwrap());
     assert_snapshot!("interrupted_turn_error_message", last);
+}
+
+#[tokio::test]
+async fn request_user_input_event_renders_history_cell() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
+    let event = sample_request_user_input_event("rui-call-1", "turn-1");
+
+    chat.handle_codex_event(Event {
+        id: "rui-call-1".into(),
+        msg: EventMsg::RequestUserInput(event.clone()),
+    });
+
+    let cells = drain_insert_history(&mut rx);
+    assert_eq!(cells.len(), 1, "expected one request_user_input history cell");
+
+    let unanswered_count = event.questions.len().to_string();
+    let rendered = lines_to_single_string(&cells[0]);
+    let unanswered = tr_args(
+        chat.config.language,
+        "request_user_input.progress.unanswered",
+        &[("count", &unanswered_count)],
+    );
+    assert!(
+        rendered.contains("request_user_input [rui-call-1]"),
+        "expected request id in history cell: {rendered:?}",
+    );
+    assert!(
+        rendered.contains(&unanswered),
+        "expected unanswered summary in history cell: {rendered:?}",
+    );
+    assert!(
+        rendered.contains("Which auth method should we use?"),
+        "expected first question text in history cell: {rendered:?}",
+    );
+    assert!(
+        rendered.contains("OAuth: Use browser-based OAuth flow."),
+        "expected option details in history cell: {rendered:?}",
+    );
+    assert_eq!(
+        chat.pending_request_user_input.len(),
+        1,
+        "request_user_input should remain pending until turn resolves",
+    );
+}
+
+#[tokio::test]
+async fn interrupted_turn_renders_queued_request_user_input_status() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
+    let request = sample_request_user_input_event("rui-call-2", "turn-2");
+
+    chat.handle_codex_event(Event {
+        id: "turn-2".into(),
+        msg: EventMsg::TurnStarted(TurnStartedEvent {
+            model_context_window: None,
+        }),
+    });
+    chat.handle_codex_event(Event {
+        id: "turn-2".into(),
+        msg: EventMsg::AgentMessageDelta(AgentMessageDeltaEvent {
+            delta: "streaming".to_string(),
+        }),
+    });
+    let _ = drain_insert_history(&mut rx);
+
+    chat.handle_codex_event(Event {
+        id: "rui-call-2".into(),
+        msg: EventMsg::RequestUserInput(request),
+    });
+    assert!(
+        drain_insert_history(&mut rx).is_empty(),
+        "request_user_input should be queued while stream output is active",
+    );
+    assert!(
+        chat.pending_request_user_input.is_empty(),
+        "queued request_user_input should not be handled before interrupt",
+    );
+
+    chat.handle_codex_event(Event {
+        id: "turn-2".into(),
+        msg: EventMsg::TurnAborted(codex_core::protocol::TurnAbortedEvent {
+            reason: TurnAbortReason::Interrupted,
+        }),
+    });
+
+    let cells = drain_insert_history(&mut rx);
+    let rendered = cells
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let interrupted = tr(chat.config.language, "chatwidget.stream.interrupted").to_string();
+    assert!(
+        rendered.contains("request_user_input [rui-call-2]"),
+        "expected queued request_user_input to be rendered after interrupt: {rendered:?}",
+    );
+    assert!(
+        rendered.contains(&interrupted),
+        "expected interrupted status in history output: {rendered:?}",
+    );
+    assert!(
+        rendered.contains("Which auth method should we use?"),
+        "expected question text in interrupted output: {rendered:?}",
+    );
+    assert!(
+        chat.pending_request_user_input.is_empty(),
+        "pending request_user_input should be cleared after interrupted rendering",
+    );
+    assert!(
+        chat.interrupts.is_empty(),
+        "interrupt queue should not retain request_user_input events after interrupt",
+    );
 }
 
 /// Opening custom prompt from the review popup, pressing Esc returns to the
