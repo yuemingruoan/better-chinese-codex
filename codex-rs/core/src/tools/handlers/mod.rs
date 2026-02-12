@@ -1,6 +1,8 @@
 pub mod apply_patch;
 mod batches_read_file;
+mod claude_tool_adapter;
 pub(crate) mod collab;
+mod collab_batch;
 mod dynamic;
 mod grep_files;
 mod list_dir;
@@ -21,7 +23,9 @@ use serde::Deserialize;
 use crate::function_tool::FunctionCallError;
 pub use apply_patch::ApplyPatchHandler;
 pub use batches_read_file::BatchesReadFileHandler;
+pub use claude_tool_adapter::ClaudeToolAdapterHandler;
 pub use collab::CollabHandler;
+pub use collab_batch::CollabBatchHandler;
 pub use dynamic::DynamicToolHandler;
 pub use grep_files::GrepFilesHandler;
 pub use list_dir::ListDirHandler;

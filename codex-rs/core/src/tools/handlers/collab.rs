@@ -43,6 +43,15 @@ pub(crate) const MIN_WAIT_TIMEOUT_MS: i64 = 100;
 pub(crate) const DEFAULT_WAIT_TIMEOUT_MS: i64 = crate::config::DEFAULT_COLLAB_WAIT_TIMEOUT_MS;
 pub(crate) const MAX_WAIT_TIMEOUT_MS: i64 = 300_000;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum WaitWakeupReason {
+    AnyCompleted,
+    AllCompleted,
+    Timeout,
+    NoTargets,
+}
+
 #[derive(Debug, Deserialize)]
 struct CloseAgentArgs {
     id: String,
@@ -487,6 +496,7 @@ mod wait {
     struct WaitResult {
         status: HashMap<ThreadId, AgentStatus>,
         timed_out: bool,
+        wakeup_reason: WaitWakeupReason,
     }
 
     pub async fn handle(
@@ -563,6 +573,8 @@ mod wait {
 
         let statuses = if !initial_final_statuses.is_empty() {
             initial_final_statuses
+        } else if timeout_ms == 0 {
+            Vec::new()
         } else {
             // Wait for the first agent to reach a final status.
             let mut futures = FuturesUnordered::new();
@@ -597,9 +609,15 @@ mod wait {
 
         // Convert payload.
         let statuses_map = statuses.clone().into_iter().collect::<HashMap<_, _>>();
+        let timed_out = statuses.is_empty();
         let result = WaitResult {
             status: statuses_map.clone(),
-            timed_out: statuses.is_empty(),
+            timed_out,
+            wakeup_reason: if timed_out {
+                WaitWakeupReason::Timeout
+            } else {
+                WaitWakeupReason::AnyCompleted
+            },
         };
 
         // Final event emission.
@@ -679,20 +697,11 @@ mod wait_agents {
     }
 
     #[derive(Debug, Serialize)]
-    #[serde(rename_all = "snake_case")]
-    enum WaitAgentsWakeupReason {
-        AnyCompleted,
-        AllCompleted,
-        Timeout,
-        NoTargets,
-    }
-
-    #[derive(Debug, Serialize)]
     struct WaitAgentsResult {
         statuses: Vec<AgentStatusSnapshot>,
         completed_ids: Vec<String>,
         timed_out: bool,
-        wakeup_reason: WaitAgentsWakeupReason,
+        wakeup_reason: WaitWakeupReason,
     }
 
     pub async fn handle(
@@ -830,7 +839,7 @@ mod wait_agents {
                 statuses: Vec::new(),
                 completed_ids: Vec::new(),
                 timed_out: false,
-                wakeup_reason: WaitAgentsWakeupReason::NoTargets,
+                wakeup_reason: WaitWakeupReason::NoTargets,
             });
         }
 
@@ -845,8 +854,8 @@ mod wait_agents {
             let all_done = completed_ids.len() == statuses.len();
             let any_done = !completed_ids.is_empty();
             let wakeup_reason = match mode {
-                WaitAgentsMode::Any if any_done => Some(WaitAgentsWakeupReason::AnyCompleted),
-                WaitAgentsMode::All if all_done => Some(WaitAgentsWakeupReason::AllCompleted),
+                WaitAgentsMode::Any if any_done => Some(WaitWakeupReason::AnyCompleted),
+                WaitAgentsMode::All if all_done => Some(WaitWakeupReason::AllCompleted),
                 _ => None,
             };
             if let Some(wakeup_reason) = wakeup_reason {
@@ -864,7 +873,7 @@ mod wait_agents {
                     statuses,
                     completed_ids,
                     timed_out: true,
-                    wakeup_reason: WaitAgentsWakeupReason::Timeout,
+                    wakeup_reason: WaitWakeupReason::Timeout,
                 });
             }
 
@@ -1049,7 +1058,7 @@ pub mod close_agent {
                 return Err(collab_agent_error(agent_id, err));
             }
         };
-        let result = if !matches!(status, AgentStatus::Shutdown) {
+        let close_result = if !matches!(status, AgentStatus::Shutdown) {
             session
                 .services
                 .agent_control
@@ -1058,10 +1067,13 @@ pub mod close_agent {
                     turn.config.auto_close_on_parent_shutdown,
                 )
                 .await
-                .map_err(|err| collab_agent_error(agent_id, err))
                 .map(|_| ())
         } else {
             Ok(())
+        };
+        let status = match &close_result {
+            Ok(()) => AgentStatus::Shutdown,
+            Err(_) => resolve_closed_agent_status(session.as_ref(), agent_id).await,
         };
         session
             .send_event(
@@ -1075,7 +1087,7 @@ pub mod close_agent {
                 .into(),
             )
             .await;
-        result?;
+        close_result.map_err(|err| collab_agent_error(agent_id, err))?;
 
         let content = serde_json::to_string(&CloseAgentResult { status }).map_err(|err| {
             FunctionCallError::Fatal(format!("failed to serialize close_agent result: {err}"))
@@ -1085,6 +1097,19 @@ pub mod close_agent {
             body: FunctionCallOutputBody::Text(content),
             success: Some(true),
         })
+    }
+
+    async fn resolve_closed_agent_status(session: &Session, agent_id: ThreadId) -> AgentStatus {
+        if let Ok(Some(record)) = session
+            .services
+            .agent_control
+            .get_agent_record(agent_id)
+            .await
+            && record.closed
+        {
+            return record.status;
+        }
+        session.services.agent_control.get_status(agent_id).await
     }
 }
 
@@ -1257,9 +1282,10 @@ fn resolve_wait_timeout_ms(
 ) -> Result<i64, FunctionCallError> {
     let timeout_ms = timeout_ms.unwrap_or(default_timeout_ms);
     match timeout_ms {
-        ms if ms <= 0 => Err(FunctionCallError::RespondToModel(
-            "timeout_ms must be greater than zero".to_owned(),
+        ms if ms < 0 => Err(FunctionCallError::RespondToModel(
+            "timeout_ms must be greater than or equal to zero".to_owned(),
         )),
+        0 => Ok(0),
         ms => Ok(ms.clamp(MIN_WAIT_TIMEOUT_MS, MAX_WAIT_TIMEOUT_MS)),
     }
 }
@@ -1618,6 +1644,7 @@ mod tests {
     use crate::agent::MAX_THREAD_SPAWN_DEPTH;
     use crate::built_in_model_providers;
     use crate::codex::make_session_and_context;
+    use crate::codex::make_session_and_context_with_rx;
     use crate::config::Config;
     use crate::config::types::ShellEnvironmentPolicy;
     use crate::function_tool::FunctionCallError;
@@ -1628,6 +1655,8 @@ mod tests {
     use codex_protocol::ThreadId;
     use codex_protocol::models::ContentItem;
     use codex_protocol::models::ResponseItem;
+    use codex_protocol::protocol::Event;
+    use codex_protocol::protocol::EventMsg;
     use codex_protocol::protocol::InitialHistory;
     use codex_protocol::protocol::RolloutItem;
     use pretty_assertions::assert_eq;
@@ -1673,6 +1702,18 @@ mod tests {
         let mut config = (*turn.config).clone();
         mutate(&mut config);
         turn.config = Arc::new(config);
+    }
+
+    async fn recv_close_end_status(rx: &async_channel::Receiver<Event>) -> AgentStatus {
+        loop {
+            let event = timeout(Duration::from_secs(1), rx.recv())
+                .await
+                .expect("collab close end event should arrive")
+                .expect("event channel should stay open");
+            if let EventMsg::CollabCloseEnd(event) = event.msg {
+                return event.status;
+            }
+        }
     }
 
     #[tokio::test]
@@ -2557,10 +2598,11 @@ mod tests {
     struct WaitResult {
         status: HashMap<ThreadId, AgentStatus>,
         timed_out: bool,
+        wakeup_reason: WaitWakeupReason,
     }
 
     #[tokio::test]
-    async fn wait_rejects_non_positive_timeout() {
+    async fn wait_rejects_negative_timeout() {
         let (session, turn) = make_session_and_context().await;
         let invocation = invocation(
             Arc::new(session),
@@ -2568,16 +2610,66 @@ mod tests {
             "wait",
             function_payload(json!({
                 "ids": [ThreadId::new().to_string()],
-                "timeout_ms": 0
+                "timeout_ms": -1
             })),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
-            panic!("non-positive timeout should be rejected");
+            panic!("negative timeout should be rejected");
         };
         assert_eq!(
             err,
-            FunctionCallError::RespondToModel("timeout_ms must be greater than zero".to_string())
+            FunctionCallError::RespondToModel(
+                "timeout_ms must be greater than or equal to zero".to_string()
+            )
         );
+    }
+
+    #[tokio::test]
+    async fn wait_timeout_zero_returns_non_blocking_snapshot() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        session.services.agent_control = manager.agent_control();
+        let config = turn.config.as_ref().clone();
+        let thread = manager.start_thread(config).await.expect("start thread");
+        let agent_id = thread.thread_id;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "wait",
+            function_payload(json!({
+                "ids": [agent_id.to_string()],
+                "timeout_ms": 0
+            })),
+        );
+        let output = timeout(Duration::from_millis(50), CollabHandler.handle(invocation))
+            .await
+            .expect("wait should be non-blocking")
+            .expect("wait should succeed");
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
+        } = output
+        else {
+            panic!("expected function output");
+        };
+        let result: WaitResult =
+            serde_json::from_str(&content).expect("wait result should be json");
+        assert_eq!(
+            result,
+            WaitResult {
+                status: HashMap::new(),
+                timed_out: true,
+                wakeup_reason: WaitWakeupReason::Timeout,
+            }
+        );
+        assert_eq!(success, None);
+
+        let _ = thread
+            .thread
+            .submit(Op::Shutdown {})
+            .await
+            .expect("shutdown should submit");
     }
 
     #[tokio::test]
@@ -2653,7 +2745,8 @@ mod tests {
                     (id_a, AgentStatus::NotFound),
                     (id_b, AgentStatus::NotFound),
                 ]),
-                timed_out: false
+                timed_out: false,
+                wakeup_reason: WaitWakeupReason::AnyCompleted,
             }
         );
         assert_eq!(success, None);
@@ -2694,7 +2787,8 @@ mod tests {
             result,
             WaitResult {
                 status: HashMap::new(),
-                timed_out: true
+                timed_out: true,
+                wakeup_reason: WaitWakeupReason::Timeout,
             }
         );
         assert_eq!(success, None);
@@ -2787,7 +2881,8 @@ mod tests {
             result,
             WaitResult {
                 status: HashMap::from([(agent_id, AgentStatus::Shutdown)]),
-                timed_out: false
+                timed_out: false,
+                wakeup_reason: WaitWakeupReason::AnyCompleted,
             }
         );
         assert_eq!(success, None);
@@ -2823,6 +2918,7 @@ mod tests {
         };
         let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
         assert_eq!(value.get("timed_out"), Some(&json!(true)));
+        assert_eq!(value.get("wakeup_reason"), Some(&json!("timeout")));
 
         let _ = thread
             .thread
@@ -2972,12 +3068,12 @@ mod tests {
             Arc::new(turn),
             "wait_agents",
             function_payload(
-                json!({"ids": [agent_id.to_string()], "mode": "any", "timeout_ms": 20}),
+                json!({"ids": [agent_id.to_string()], "mode": "any", "timeout_ms": 0}),
             ),
         );
-        let output = CollabHandler
-            .handle(invocation)
+        let output = timeout(Duration::from_millis(50), CollabHandler.handle(invocation))
             .await
+            .expect("wait_agents should be non-blocking")
             .expect("wait_agents should succeed");
         let ToolOutput::Function {
             body: FunctionCallOutputBody::Text(content),
@@ -3082,17 +3178,19 @@ mod tests {
 
     #[tokio::test]
     async fn close_agent_submits_shutdown_and_returns_status() {
-        let (mut session, turn) = make_session_and_context().await;
+        let (mut session, turn, rx) = make_session_and_context_with_rx().await;
         let manager = thread_manager();
-        session.services.agent_control = manager.agent_control();
+        Arc::get_mut(&mut session)
+            .expect("session should not be shared")
+            .services
+            .agent_control = manager.agent_control();
         let config = turn.config.as_ref().clone();
         let thread = manager.start_thread(config).await.expect("start thread");
         let agent_id = thread.thread_id;
-        let status_before = manager.agent_control().get_status(agent_id).await;
 
         let invocation = invocation(
-            Arc::new(session),
-            Arc::new(turn),
+            session,
+            turn,
             "close_agent",
             function_payload(json!({"id": agent_id.to_string()})),
         );
@@ -3110,8 +3208,9 @@ mod tests {
         };
         let result: close_agent::CloseAgentResult =
             serde_json::from_str(&content).expect("close_agent result should be json");
-        assert_eq!(result.status, status_before);
+        assert_eq!(result.status, AgentStatus::Shutdown);
         assert_eq!(success, Some(true));
+        assert_eq!(recv_close_end_status(&rx).await, AgentStatus::Shutdown);
 
         let ops = manager.captured_ops();
         let submitted_shutdown = ops
@@ -3121,6 +3220,32 @@ mod tests {
 
         let status_after = manager.agent_control().get_status(agent_id).await;
         assert_eq!(status_after, AgentStatus::NotFound);
+    }
+
+    #[tokio::test]
+    async fn close_agent_reports_not_found_error_with_post_close_status() {
+        let (mut session, turn, rx) = make_session_and_context_with_rx().await;
+        let manager = thread_manager();
+        Arc::get_mut(&mut session)
+            .expect("session should not be shared")
+            .services
+            .agent_control = manager.agent_control();
+        let missing_id = ThreadId::new();
+
+        let invocation = invocation(
+            session,
+            turn,
+            "close_agent",
+            function_payload(json!({"id": missing_id.to_string()})),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("close_agent should report missing agents");
+        };
+        let FunctionCallError::RespondToModel(message) = err else {
+            panic!("expected respond-to-model error");
+        };
+        assert_eq!(message, format!("agent with id {missing_id} not found"));
+        assert_eq!(recv_close_end_status(&rx).await, AgentStatus::NotFound);
     }
 
     #[tokio::test]

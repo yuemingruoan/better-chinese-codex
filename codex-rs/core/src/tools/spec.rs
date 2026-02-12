@@ -501,7 +501,7 @@ fn create_collab_input_items_schema() -> JsonSchema {
     }
 }
 
-fn create_spawn_agent_tool() -> ToolSpec {
+fn create_spawn_agent_parameters() -> JsonSchema {
     let mut properties = BTreeMap::new();
     properties.insert("items".to_string(), create_collab_input_items_schema());
     properties.insert(
@@ -585,21 +585,25 @@ fn create_spawn_agent_tool() -> ToolSpec {
         },
     );
 
+    JsonSchema::Object {
+        properties,
+        required: Some(vec!["items".to_string()]),
+        additional_properties: Some(false.into()),
+    }
+}
+
+fn create_spawn_agent_tool() -> ToolSpec {
     ToolSpec::Function(ResponsesApiTool {
         name: "spawn_agent".to_string(),
         description:
             "Spawn a sub-agent for a well-scoped task. Returns the agent id to use to communicate with this agent."
                 .to_string(),
         strict: false,
-        parameters: JsonSchema::Object {
-            properties,
-            required: Some(vec!["items".to_string()]),
-            additional_properties: Some(false.into()),
-        },
+        parameters: create_spawn_agent_parameters(),
     })
 }
 
-fn create_send_input_tool() -> ToolSpec {
+fn create_send_input_parameters() -> JsonSchema {
     let properties = BTreeMap::from([
         (
             "id".to_string(),
@@ -619,18 +623,92 @@ fn create_send_input_tool() -> ToolSpec {
         ),
     ]);
 
+    JsonSchema::Object {
+        properties,
+        required: Some(vec!["id".to_string(), "items".to_string()]),
+        additional_properties: Some(false.into()),
+    }
+}
+
+fn create_send_input_tool() -> ToolSpec {
     ToolSpec::Function(ResponsesApiTool {
         name: "send_input".to_string(),
         description:
             "Send a message to an existing agent. Use interrupt=true to redirect work immediately."
                 .to_string(),
         strict: false,
+        parameters: create_send_input_parameters(),
+    })
+}
+
+fn create_collab_batch_tool(
+    name: &str,
+    description: &str,
+    operation_parameters: JsonSchema,
+) -> ToolSpec {
+    let operation_properties = BTreeMap::from([
+        (
+            "id".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "Optional operation id echoed back in the corresponding result entry."
+                        .to_string(),
+                ),
+            },
+        ),
+        ("params".to_string(), operation_parameters),
+    ]);
+    let properties = BTreeMap::from([
+        (
+            "operations".to_string(),
+            JsonSchema::Array {
+                items: Box::new(JsonSchema::Object {
+                    properties: operation_properties,
+                    required: Some(vec!["params".to_string()]),
+                    additional_properties: Some(false.into()),
+                }),
+                description: Some(
+                    "Batch operation entries. Each entry may include an optional id and required params."
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "fail_fast".to_string(),
+            JsonSchema::Boolean {
+                description: Some(
+                    "When true, stop processing after the first failed operation. Default false."
+                        .to_string(),
+                ),
+            },
+        ),
+    ]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: name.to_string(),
+        description: description.to_string(),
+        strict: false,
         parameters: JsonSchema::Object {
             properties,
-            required: Some(vec!["id".to_string(), "items".to_string()]),
+            required: Some(vec!["operations".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
+}
+
+fn create_task_batch_tool() -> ToolSpec {
+    create_collab_batch_tool(
+        "task_batch",
+        "Create multiple agents in one call. Wraps spawn_agent semantics per operation.",
+        create_spawn_agent_parameters(),
+    )
+}
+
+fn create_task_send_batch_tool() -> ToolSpec {
+    create_collab_batch_tool(
+        "task_send_batch",
+        "Send input to multiple agents in one call. Wraps send_input semantics per operation.",
+        create_send_input_parameters(),
+    )
 }
 
 fn create_resume_agent_tool() -> ToolSpec {
@@ -898,6 +976,220 @@ fn create_close_agents_tool() -> ToolSpec {
         parameters: JsonSchema::Object {
             properties,
             required: Some(vec!["ids".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_task_alias_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "description".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "Short (3-5 words) summary of the delegated task / 任务简述（3-5 个词）"
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "prompt".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "Detailed prompt for the delegated task / 委派任务的详细说明".to_string(),
+                ),
+            },
+        ),
+        (
+            "subagent_type".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "Requested sub-agent type / 请求的子代理类型（phase1 仅透传兼容）".to_string(),
+                ),
+            },
+        ),
+        (
+            "name".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "Optional label for this delegated task / 可选任务标签".to_string(),
+                ),
+            },
+        ),
+        (
+            "model".to_string(),
+            JsonSchema::String {
+                description: Some("Optional model override / 可选模型覆盖".to_string()),
+            },
+        ),
+        (
+            "max_turns".to_string(),
+            JsonSchema::Number {
+                description: Some("Optional max turns / 可选最大轮次".to_string()),
+            },
+        ),
+        (
+            "mode".to_string(),
+            JsonSchema::String {
+                description: Some("Optional mode override / 可选模式覆盖".to_string()),
+            },
+        ),
+        (
+            "resume".to_string(),
+            JsonSchema::String {
+                description: Some("Optional task id to resume / 可选恢复任务 id".to_string()),
+            },
+        ),
+        (
+            "run_in_background".to_string(),
+            JsonSchema::Boolean {
+                description: Some(
+                    "Whether to run the task in background / 是否后台运行".to_string(),
+                ),
+            },
+        ),
+        (
+            "team_name".to_string(),
+            JsonSchema::String {
+                description: Some("Optional team name / 可选团队名".to_string()),
+            },
+        ),
+    ]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "Task".to_string(),
+        description: "Claude-compatible alias for spawn_agent / Claude 兼容的 spawn_agent 别名"
+            .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec![
+                "description".to_string(),
+                "prompt".to_string(),
+                "subagent_type".to_string(),
+            ]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_task_output_alias_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "task_id".to_string(),
+            JsonSchema::String {
+                description: Some("Task id to inspect / 要查询的任务 id".to_string()),
+            },
+        ),
+        (
+            "block".to_string(),
+            JsonSchema::Boolean {
+                description: Some(
+                    "When false, perform a non-blocking poll / 为 false 时执行非阻塞轮询"
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "timeout".to_string(),
+            JsonSchema::Number {
+                description: Some(
+                    "Maximum wait time in milliseconds / 最大等待时间（毫秒）".to_string(),
+                ),
+            },
+        ),
+    ]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "TaskOutput".to_string(),
+        description:
+            "Claude-compatible alias for wait/wait_agents / Claude 兼容的 wait/wait_agents 别名"
+                .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["task_id".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_task_stop_alias_tool() -> ToolSpec {
+    let properties = BTreeMap::from([(
+        "task_id".to_string(),
+        JsonSchema::String {
+            description: Some("Task id to stop / 要停止的任务 id".to_string()),
+        },
+    )]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "TaskStop".to_string(),
+        description: "Claude-compatible alias for close_agent / Claude 兼容的 close_agent 别名"
+            .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["task_id".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_tool_search_alias_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "query".to_string(),
+            JsonSchema::String {
+                description: Some("Tool search query / 工具搜索关键词".to_string()),
+            },
+        ),
+        (
+            "max_results".to_string(),
+            JsonSchema::Number {
+                description: Some("Maximum result count / 返回结果上限".to_string()),
+            },
+        ),
+    ]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "ToolSearch".to_string(),
+        description:
+            "Claude-compatible alias for search_tool_bm25 / Claude 兼容的 search_tool_bm25 别名"
+                .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["query".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_claude_skill_alias_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "skill".to_string(),
+            JsonSchema::String {
+                description: Some("Skill name / 技能名称".to_string()),
+            },
+        ),
+        (
+            "args".to_string(),
+            JsonSchema::String {
+                description: Some("Optional skill arguments / 可选技能参数".to_string()),
+            },
+        ),
+    ]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "Skill".to_string(),
+        description:
+            "Claude-compatible alias for skill execution entry / Claude 兼容的技能执行入口别名"
+                .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["skill".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
@@ -1659,6 +1951,8 @@ pub(crate) fn build_specs(
 ) -> ToolRegistryBuilder {
     use crate::tools::handlers::ApplyPatchHandler;
     use crate::tools::handlers::BatchesReadFileHandler;
+    use crate::tools::handlers::ClaudeToolAdapterHandler;
+    use crate::tools::handlers::CollabBatchHandler;
     use crate::tools::handlers::CollabHandler;
     use crate::tools::handlers::DynamicToolHandler;
     use crate::tools::handlers::GrepFilesHandler;
@@ -1690,6 +1984,8 @@ pub(crate) fn build_specs(
     let batches_read_file_handler = Arc::new(BatchesReadFileHandler);
     let request_user_input_handler = Arc::new(RequestUserInputHandler);
     let search_tool_handler = Arc::new(SearchToolBm25Handler);
+    let collab_batch_handler = Arc::new(CollabBatchHandler);
+    let claude_tool_adapter_handler = Arc::new(ClaudeToolAdapterHandler);
 
     match &config.shell_type {
         ConfigShellToolType::Default => {
@@ -1746,7 +2042,9 @@ pub(crate) fn build_specs(
 
     if config.search_tool {
         builder.push_spec_with_parallel_support(create_search_tool_bm25_tool(), true);
+        builder.push_spec_with_parallel_support(create_claude_tool_search_alias_tool(), true);
         builder.register_handler("search_tool_bm25", search_tool_handler);
+        builder.register_handler("ToolSearch", claude_tool_adapter_handler.clone());
     }
 
     if let Some(apply_patch_tool_type) = &config.apply_patch_tool_type {
@@ -1822,20 +2120,32 @@ pub(crate) fn build_specs(
         let collab_handler = Arc::new(CollabHandler);
         builder.push_spec(create_spawn_agent_tool());
         builder.push_spec(create_send_input_tool());
+        builder.push_spec(create_task_batch_tool());
+        builder.push_spec(create_task_send_batch_tool());
         builder.push_spec(create_resume_agent_tool());
         builder.push_spec_with_parallel_support(create_wait_tool(), true);
         builder.push_spec_with_parallel_support(create_wait_agents_tool(), true);
         builder.push_spec_with_parallel_support(create_list_agents_tool(), true);
         builder.push_spec(create_close_agent_tool());
         builder.push_spec(create_close_agents_tool());
+        builder.push_spec(create_claude_task_alias_tool());
+        builder.push_spec_with_parallel_support(create_claude_task_output_alias_tool(), true);
+        builder.push_spec(create_claude_task_stop_alias_tool());
+        builder.push_spec(create_claude_skill_alias_tool());
         builder.register_handler("spawn_agent", collab_handler.clone());
         builder.register_handler("send_input", collab_handler.clone());
+        builder.register_handler("task_batch", collab_batch_handler.clone());
+        builder.register_handler("task_send_batch", collab_batch_handler);
         builder.register_handler("resume_agent", collab_handler.clone());
         builder.register_handler("wait", collab_handler.clone());
         builder.register_handler("wait_agents", collab_handler.clone());
         builder.register_handler("list_agents", collab_handler.clone());
         builder.register_handler("close_agent", collab_handler.clone());
         builder.register_handler("close_agents", collab_handler);
+        builder.register_handler("Task", claude_tool_adapter_handler.clone());
+        builder.register_handler("TaskOutput", claude_tool_adapter_handler.clone());
+        builder.register_handler("TaskStop", claude_tool_adapter_handler.clone());
+        builder.register_handler("Skill", claude_tool_adapter_handler.clone());
     }
 
     if let Some(mcp_tools) = mcp_tools {
@@ -2078,6 +2388,194 @@ mod tests {
     }
 
     #[test]
+    fn test_task_batch_tool_schema() {
+        let mut tool = create_task_batch_tool();
+        strip_descriptions_tool(&mut tool);
+        let ToolSpec::Function(ResponsesApiTool {
+            name, parameters, ..
+        }) = tool
+        else {
+            panic!("expected task_batch to be a function tool");
+        };
+        assert_eq!(name, "task_batch");
+        let JsonSchema::Object {
+            properties,
+            required,
+            additional_properties,
+        } = parameters
+        else {
+            panic!("expected object schema for task_batch");
+        };
+        assert_eq!(required, Some(vec!["operations".to_string()]));
+        assert_eq!(additional_properties, Some(false.into()));
+        let operations = properties
+            .get("operations")
+            .expect("operations property should exist");
+        let JsonSchema::Array { items, .. } = operations else {
+            panic!("operations should be an array schema");
+        };
+        let JsonSchema::Object {
+            properties: operation_properties,
+            required: operation_required,
+            additional_properties: operation_additional_properties,
+        } = items.as_ref()
+        else {
+            panic!("operations items should be object schemas");
+        };
+        assert_eq!(operation_required, &Some(vec!["params".to_string()]));
+        assert_eq!(operation_additional_properties, &Some(false.into()));
+        assert!(operation_properties.contains_key("id"));
+        let params = operation_properties
+            .get("params")
+            .expect("operation params should exist");
+        let JsonSchema::Object {
+            properties: params_properties,
+            required: params_required,
+            additional_properties: params_additional_properties,
+        } = params
+        else {
+            panic!("operation params should be an object schema");
+        };
+        assert_eq!(params_required, &Some(vec!["items".to_string()]));
+        assert_eq!(params_additional_properties, &Some(false.into()));
+        assert!(params_properties.contains_key("items"));
+    }
+
+    #[test]
+    fn test_task_send_batch_tool_schema() {
+        let mut tool = create_task_send_batch_tool();
+        strip_descriptions_tool(&mut tool);
+        let ToolSpec::Function(ResponsesApiTool {
+            name, parameters, ..
+        }) = tool
+        else {
+            panic!("expected task_send_batch to be a function tool");
+        };
+        assert_eq!(name, "task_send_batch");
+        let JsonSchema::Object {
+            properties,
+            required,
+            additional_properties,
+        } = parameters
+        else {
+            panic!("expected object schema for task_send_batch");
+        };
+        assert_eq!(required, Some(vec!["operations".to_string()]));
+        assert_eq!(additional_properties, Some(false.into()));
+        let operations = properties
+            .get("operations")
+            .expect("operations property should exist");
+        let JsonSchema::Array { items, .. } = operations else {
+            panic!("operations should be an array schema");
+        };
+        let JsonSchema::Object {
+            properties: operation_properties,
+            required: operation_required,
+            additional_properties: operation_additional_properties,
+        } = items.as_ref()
+        else {
+            panic!("operations items should be object schemas");
+        };
+        assert_eq!(operation_required, &Some(vec!["params".to_string()]));
+        assert_eq!(operation_additional_properties, &Some(false.into()));
+        assert!(operation_properties.contains_key("id"));
+        let params = operation_properties
+            .get("params")
+            .expect("operation params should exist");
+        let JsonSchema::Object {
+            properties: params_properties,
+            required: params_required,
+            additional_properties: params_additional_properties,
+        } = params
+        else {
+            panic!("operation params should be an object schema");
+        };
+        assert_eq!(
+            params_required,
+            &Some(vec!["id".to_string(), "items".to_string()])
+        );
+        assert_eq!(params_additional_properties, &Some(false.into()));
+        assert!(params_properties.contains_key("id"));
+        assert!(params_properties.contains_key("items"));
+    }
+
+    #[test]
+    fn test_claude_task_alias_tool_schema() {
+        let mut tool = create_claude_task_alias_tool();
+        strip_descriptions_tool(&mut tool);
+        let ToolSpec::Function(ResponsesApiTool {
+            name, parameters, ..
+        }) = tool
+        else {
+            panic!("expected Task to be a function tool");
+        };
+        assert_eq!(name, "Task");
+        let JsonSchema::Object {
+            properties,
+            required,
+            additional_properties,
+        } = parameters
+        else {
+            panic!("expected object schema for Task");
+        };
+        assert_eq!(
+            required,
+            Some(vec![
+                "description".to_string(),
+                "prompt".to_string(),
+                "subagent_type".to_string(),
+            ])
+        );
+        assert_eq!(additional_properties, Some(false.into()));
+        for key in [
+            "description",
+            "prompt",
+            "subagent_type",
+            "name",
+            "model",
+            "max_turns",
+            "mode",
+            "resume",
+            "run_in_background",
+            "team_name",
+        ] {
+            assert!(
+                properties.contains_key(key),
+                "Task schema should define {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_claude_task_output_alias_tool_schema() {
+        let mut tool = create_claude_task_output_alias_tool();
+        strip_descriptions_tool(&mut tool);
+        let ToolSpec::Function(ResponsesApiTool {
+            name, parameters, ..
+        }) = tool
+        else {
+            panic!("expected TaskOutput to be a function tool");
+        };
+        assert_eq!(name, "TaskOutput");
+        let JsonSchema::Object {
+            properties,
+            required,
+            additional_properties,
+        } = parameters
+        else {
+            panic!("expected object schema for TaskOutput");
+        };
+        assert_eq!(required, Some(vec!["task_id".to_string()]));
+        assert_eq!(additional_properties, Some(false.into()));
+        for key in ["task_id", "block", "timeout"] {
+            assert!(
+                properties.contains_key(key),
+                "TaskOutput schema should define {key}"
+            );
+        }
+    }
+
+    #[test]
     fn test_full_toolset_specs_for_gpt5_codex_unified_exec_web_search() {
         let model_info = model_info_from_models_json("gpt-5-codex");
         let mut features = Features::with_defaults();
@@ -2159,12 +2657,18 @@ mod tests {
             &[
                 "spawn_agent",
                 "send_input",
+                "task_batch",
+                "task_send_batch",
                 "resume_agent",
                 "wait",
                 "wait_agents",
                 "list_agents",
                 "close_agent",
                 "close_agents",
+                "Task",
+                "TaskOutput",
+                "TaskStop",
+                "Skill",
             ],
         );
     }
@@ -2186,10 +2690,16 @@ mod tests {
         assert!(find_tool(&tools, "wait").supports_parallel_tool_calls);
         assert!(find_tool(&tools, "wait_agents").supports_parallel_tool_calls);
         assert!(find_tool(&tools, "list_agents").supports_parallel_tool_calls);
+        assert!(find_tool(&tools, "TaskOutput").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "spawn_agent").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "send_input").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "task_batch").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "task_send_batch").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "close_agent").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "close_agents").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "Task").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "TaskStop").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "Skill").supports_parallel_tool_calls);
     }
 
     #[test]

@@ -194,12 +194,23 @@ impl AgentControl {
         agent_id: ThreadId,
         auto_close_descendants: bool,
     ) -> CodexResult<String> {
+        let mut close_errors = Vec::new();
         if auto_close_descendants {
             for descendant_id in self.collect_active_descendant_ids(agent_id).await? {
-                let _ = self.shutdown_agent_only(descendant_id).await;
+                if let Err(err) = self.shutdown_agent_only(descendant_id).await {
+                    close_errors.push(format!("failed to close descendant {descendant_id}: {err}"));
+                }
             }
         }
-        self.shutdown_agent_only(agent_id).await
+        let close_result = self.shutdown_agent_only(agent_id).await;
+        if let Err(err) = &close_result {
+            close_errors.push(format!("failed to close agent {agent_id}: {err}"));
+        }
+        if close_errors.is_empty() {
+            close_result
+        } else {
+            Err(CodexErr::Fatal(close_errors.join("; ")))
+        }
     }
 
     /// Fetch the last known status for `agent_id`, returning `NotFound` when unavailable.
@@ -668,6 +679,56 @@ mod tests {
         assert_eq!(parent_record.status, AgentStatus::Shutdown);
         assert!(child_record.closed);
         assert_eq!(child_record.status, AgentStatus::Shutdown);
+    }
+
+    #[tokio::test]
+    async fn shutdown_agent_reports_close_errors() {
+        let harness = AgentControlHarness::new().await;
+        let root_thread_id = ThreadId::new();
+        let parent_id = harness
+            .control
+            .spawn_agent_with_metadata(
+                harness.config.clone(),
+                "parent".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(root_thread_id),
+                    goal: "parent".to_string(),
+                    allow_nested_agents: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("spawn parent agent");
+        let _child_id = harness
+            .control
+            .spawn_agent_with_metadata(
+                harness.config.clone(),
+                "child".to_string(),
+                AgentSpawnMetadata {
+                    creator_thread_id: Some(parent_id),
+                    goal: "child".to_string(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("spawn child agent");
+
+        harness
+            .manager
+            .remove_and_close_all_threads()
+            .await
+            .expect("remove all threads");
+
+        let err = harness
+            .control
+            .shutdown_agent(parent_id)
+            .await
+            .expect_err("shutdown should report descendant close errors");
+        let err_text = err.to_string();
+        assert_eq!(
+            err_text.contains(&format!("failed to close agent {parent_id}:")),
+            true
+        );
     }
 
     #[tokio::test]
