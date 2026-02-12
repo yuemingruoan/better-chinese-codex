@@ -1823,9 +1823,9 @@ pub(crate) fn build_specs(
         builder.push_spec(create_spawn_agent_tool());
         builder.push_spec(create_send_input_tool());
         builder.push_spec(create_resume_agent_tool());
-        builder.push_spec(create_wait_tool());
-        builder.push_spec(create_wait_agents_tool());
-        builder.push_spec(create_list_agents_tool());
+        builder.push_spec_with_parallel_support(create_wait_tool(), true);
+        builder.push_spec_with_parallel_support(create_wait_agents_tool(), true);
+        builder.push_spec_with_parallel_support(create_list_agents_tool(), true);
         builder.push_spec(create_close_agent_tool());
         builder.push_spec(create_close_agents_tool());
         builder.register_handler("spawn_agent", collab_handler.clone());
@@ -2167,6 +2167,29 @@ mod tests {
                 "close_agents",
             ],
         );
+    }
+
+    #[test]
+    fn collab_waiting_tools_support_parallel_tool_calls() {
+        let config = test_config();
+        let model_info = ModelsManager::construct_model_info_offline("gpt-5-codex", &config);
+        let mut features = Features::with_defaults();
+        features.enable(Feature::Collab);
+        features.enable(Feature::CollaborationModes);
+        let tools_config = ToolsConfig::new(&ToolsConfigParams {
+            model_info: &model_info,
+            features: &features,
+            web_search_mode: Some(WebSearchMode::Cached),
+        });
+        let (tools, _) = build_specs(&tools_config, None, &[]).build();
+
+        assert!(find_tool(&tools, "wait").supports_parallel_tool_calls);
+        assert!(find_tool(&tools, "wait_agents").supports_parallel_tool_calls);
+        assert!(find_tool(&tools, "list_agents").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "spawn_agent").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "send_input").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "close_agent").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "close_agents").supports_parallel_tool_calls);
     }
 
     #[test]
