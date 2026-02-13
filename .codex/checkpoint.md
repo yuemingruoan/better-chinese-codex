@@ -371,3 +371,16 @@
 
 - 当前待办：
   - 无。
+
+## 2026-02-13 10:48:28 CST
+- 按“统一命名规范、无需向前兼容”收口子 Agent 命名：`spawn_agent` 不再兼容 `label`，统一使用 `name`。
+- 调整工具适配链路：`Task` 与 `Skill` alias 映射改为输出 `name`，不再向 `spawn_agent` 透传 `label`。
+- 调整 `list_agents` 输出：仅保留 `name` 命名字段；移除兼容 `label` 输出。
+- 同步更新 tool schema 与测试：`spawn_agent/task_batch` schema 移除 `label` 字段并补充 legacy 参数拒绝测试。
+- 验证记录：
+  - 通过：`just fmt`。
+  - 通过（定向）：`cargo test -p codex-core tools::handlers::collab::tests::spawn_agent_rejects_legacy_label_parameter`、`cargo test -p codex-core tools::handlers::collab::tests::spawn_agent_name_is_visible_in_list_agents`、`cargo test -p codex-core tools::handlers::collab::tests::rename_agent_updates_name`、`cargo test -p codex-core tools::handlers::claude_tool_adapter::tests::task_maps_supported_agent_type_and_name`、`cargo test -p codex-core tools::handlers::claude_tool_adapter::tests::skill_maps_to_spawnable_skill_item`、`cargo test -p codex-core tools::spec::tests::test_spawn_agent_tool_schema`、`cargo test -p codex-core tools::spec::tests::test_task_batch_tool_schema`。
+  - 通过（全量）：`cargo test -p codex-core`。
+
+- 当前待办：
+  - 无。

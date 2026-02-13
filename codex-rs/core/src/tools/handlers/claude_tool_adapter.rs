@@ -261,10 +261,10 @@ fn map_task_to_spawn_payload(args: TaskArgs) -> Result<JsonValue, FunctionCallEr
         payload.insert("agent_type".to_string(), JsonValue::String(agent_type));
     }
 
-    if let Some(label) =
+    if let Some(name) =
         normalize_text(name.as_deref()).or_else(|| normalize_text(description.as_deref()))
     {
-        payload.insert("label".to_string(), JsonValue::String(label));
+        payload.insert("name".to_string(), JsonValue::String(name));
     }
 
     if let Some(model) = normalize_text(model.as_deref()) {
@@ -341,7 +341,7 @@ fn map_skill_to_spawn_payload(args: SkillArgs) -> Result<JsonValue, FunctionCall
 
     Ok(json!({
         "items": items,
-        "label": format!("skill:{skill}"),
+        "name": format!("skill:{skill}"),
     }))
 }
 
@@ -924,7 +924,7 @@ mod tests {
     }
 
     #[test]
-    fn task_maps_supported_agent_type_and_label() {
+    fn task_maps_supported_agent_type_and_name() {
         let payload = map_task_to_spawn_payload(TaskArgs {
             description: Some("Investigate failing test".to_string()),
             prompt: Some("Check latest regression".to_string()),
@@ -944,7 +944,7 @@ mod tests {
             json!({
                 "items": [{"type": "text", "text": "Check latest regression"}],
                 "agent_type": "explorer",
-                "label": "Investigate failing test",
+                "name": "Investigate failing test",
                 "model": "gpt-5.1-codex-mini",
             })
         );
@@ -1096,7 +1096,7 @@ mod tests {
                         "text": "123",
                     }
                 ],
-                "label": "skill:review-pr",
+                "name": "skill:review-pr",
             })
         );
     }

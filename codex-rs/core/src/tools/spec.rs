@@ -522,14 +522,6 @@ fn create_spawn_agent_parameters() -> JsonSchema {
         },
     );
     properties.insert(
-        "label".to_string(),
-        JsonSchema::String {
-            description: Some(
-                "Legacy alias for name kept for compatibility / name 的兼容别名".to_string(),
-            ),
-        },
-    );
-    properties.insert(
         "acceptance_criteria".to_string(),
         JsonSchema::Array {
             items: Box::new(JsonSchema::String {
@@ -1049,9 +1041,7 @@ fn create_claude_task_alias_tool() -> ToolSpec {
         (
             "name".to_string(),
             JsonSchema::String {
-                description: Some(
-                    "Optional label for this delegated task / 可选任务标签".to_string(),
-                ),
+                description: Some("Optional delegated task name / 可选任务名称".to_string()),
             },
         ),
         (
@@ -2957,7 +2947,6 @@ mod tests {
             "items",
             "agent_type",
             "name",
-            "label",
             "acceptance_criteria",
             "test_commands",
             "allow_nested_agents",
@@ -2972,6 +2961,10 @@ mod tests {
                 "spawn_agent schema should define {key}"
             );
         }
+        assert!(
+            !properties.contains_key("label"),
+            "spawn_agent schema should not expose legacy label"
+        );
     }
 
     #[test]
@@ -3056,7 +3049,7 @@ mod tests {
         assert_eq!(params_additional_properties, &Some(false.into()));
         assert!(params_properties.contains_key("items"));
         assert!(params_properties.contains_key("name"));
-        assert!(params_properties.contains_key("label"));
+        assert!(!params_properties.contains_key("label"));
     }
 
     #[test]

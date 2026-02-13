@@ -125,6 +125,7 @@ mod spawn {
         items: Option<Vec<UserInput>>,
         agent_type: Option<AgentRole>,
         name: Option<String>,
+        #[serde(rename = "label")]
         label: Option<String>,
         acceptance_criteria: Option<Vec<String>>,
         test_commands: Option<Vec<String>>,
@@ -148,6 +149,12 @@ mod spawn {
         arguments: String,
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: SpawnAgentArgs = parse_arguments(&arguments)?;
+        if args.label.is_some() {
+            return Err(FunctionCallError::RespondToModel(
+                "label is no longer supported; use name instead / label 参数已废弃，请改用 name"
+                    .to_string(),
+            ));
+        }
         let agent_role = args.agent_type.unwrap_or(AgentRole::Default);
         let input_items = parse_collab_input(args.items)?;
         let prompt = input_preview(&input_items);
@@ -184,10 +191,9 @@ mod spawn {
         };
         let mut config =
             build_agent_spawn_config(session.as_ref(), turn.as_ref(), &overrides).await?;
-        let name = args.name.or(args.label);
         let metadata = AgentSpawnMetadata {
             creator_thread_id: Some(session.conversation_id),
-            label: name,
+            label: args.name,
             goal: prompt.clone(),
             acceptance_criteria: args.acceptance_criteria.unwrap_or_default(),
             test_commands: args.test_commands.unwrap_or_default(),
@@ -925,7 +931,6 @@ mod list_agents {
         id: String,
         creator_id: Option<String>,
         name: Option<String>,
-        label: Option<String>,
         goal: String,
         acceptance_criteria: Vec<String>,
         test_commands: Vec<String>,
@@ -974,12 +979,10 @@ mod list_agents {
             if !status_filters.is_empty() && !status_filters.contains(&status_kind(&agent.status)) {
                 continue;
             }
-            let name = agent.label;
             items.push(ListAgentItem {
                 id: agent.agent_id.to_string(),
                 creator_id: agent.creator_thread_id.map(|id| id.to_string()),
-                name: name.clone(),
-                label: name,
+                name: agent.label,
                 goal: agent.goal,
                 acceptance_criteria: agent.acceptance_criteria,
                 test_commands: agent.test_commands,
@@ -1836,6 +1839,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn spawn_agent_rejects_legacy_label_parameter() {
+        let (session, turn) = make_session_and_context().await;
+        let invocation = invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({
+                "items": [{"type": "text", "text": "do work"}],
+                "label": "legacy-name"
+            })),
+        );
+        let Err(err) = CollabHandler.handle(invocation).await else {
+            panic!("legacy label should be rejected");
+        };
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(
+                "label is no longer supported; use name instead / label 参数已废弃，请改用 name"
+                    .to_string()
+            )
+        );
+    }
+
+    #[tokio::test]
     async fn spawn_agent_rejects_empty_items() {
         let (session, turn) = make_session_and_context().await;
         let invocation = invocation(
@@ -2233,14 +2260,14 @@ mod tests {
             .expect("agents array");
         assert_eq!(agents.len(), 1);
         assert_eq!(agents[0].get("id"), Some(&json!(agent_id.to_string())));
-        assert_eq!(agents[0].get("label"), Some(&json!("worker-a")));
+        assert_eq!(agents[0].get("name"), Some(&json!("worker-a")));
         assert_eq!(agents[0].get("status"), Some(&json!("shutdown")));
         assert_eq!(agents[0].get("closed"), Some(&json!(true)));
         assert_eq!(success, Some(true));
     }
 
     #[tokio::test]
-    async fn spawn_agent_name_alias_is_visible_in_list_agents() {
+    async fn spawn_agent_name_is_visible_in_list_agents() {
         let (mut session, turn) = make_session_and_context().await;
         let manager = thread_manager();
         let control = manager.agent_control();
@@ -2255,8 +2282,7 @@ mod tests {
             "spawn_agent",
             function_payload(json!({
                 "items": [{"type": "text", "text": "do work"}],
-                "name": "worker-primary",
-                "label": "worker-legacy"
+                "name": "worker-primary"
             })),
         );
         let spawn_output = CollabHandler
@@ -2309,7 +2335,7 @@ mod tests {
             .find(|agent| agent.get("id") == Some(&json!(agent_id.to_string())))
             .expect("spawned agent should be listed");
         assert_eq!(agent.get("name"), Some(&json!("worker-primary")));
-        assert_eq!(agent.get("label"), Some(&json!("worker-primary")));
+        assert_eq!(agent.get("label"), None);
 
         let _ = control.shutdown_agent(agent_id).await;
     }
@@ -2408,7 +2434,7 @@ mod tests {
             .find(|agent| agent.get("id") == Some(&json!(agent_id.to_string())))
             .expect("renamed agent should be listed");
         assert_eq!(agent.get("name"), Some(&json!("worker-after")));
-        assert_eq!(agent.get("label"), Some(&json!("worker-after")));
+        assert_eq!(agent.get("label"), None);
 
         let _ = control.shutdown_agent(agent_id).await;
     }
