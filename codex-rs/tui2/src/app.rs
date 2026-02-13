@@ -135,6 +135,7 @@ impl From<AppExitInfo> for codex_tui::AppExitInfo {
         codex_tui::AppExitInfo {
             token_usage: info.token_usage,
             thread_id: info.conversation_id,
+            thread_name: None,
             update_action: info.update_action.map(Into::into),
             exit_reason,
         }
@@ -569,20 +570,8 @@ impl App {
         let file_search = FileSearchManager::new(config.cwd.clone(), app_event_tx.clone());
         #[cfg(not(debug_assertions))]
         let upgrade_version = crate::updates::get_upgrade_version(&config);
-        let scroll_config = ScrollConfig::from_terminal(
-            &terminal_info(),
-            ScrollConfigOverrides {
-                events_per_tick: config.tui_scroll_events_per_tick,
-                wheel_lines_per_tick: config.tui_scroll_wheel_lines,
-                trackpad_lines_per_tick: config.tui_scroll_trackpad_lines,
-                trackpad_accel_events: config.tui_scroll_trackpad_accel_events,
-                trackpad_accel_max: config.tui_scroll_trackpad_accel_max,
-                mode: Some(config.tui_scroll_mode),
-                wheel_tick_detect_max_ms: config.tui_scroll_wheel_tick_detect_max_ms,
-                wheel_like_max_duration_ms: config.tui_scroll_wheel_like_max_duration_ms,
-                invert_direction: config.tui_scroll_invert,
-            },
-        );
+        let scroll_config =
+            ScrollConfig::from_terminal(&terminal_info(), ScrollConfigOverrides::default());
 
         let copy_selection_shortcut = crate::transcript_copy_ui::detect_copy_selection_shortcut();
 
@@ -626,7 +615,9 @@ impl App {
         // On startup, if Agent mode (workspace-write) or ReadOnly is active, warn about world-writable dirs on Windows.
         #[cfg(target_os = "windows")]
         {
-            let should_check = codex_core::get_platform_sandbox().is_some()
+            let windows_sandbox_enabled =
+                WindowsSandboxLevel::from_config(&app.config) != WindowsSandboxLevel::Disabled;
+            let should_check = codex_core::get_platform_sandbox(windows_sandbox_enabled).is_some()
                 && matches!(
                     app.config.sandbox_policy.get(),
                     codex_core::protocol::SandboxPolicy::WorkspaceWrite { .. }
@@ -2142,8 +2133,11 @@ impl App {
                     return Ok(AppRunControl::Continue);
                 }
                 #[cfg(target_os = "windows")]
+                let windows_sandbox_enabled =
+                    WindowsSandboxLevel::from_config(&self.config) != WindowsSandboxLevel::Disabled;
+                #[cfg(target_os = "windows")]
                 if !matches!(&policy, codex_core::protocol::SandboxPolicy::ReadOnly)
-                    || codex_core::get_platform_sandbox().is_some()
+                    || codex_core::get_platform_sandbox(windows_sandbox_enabled).is_some()
                 {
                     self.config.forced_auto_mode_downgraded_on_windows = false;
                 }
@@ -2167,7 +2161,8 @@ impl App {
                         return Ok(AppRunControl::Continue);
                     }
 
-                    let should_check = codex_core::get_platform_sandbox().is_some()
+                    let should_check = codex_core::get_platform_sandbox(windows_sandbox_enabled)
+                        .is_some()
                         && policy_is_workspace_write_or_ro
                         && !self.chat_widget.world_writable_warning_hidden();
                     if should_check {
@@ -2894,6 +2889,8 @@ mod tests {
         let make_header = |is_first| {
             let event = SessionConfiguredEvent {
                 session_id: ThreadId::new(),
+                forked_from_id: None,
+                thread_name: None,
                 model: "gpt-test".to_string(),
                 model_provider_id: "test-provider".to_string(),
                 approval_policy: AskForApproval::Never,
@@ -2903,7 +2900,8 @@ mod tests {
                 history_log_id: 0,
                 history_entry_count: 0,
                 initial_messages: None,
-                rollout_path: PathBuf::new(),
+                network_proxy: None,
+                rollout_path: Some(PathBuf::new()),
             };
             Arc::new(new_session_info(
                 app.chat_widget.config_ref(),
@@ -2935,6 +2933,8 @@ mod tests {
             id: String::new(),
             msg: EventMsg::SessionConfigured(SessionConfiguredEvent {
                 session_id: base_id,
+                forked_from_id: None,
+                thread_name: None,
                 model: "gpt-test".to_string(),
                 model_provider_id: "test-provider".to_string(),
                 approval_policy: AskForApproval::Never,
@@ -2944,7 +2944,8 @@ mod tests {
                 history_log_id: 0,
                 history_entry_count: 0,
                 initial_messages: None,
-                rollout_path: PathBuf::new(),
+                network_proxy: None,
+                rollout_path: Some(PathBuf::new()),
             }),
         });
 
@@ -3218,6 +3219,8 @@ mod tests {
         let conversation_id = ThreadId::new();
         let event = SessionConfiguredEvent {
             session_id: conversation_id,
+            forked_from_id: None,
+            thread_name: None,
             model: "gpt-test".to_string(),
             model_provider_id: "test-provider".to_string(),
             approval_policy: AskForApproval::Never,
@@ -3227,7 +3230,8 @@ mod tests {
             history_log_id: 0,
             history_entry_count: 0,
             initial_messages: None,
-            rollout_path: PathBuf::new(),
+            network_proxy: None,
+            rollout_path: Some(PathBuf::new()),
         };
 
         app.chat_widget.handle_codex_event(Event {

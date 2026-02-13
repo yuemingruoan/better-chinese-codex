@@ -47,6 +47,7 @@ use codex_core::protocol::SessionConfiguredEvent;
 use codex_core::web_search::web_search_detail;
 use codex_otel::RuntimeMetricsSummary;
 use codex_protocol::account::PlanType;
+use codex_protocol::config_types::Language;
 use codex_protocol::mcp::Resource;
 use codex_protocol::mcp::ResourceTemplate;
 use codex_protocol::models::WebSearchAction;
@@ -421,7 +422,19 @@ impl HistoryCell for UpdateAvailableHistoryCell {
         use ratatui_macros::line;
         use ratatui_macros::text;
         let update_instruction = if let Some(update_action) = self.update_action {
-            line!["Run ", update_action.command_str().cyan(), " to update."]
+            let (command, args) = update_action.command_args();
+            if command.is_empty() {
+                line![
+                    "See ",
+                    update_action.release_url().cyan().underlined(),
+                    " for update instructions."
+                ]
+            } else {
+                let command_with_args = std::iter::once(command)
+                    .chain(args.iter().copied())
+                    .collect::<Vec<_>>();
+                line!["Run ", command_with_args.join(" ").cyan(), " to update."]
+            }
         } else {
             line![
                 "See ",
@@ -803,7 +816,7 @@ pub(crate) struct PatchHistoryCell {
 
 impl HistoryCell for PatchHistoryCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
-        create_diff_summary(&self.changes, &self.cwd, width as usize)
+        create_diff_summary(&self.changes, &self.cwd, width as usize, Language::En)
     }
 }
 
@@ -2076,6 +2089,7 @@ pub(crate) fn new_patch_apply_failure(stderr: String) -> PlainHistoryCell {
                 include_angle_pipe: true,
                 include_prefix: true,
             },
+            Language::En,
         );
         lines.extend(output.lines);
     }
@@ -2148,7 +2162,7 @@ impl HistoryCell for FinalMessageSeparator {
         if let Some(elapsed_seconds) = self
             .elapsed_seconds
             .filter(|seconds| *seconds > 60)
-            .map(super::status_indicator_widget::fmt_elapsed_compact)
+            .map(|secs| super::status_indicator_widget::fmt_elapsed_compact(Language::En, secs))
         {
             label_parts.push(format!("Worked for {elapsed_seconds}"));
         }

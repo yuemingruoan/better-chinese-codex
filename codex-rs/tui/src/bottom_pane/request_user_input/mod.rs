@@ -28,9 +28,12 @@ use crate::bottom_pane::scroll_state::ScrollState;
 use crate::bottom_pane::selection_popup_common::GenericDisplayRow;
 use crate::bottom_pane::selection_popup_common::measure_rows_height;
 use crate::history_cell;
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::render::renderable::Renderable;
 
 use codex_core::protocol::Op;
+use codex_protocol::config_types::Language;
 use codex_protocol::request_user_input::RequestUserInputAnswer;
 use codex_protocol::request_user_input::RequestUserInputEvent;
 use codex_protocol::request_user_input::RequestUserInputResponse;
@@ -133,6 +136,7 @@ pub(crate) struct RequestUserInputOverlay {
     done: bool,
     pending_submission_draft: Option<ComposerDraft>,
     confirm_unanswered: Option<ScrollState>,
+    language: Language,
 }
 
 impl RequestUserInputOverlay {
@@ -166,11 +170,16 @@ impl RequestUserInputOverlay {
             done: false,
             pending_submission_draft: None,
             confirm_unanswered: None,
+            language: Language::En,
         };
         overlay.reset_for_request();
         overlay.ensure_focus_available();
         overlay.restore_current_draft();
         overlay
+    }
+
+    pub(crate) fn set_language(&mut self, language: Language) {
+        self.language = language;
     }
 
     fn current_index(&self) -> usize {
@@ -714,37 +723,7 @@ impl RequestUserInputOverlay {
     fn submit_answers(&mut self) {
         self.confirm_unanswered = None;
         self.save_current_draft();
-        let mut answers = HashMap::new();
-        for (idx, question) in self.request.questions.iter().enumerate() {
-            let answer_state = &self.answers[idx];
-            let options = question.options.as_ref();
-            // For option questions we may still produce no selection.
-            let selected_idx =
-                if options.is_some_and(|opts| !opts.is_empty()) && answer_state.answer_committed {
-                    answer_state.options_state.selected_idx
-                } else {
-                    None
-                };
-            // Notes are appended as extra answers. For freeform questions, only submit when
-            // the user explicitly committed the draft.
-            let notes = if answer_state.answer_committed {
-                answer_state.draft.text_with_pending().trim().to_string()
-            } else {
-                String::new()
-            };
-            let selected_label = selected_idx
-                .and_then(|selected_idx| Self::option_label_for_index(question, selected_idx));
-            let mut answer_list = selected_label.into_iter().collect::<Vec<_>>();
-            if !notes.is_empty() {
-                answer_list.push(format!("user_note: {notes}"));
-            }
-            answers.insert(
-                question.id.clone(),
-                RequestUserInputAnswer {
-                    answers: answer_list,
-                },
-            );
-        }
+        let answers = self.build_result_answers(false);
         self.app_event_tx
             .send(AppEvent::CodexOp(Op::UserInputAnswer {
                 id: self.request.turn_id.clone(),
@@ -769,6 +748,72 @@ impl RequestUserInputOverlay {
         }
     }
 
+    fn build_result_answers(
+        &self,
+        include_uncommitted_notes: bool,
+    ) -> HashMap<String, RequestUserInputAnswer> {
+        let mut answers = HashMap::new();
+        for (idx, question) in self.request.questions.iter().enumerate() {
+            let answer_state = &self.answers[idx];
+            let options = question.options.as_ref();
+            let selected_idx =
+                if options.is_some_and(|opts| !opts.is_empty()) && answer_state.answer_committed {
+                    answer_state.options_state.selected_idx
+                } else {
+                    None
+                };
+            let selected_label = selected_idx
+                .and_then(|selected_idx| Self::option_label_for_index(question, selected_idx));
+            let mut answer_list = selected_label.into_iter().collect::<Vec<_>>();
+            let notes = answer_state.draft.text_with_pending().trim().to_string();
+            if !notes.is_empty() && (answer_state.answer_committed || include_uncommitted_notes) {
+                answer_list.push(format!("user_note: {notes}"));
+            }
+            answers.insert(
+                question.id.clone(),
+                RequestUserInputAnswer {
+                    answers: answer_list,
+                },
+            );
+        }
+        answers
+    }
+
+    fn emit_interrupted_results(&mut self) {
+        self.confirm_unanswered = None;
+        self.save_current_draft();
+        let answers = self.build_result_answers(true);
+        self.app_event_tx.send(AppEvent::InsertHistoryCell(Box::new(
+            history_cell::RequestUserInputResultCell {
+                questions: self.request.questions.clone(),
+                answers,
+                interrupted: true,
+            },
+        )));
+
+        while let Some(request) = self.queue.pop_front() {
+            let answers = request
+                .questions
+                .iter()
+                .map(|question| {
+                    (
+                        question.id.clone(),
+                        RequestUserInputAnswer {
+                            answers: Vec::new(),
+                        },
+                    )
+                })
+                .collect();
+            self.app_event_tx.send(AppEvent::InsertHistoryCell(Box::new(
+                history_cell::RequestUserInputResultCell {
+                    questions: request.questions,
+                    answers,
+                    interrupted: true,
+                },
+            )));
+        }
+    }
+
     fn open_unanswered_confirmation(&mut self) {
         let mut state = ScrollState::new();
         state.selected_idx = Some(0);
@@ -781,6 +826,22 @@ impl RequestUserInputOverlay {
 
     fn unanswered_question_count(&self) -> usize {
         self.unanswered_count()
+    }
+
+    fn unanswered_confirmation_subtitle(&self) -> String {
+        let count = self.unanswered_question_count();
+        let count_str = count.to_string();
+        let suffix_key = if count == 1 {
+            "request_user_input.confirm_unanswered.submit_desc_singular"
+        } else {
+            "request_user_input.confirm_unanswered.submit_desc_plural"
+        };
+        let suffix = tr(self.language, suffix_key);
+        tr_args(
+            self.language,
+            "request_user_input.confirm_unanswered.subtitle",
+            &[("count", count_str.as_str()), ("suffix", suffix)],
+        )
     }
 
     fn unanswered_submit_description(&self) -> String {
@@ -1005,8 +1066,7 @@ impl BottomPaneView for RequestUserInputOverlay {
                 self.clear_notes_and_focus_options();
                 return;
             }
-            // TODO: Emit interrupted request_user_input results (including committed answers)
-            // once core supports persisting them reliably without follow-up turn issues.
+            self.emit_interrupted_results();
             self.app_event_tx.send(AppEvent::CodexOp(Op::Interrupt));
             self.done = true;
             return;
@@ -1221,8 +1281,7 @@ impl BottomPaneView for RequestUserInputOverlay {
     fn on_ctrl_c(&mut self) -> CancellationEvent {
         if self.confirm_unanswered_active() {
             self.close_unanswered_confirmation();
-            // TODO: Emit interrupted request_user_input results (including committed answers)
-            // once core supports persisting them reliably without follow-up turn issues.
+            self.emit_interrupted_results();
             self.app_event_tx.send(AppEvent::CodexOp(Op::Interrupt));
             self.done = true;
             return CancellationEvent::Handled;
@@ -1232,8 +1291,7 @@ impl BottomPaneView for RequestUserInputOverlay {
             return CancellationEvent::Handled;
         }
 
-        // TODO: Emit interrupted request_user_input results (including committed answers)
-        // once core supports persisting them reliably without follow-up turn issues.
+        self.emit_interrupted_results();
         self.app_event_tx.send(AppEvent::CodexOp(Op::Interrupt));
         self.done = true;
         CancellationEvent::Handled
@@ -1308,6 +1366,30 @@ mod tests {
             rx.try_recv().is_err(),
             "unexpected AppEvents before interrupt completion"
         );
+    }
+
+    fn next_interrupted_result(
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
+    ) -> (Vec<String>, HashMap<String, RequestUserInputAnswer>) {
+        let event = rx
+            .try_recv()
+            .expect("expected interrupted request_user_input history AppEvent");
+        let AppEvent::InsertHistoryCell(cell) = event else {
+            panic!("expected InsertHistoryCell");
+        };
+        let Some(result) = cell
+            .as_any()
+            .downcast_ref::<history_cell::RequestUserInputResultCell>()
+        else {
+            panic!("expected RequestUserInputResultCell");
+        };
+        assert!(result.interrupted);
+        let question_ids = result
+            .questions
+            .iter()
+            .map(|question| question.id.clone())
+            .collect::<Vec<_>>();
+        (question_ids, result.answers.clone())
     }
 
     fn question_with_options(id: &str, header: &str) -> RequestUserInputQuestion {
@@ -1529,6 +1611,18 @@ mod tests {
         overlay.handle_key_event(KeyEvent::from(KeyCode::Esc));
 
         assert!(overlay.done, "expected overlay to be done");
+        let (question_ids, answers) = next_interrupted_result(&mut rx);
+        assert_eq!(question_ids, vec!["q1".to_string()]);
+        let answer = answers.get("q1").expect("answer missing");
+        assert_eq!(answer.answers, Vec::<String>::new());
+        let (question_ids, answers) = next_interrupted_result(&mut rx);
+        assert_eq!(question_ids, vec!["q2".to_string()]);
+        let answer = answers.get("q2").expect("answer missing");
+        assert_eq!(answer.answers, Vec::<String>::new());
+        let (question_ids, answers) = next_interrupted_result(&mut rx);
+        assert_eq!(question_ids, vec!["q3".to_string()]);
+        let answer = answers.get("q3").expect("answer missing");
+        assert_eq!(answer.answers, Vec::<String>::new());
         expect_interrupt_only(&mut rx);
     }
 
@@ -1910,6 +2004,35 @@ mod tests {
         overlay.handle_key_event(KeyEvent::from(KeyCode::Esc));
 
         assert_eq!(overlay.done, true);
+        let (question_ids, answers) = next_interrupted_result(&mut rx);
+        assert_eq!(question_ids, vec!["q1".to_string()]);
+        let answer = answers.get("q1").expect("answer missing");
+        assert_eq!(answer.answers, Vec::<String>::new());
+        expect_interrupt_only(&mut rx);
+    }
+
+    #[test]
+    fn esc_in_freeform_with_text_emits_interrupted_note() {
+        let (tx, mut rx) = test_sender();
+        let mut overlay = RequestUserInputOverlay::new(
+            request_event("turn-1", vec![question_without_options("q1", "Notes")]),
+            tx,
+            true,
+            false,
+            false,
+        );
+        overlay
+            .composer
+            .set_text_content("Draft answer".to_string(), Vec::new(), Vec::new());
+        overlay.composer.move_cursor_to_end();
+
+        overlay.handle_key_event(KeyEvent::from(KeyCode::Esc));
+
+        assert_eq!(overlay.done, true);
+        let (question_ids, answers) = next_interrupted_result(&mut rx);
+        assert_eq!(question_ids, vec!["q1".to_string()]);
+        let answer = answers.get("q1").expect("answer missing");
+        assert_eq!(answer.answers, vec!["user_note: Draft answer".to_string()]);
         expect_interrupt_only(&mut rx);
     }
 
@@ -1927,6 +2050,10 @@ mod tests {
         overlay.handle_key_event(KeyEvent::from(KeyCode::Esc));
 
         assert_eq!(overlay.done, true);
+        let (question_ids, answers) = next_interrupted_result(&mut rx);
+        assert_eq!(question_ids, vec!["q1".to_string()]);
+        let answer = answers.get("q1").expect("answer missing");
+        assert_eq!(answer.answers, Vec::<String>::new());
         expect_interrupt_only(&mut rx);
     }
 
@@ -1988,7 +2115,7 @@ mod tests {
     }
 
     #[test]
-    fn esc_drops_committed_answers() {
+    fn esc_preserves_committed_answers_in_interrupted_result() {
         let (tx, mut rx) = test_sender();
         let mut overlay = RequestUserInputOverlay::new(
             request_event(
@@ -2012,6 +2139,12 @@ mod tests {
 
         overlay.handle_key_event(KeyEvent::from(KeyCode::Esc));
 
+        let (question_ids, answers) = next_interrupted_result(&mut rx);
+        assert_eq!(question_ids, vec!["q1".to_string(), "q2".to_string()]);
+        let answer = answers.get("q1").expect("answer missing");
+        assert_eq!(answer.answers, vec!["Option 1".to_string()]);
+        let answer = answers.get("q2").expect("answer missing");
+        assert_eq!(answer.answers, Vec::<String>::new());
         expect_interrupt_only(&mut rx);
     }
 

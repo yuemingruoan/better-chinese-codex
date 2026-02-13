@@ -199,6 +199,15 @@
 - 当前待办：
   - 等待用户确认 `.codex/task.md` 规划内容或提出调整意见。
 
+## 2026-02-13 00:51:55 CST
+- 采用多 sub-agent 并行完成 T18/T19/T25 收口，提交 `97cca18bc`：修复 TUI/TUI2 编译兼容、补齐 request_user_input 中断渲染链路并同步快照。
+- 新增 Claude 风格工具迁移（T2-T11），提交 `a6747d9ed`：落地 `Write/Edit/Glob/NotebookEdit` 新 handler，扩展 `AskUserQuestion/Bash/Read/Grep/TodoWrite/EnterPlanMode/ExitPlanMode` 适配与 spec/注册。
+- 已完成验证：`just fmt`、`cargo test -p codex-tui --quiet`、`cargo test -p codex-tui2 --quiet`、`cargo test -p codex-core tools::handlers::claude_`、`cargo test -p codex-core tools::spec::`、`cargo test -p codex-core --quiet`、`just fix -p codex-core`。
+
+- 当前待办：
+  - T17（WebFetch/WebSearch 适配）待确认是否按“网络工具不重构”策略保持现状。
+  - T20（整体收尾与文档矩阵）待最终验收后勾选。
+
 ## 2026-02-12 20:39:22 CST
 - 新增 Claude Code 风格工具集重构的任务规划 `.codex/task.md`，覆盖范围、里程碑、测试与风险。
 - 明确新工具集清单与 WebFetch/WebSearch 不重构的范围说明。
@@ -338,3 +347,54 @@
 
 - 当前待办：
   - 等待用户确认 `.codex/task.md`，确认后进入 T1（基线冻结与裁决规则）执行阶段。
+
+## 2026-02-12 22:50:02 CST
+- 按多 Agent 并行模式完成本轮实现收口：落地 `Task/TaskOutput/TaskStop/ToolSearch/Skill` Claude 风格 alias，新增 `task_batch`/`task_send_batch`（含 `fail_fast` 与部分成功语义）。
+- 完成并发/稳定性修复：`wait`/`wait_agents` 统一 `wakeup_reason`，支持 `timeout_ms=0` 非阻塞快照；`close_agent` 返回与事件改为关闭后最终状态；`shutdown_agent_with_descendants` 不再吞掉关闭错误。
+- 完成渲染链路补洞：TUI request_user_input 中断结果持久化；TUI2 新增 `RequestUserInput` 事件接线、pending 队列与中断后可见状态渲染（最小闭环）。
+- 已更新 `.codex/task.md` 进度：勾选 `T12/T13/T14/T15/T16/T22/T23/T24/T26` 为完成，保留 `T18/T19/T25` 待最终 UI 回归验证。
+- 验证记录：
+  - 通过：`just fmt`、`cargo test -p codex-core`、`cargo test -p codex-core tools::spec::`、`cargo test -p codex-core tools::handlers::claude_tool_adapter::`、`cargo test -p codex-core collab_batch::tests::`、`cargo test -p codex-core wait_`、`cargo test -p codex-core close_agent_`、`cargo test -p codex-core shutdown_agent_reports_close_errors`。
+  - 阻塞：`cargo test -p codex-tui request_user_input` 在当前分支存在既有编译错误（大量与本次改动无关的 i18n/签名不匹配）；`cargo test --manifest-path codex-rs/tui2/Cargo.toml chatwidget` 因 workspace 缺少 `mcp-types` 依赖映射无法启动。
+
+- 当前待办：
+  - 收敛 `codex-tui` 既有编译错误后，复跑 T18/T25 相关测试并决定是否勾选。
+  - 处理 `codex-rs/tui2/Cargo.toml` workspace 依赖缺口后，复跑 T19/T25 相关测试并决定是否勾选。
+
+## 2026-02-13 10:10:42 CST
+- 多 Agent 并行收口新增需求：落地子 Agent 命名/重命名能力（`spawn_agent.name` + `rename_agent` + `list_agents.name` 兼容输出）。
+- 完成 schema 与 handler 链路扩展：`spec.rs` 注册 `rename_agent`，`collab` handler 增加 `rename_agent` 分支并保持旧 `label` 兼容。
+- 按“网络能力不重构”策略完成 T17：保留原生 `web_search` 与 MCP `WebFetch` 供给路径，不改网络内核实现。
+- 已同步 `.codex/task.md`：勾选 `T1/T17/T20/T27`，并补充 T27 设计、里程碑、风险与测试条目。
+- 验证记录：
+  - 通过：`just fmt`、`cargo test -p codex-core tools::handlers::collab::tests::spawn_agent_name_alias_is_visible_in_list_agents`、`cargo test -p codex-core tools::handlers::collab::tests::rename_agent_updates_name`、`cargo test -p codex-core tools::spec::tests::test_spawn_agent_tool_schema`、`cargo test -p codex-core tools::spec::tests::test_rename_agent_tool_schema`、`cargo test -p codex-core`。
+
+- 当前待办：
+  - 无。
+
+## 2026-02-13 10:48:28 CST
+- 按“统一命名规范、无需向前兼容”收口子 Agent 命名：`spawn_agent` 不再兼容 `label`，统一使用 `name`。
+- 调整工具适配链路：`Task` 与 `Skill` alias 映射改为输出 `name`，不再向 `spawn_agent` 透传 `label`。
+- 调整 `list_agents` 输出：仅保留 `name` 命名字段；移除兼容 `label` 输出。
+- 同步更新 tool schema 与测试：`spawn_agent/task_batch` schema 移除 `label` 字段并补充 legacy 参数拒绝测试。
+- 验证记录：
+  - 通过：`just fmt`。
+  - 通过（定向）：`cargo test -p codex-core tools::handlers::collab::tests::spawn_agent_rejects_legacy_label_parameter`、`cargo test -p codex-core tools::handlers::collab::tests::spawn_agent_name_is_visible_in_list_agents`、`cargo test -p codex-core tools::handlers::collab::tests::rename_agent_updates_name`、`cargo test -p codex-core tools::handlers::claude_tool_adapter::tests::task_maps_supported_agent_type_and_name`、`cargo test -p codex-core tools::handlers::claude_tool_adapter::tests::skill_maps_to_spawnable_skill_item`、`cargo test -p codex-core tools::spec::tests::test_spawn_agent_tool_schema`、`cargo test -p codex-core tools::spec::tests::test_task_batch_tool_schema`。
+  - 通过（全量）：`cargo test -p codex-core`。
+
+- 当前待办：
+  - 无。
+
+## 2026-02-13 12:52:11 CST
+- 完成 T28“全工具命名统一审计收口”：collab/alias 入参统一为 `agent_id` / `agent_ids`，移除 `task_id` / `shell_id` / `id` / `ids` 的兼容入口。
+- 统一 collab 输出命名：`id -> agent_id`、`creator_id -> creator_agent_id`、`completed_ids -> completed_agent_ids`，并同步测试断言。
+- 修复批量发送链路命名漂移：`task_send_batch` 参数映射改为读取 `params.agent_id`，避免混合成功场景统计误判。
+- 已更新 `.codex/task.md`：新增并勾选 `T28`，补充里程碑 `M5.8`、依赖与命名专项验收条目。
+- 验证记录：
+  - 通过：`just fmt`。
+  - 通过：`cargo test -p codex-core`（含 `tests/all.rs` 与 `responses_headers.rs`）。
+  - 通过：`cargo test -p codex-tui --quiet`。
+  - 通过：`cargo test -p codex-tui2 --quiet`。
+
+- 当前待办：
+  - 无。
