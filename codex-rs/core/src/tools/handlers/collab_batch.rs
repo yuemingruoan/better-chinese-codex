@@ -201,7 +201,7 @@ async fn handle_task_send_batch(
         let operation_call_id = format!("{call_id}:{index}");
         let agent_id = operation
             .params
-            .get("id")
+            .get("agent_id")
             .and_then(JsonValue::as_str)
             .map(ToString::to_string);
         let output = run_collab_operation(
@@ -416,14 +416,14 @@ mod tests {
                     {
                         "id": "ok",
                         "params": {
-                            "id": existing_agent_id_string,
+                            "agent_id": existing_agent_id_string,
                             "items": [{"type": "text", "text": "hello"}]
                         }
                     },
                     {
                         "id": "missing",
                         "params": {
-                            "id": missing_agent_id_string,
+                            "agent_id": missing_agent_id_string,
                             "items": [{"type": "text", "text": "hello"}]
                         }
                     }
@@ -502,14 +502,14 @@ mod tests {
                     {
                         "id": "missing",
                         "params": {
-                            "id": missing_agent_id.to_string(),
+                            "agent_id": missing_agent_id.to_string(),
                             "items": [{"type": "text", "text": "hello"}]
                         }
                     },
                     {
                         "id": "ok",
                         "params": {
-                            "id": existing_agent_id.to_string(),
+                            "agent_id": existing_agent_id.to_string(),
                             "items": [{"type": "text", "text": "should-not-run"}]
                         }
                     }

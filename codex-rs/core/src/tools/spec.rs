@@ -608,7 +608,7 @@ fn create_spawn_agent_tool() -> ToolSpec {
 fn create_send_input_parameters() -> JsonSchema {
     let properties = BTreeMap::from([
         (
-            "id".to_string(),
+            "agent_id".to_string(),
             JsonSchema::String {
                 description: Some("Agent id to message (from spawn_agent).".to_string()),
             },
@@ -627,7 +627,7 @@ fn create_send_input_parameters() -> JsonSchema {
 
     JsonSchema::Object {
         properties,
-        required: Some(vec!["id".to_string(), "items".to_string()]),
+        required: Some(vec!["agent_id".to_string(), "items".to_string()]),
         additional_properties: Some(false.into()),
     }
 }
@@ -716,7 +716,7 @@ fn create_task_send_batch_tool() -> ToolSpec {
 fn create_resume_agent_tool() -> ToolSpec {
     let mut properties = BTreeMap::new();
     properties.insert(
-        "id".to_string(),
+        "agent_id".to_string(),
         JsonSchema::String {
             description: Some("Agent id to resume.".to_string()),
         },
@@ -725,12 +725,12 @@ fn create_resume_agent_tool() -> ToolSpec {
     ToolSpec::Function(ResponsesApiTool {
         name: "resume_agent".to_string(),
         description:
-            "Resume a previously closed agent by id so it can receive send_input and wait calls."
+            "Resume a previously closed agent by agent_id so it can receive send_input and wait calls."
                 .to_string(),
         strict: false,
         parameters: JsonSchema::Object {
             properties,
-            required: Some(vec!["id".to_string()]),
+            required: Some(vec!["agent_id".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
@@ -739,7 +739,7 @@ fn create_resume_agent_tool() -> ToolSpec {
 fn create_wait_tool() -> ToolSpec {
     let mut properties = BTreeMap::new();
     properties.insert(
-        "ids".to_string(),
+        "agent_ids".to_string(),
         JsonSchema::Array {
             items: Box::new(JsonSchema::String { description: None }),
             description: Some(
@@ -764,7 +764,7 @@ fn create_wait_tool() -> ToolSpec {
         strict: false,
         parameters: JsonSchema::Object {
             properties,
-            required: Some(vec!["ids".to_string()]),
+            required: Some(vec!["agent_ids".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
@@ -854,7 +854,7 @@ fn create_request_user_input_tool() -> ToolSpec {
 fn create_wait_agents_tool() -> ToolSpec {
     let mut properties = BTreeMap::new();
     properties.insert(
-        "ids".to_string(),
+        "agent_ids".to_string(),
         JsonSchema::Array {
             items: Box::new(JsonSchema::String {
                 description: Some("Agent id to wait on.".to_string()),
@@ -895,9 +895,9 @@ fn create_wait_agents_tool() -> ToolSpec {
 fn create_list_agents_tool() -> ToolSpec {
     let mut properties = BTreeMap::new();
     properties.insert(
-        "creator_id".to_string(),
+        "agent_id".to_string(),
         JsonSchema::String {
-            description: Some("Optional creator thread id filter.".to_string()),
+            description: Some("Optional agent id filter.".to_string()),
         },
     );
     properties.insert(
@@ -934,7 +934,7 @@ fn create_list_agents_tool() -> ToolSpec {
 fn create_close_agent_tool() -> ToolSpec {
     let mut properties = BTreeMap::new();
     properties.insert(
-        "id".to_string(),
+        "agent_id".to_string(),
         JsonSchema::String {
             description: Some("Agent id to close (from spawn_agent).".to_string()),
         },
@@ -947,7 +947,7 @@ fn create_close_agent_tool() -> ToolSpec {
         strict: false,
         parameters: JsonSchema::Object {
             properties,
-            required: Some(vec!["id".to_string()]),
+            required: Some(vec!["agent_id".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
@@ -956,7 +956,7 @@ fn create_close_agent_tool() -> ToolSpec {
 fn create_rename_agent_tool() -> ToolSpec {
     let properties = BTreeMap::from([
         (
-            "id".to_string(),
+            "agent_id".to_string(),
             JsonSchema::String {
                 description: Some("Agent id to rename (from spawn_agent).".to_string()),
             },
@@ -971,11 +971,12 @@ fn create_rename_agent_tool() -> ToolSpec {
 
     ToolSpec::Function(ResponsesApiTool {
         name: "rename_agent".to_string(),
-        description: "Rename an existing agent by id / 按 id 重命名现有子 Agent".to_string(),
+        description: "Rename an existing agent by agent_id / 按 agent_id 重命名现有子 Agent"
+            .to_string(),
         strict: false,
         parameters: JsonSchema::Object {
             properties,
-            required: Some(vec!["id".to_string(), "name".to_string()]),
+            required: Some(vec!["agent_id".to_string(), "name".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
@@ -984,7 +985,7 @@ fn create_rename_agent_tool() -> ToolSpec {
 fn create_close_agents_tool() -> ToolSpec {
     let mut properties = BTreeMap::new();
     properties.insert(
-        "ids".to_string(),
+        "agent_ids".to_string(),
         JsonSchema::Array {
             items: Box::new(JsonSchema::String {
                 description: Some("Identifier of the agent to close.".to_string()),
@@ -1005,7 +1006,7 @@ fn create_close_agents_tool() -> ToolSpec {
         strict: false,
         parameters: JsonSchema::Object {
             properties,
-            required: Some(vec!["ids".to_string()]),
+            required: Some(vec!["agent_ids".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
@@ -1065,7 +1066,7 @@ fn create_claude_task_alias_tool() -> ToolSpec {
         (
             "resume".to_string(),
             JsonSchema::String {
-                description: Some("Optional task id to resume / 可选恢复任务 id".to_string()),
+                description: Some("Optional agent id to resume / 可选恢复 agent id".to_string()),
             },
         ),
         (
@@ -1104,9 +1105,9 @@ fn create_claude_task_alias_tool() -> ToolSpec {
 fn create_claude_task_output_alias_tool() -> ToolSpec {
     let properties = BTreeMap::from([
         (
-            "task_id".to_string(),
+            "agent_id".to_string(),
             JsonSchema::String {
-                description: Some("Task id to inspect / 要查询的任务 id".to_string()),
+                description: Some("Agent id to inspect / 要查询的 agent id".to_string()),
             },
         ),
         (
@@ -1136,7 +1137,7 @@ fn create_claude_task_output_alias_tool() -> ToolSpec {
         strict: false,
         parameters: JsonSchema::Object {
             properties,
-            required: Some(vec!["task_id".to_string()]),
+            required: Some(vec!["agent_id".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
@@ -1144,9 +1145,9 @@ fn create_claude_task_output_alias_tool() -> ToolSpec {
 
 fn create_claude_task_stop_alias_tool() -> ToolSpec {
     let properties = BTreeMap::from([(
-        "task_id".to_string(),
+        "agent_id".to_string(),
         JsonSchema::String {
-            description: Some("Task id to stop / 要停止的任务 id".to_string()),
+            description: Some("Agent id to stop / 要停止的 agent id".to_string()),
         },
     )]);
 
@@ -1157,7 +1158,7 @@ fn create_claude_task_stop_alias_tool() -> ToolSpec {
         strict: false,
         parameters: JsonSchema::Object {
             properties,
-            required: Some(vec!["task_id".to_string()]),
+            required: Some(vec!["agent_id".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
@@ -2986,14 +2987,21 @@ mod tests {
         else {
             panic!("expected object schema for rename_agent");
         };
-        assert_eq!(required, Some(vec!["id".to_string(), "name".to_string()]));
+        assert_eq!(
+            required,
+            Some(vec!["agent_id".to_string(), "name".to_string()])
+        );
         assert_eq!(additional_properties, Some(false.into()));
-        for key in ["id", "name"] {
+        for key in ["agent_id", "name"] {
             assert!(
                 properties.contains_key(key),
                 "rename_agent schema should define {key}"
             );
         }
+        assert!(
+            !properties.contains_key("id"),
+            "rename_agent schema should not expose legacy id"
+        );
     }
 
     #[test]
@@ -3103,11 +3111,12 @@ mod tests {
         };
         assert_eq!(
             params_required,
-            &Some(vec!["id".to_string(), "items".to_string()])
+            &Some(vec!["agent_id".to_string(), "items".to_string()])
         );
         assert_eq!(params_additional_properties, &Some(false.into()));
-        assert!(params_properties.contains_key("id"));
+        assert!(params_properties.contains_key("agent_id"));
         assert!(params_properties.contains_key("items"));
+        assert!(!params_properties.contains_key("id"));
     }
 
     #[test]
@@ -3176,14 +3185,199 @@ mod tests {
         else {
             panic!("expected object schema for TaskOutput");
         };
-        assert_eq!(required, Some(vec!["task_id".to_string()]));
+        assert_eq!(required, Some(vec!["agent_id".to_string()]));
         assert_eq!(additional_properties, Some(false.into()));
-        for key in ["task_id", "block", "timeout"] {
+        for key in ["agent_id", "block", "timeout"] {
             assert!(
                 properties.contains_key(key),
                 "TaskOutput schema should define {key}"
             );
         }
+        assert!(
+            !properties.contains_key("task_id"),
+            "TaskOutput schema should not expose legacy task_id"
+        );
+    }
+
+    #[test]
+    fn test_claude_task_stop_alias_tool_schema() {
+        let mut tool = create_claude_task_stop_alias_tool();
+        strip_descriptions_tool(&mut tool);
+        let ToolSpec::Function(ResponsesApiTool {
+            name, parameters, ..
+        }) = tool
+        else {
+            panic!("expected TaskStop to be a function tool");
+        };
+        assert_eq!(name, "TaskStop");
+        let JsonSchema::Object {
+            properties,
+            required,
+            additional_properties,
+        } = parameters
+        else {
+            panic!("expected object schema for TaskStop");
+        };
+        assert_eq!(required, Some(vec!["agent_id".to_string()]));
+        assert_eq!(additional_properties, Some(false.into()));
+        assert!(properties.contains_key("agent_id"));
+        assert!(
+            !properties.contains_key("task_id"),
+            "TaskStop schema should not expose legacy task_id"
+        );
+    }
+
+    #[test]
+    fn test_collab_agent_identifier_schemas() {
+        let mut send_input = create_send_input_tool();
+        strip_descriptions_tool(&mut send_input);
+        let ToolSpec::Function(ResponsesApiTool {
+            parameters: send_input_parameters,
+            ..
+        }) = send_input
+        else {
+            panic!("expected send_input to be a function tool");
+        };
+        let JsonSchema::Object {
+            properties: send_input_properties,
+            required: send_input_required,
+            ..
+        } = send_input_parameters
+        else {
+            panic!("expected object schema for send_input");
+        };
+        assert_eq!(
+            send_input_required,
+            Some(vec!["agent_id".to_string(), "items".to_string()])
+        );
+        assert!(send_input_properties.contains_key("agent_id"));
+        assert!(!send_input_properties.contains_key("id"));
+
+        let mut resume_agent = create_resume_agent_tool();
+        strip_descriptions_tool(&mut resume_agent);
+        let ToolSpec::Function(ResponsesApiTool {
+            parameters: resume_agent_parameters,
+            ..
+        }) = resume_agent
+        else {
+            panic!("expected resume_agent to be a function tool");
+        };
+        let JsonSchema::Object {
+            properties: resume_agent_properties,
+            required: resume_agent_required,
+            ..
+        } = resume_agent_parameters
+        else {
+            panic!("expected object schema for resume_agent");
+        };
+        assert_eq!(resume_agent_required, Some(vec!["agent_id".to_string()]));
+        assert!(resume_agent_properties.contains_key("agent_id"));
+        assert!(!resume_agent_properties.contains_key("id"));
+
+        let mut wait = create_wait_tool();
+        strip_descriptions_tool(&mut wait);
+        let ToolSpec::Function(ResponsesApiTool {
+            parameters: wait_parameters,
+            ..
+        }) = wait
+        else {
+            panic!("expected wait to be a function tool");
+        };
+        let JsonSchema::Object {
+            properties: wait_properties,
+            required: wait_required,
+            ..
+        } = wait_parameters
+        else {
+            panic!("expected object schema for wait");
+        };
+        assert_eq!(wait_required, Some(vec!["agent_ids".to_string()]));
+        assert!(wait_properties.contains_key("agent_ids"));
+        assert!(!wait_properties.contains_key("ids"));
+
+        let mut wait_agents = create_wait_agents_tool();
+        strip_descriptions_tool(&mut wait_agents);
+        let ToolSpec::Function(ResponsesApiTool {
+            parameters: wait_agents_parameters,
+            ..
+        }) = wait_agents
+        else {
+            panic!("expected wait_agents to be a function tool");
+        };
+        let JsonSchema::Object {
+            properties: wait_agents_properties,
+            required: wait_agents_required,
+            ..
+        } = wait_agents_parameters
+        else {
+            panic!("expected object schema for wait_agents");
+        };
+        assert_eq!(wait_agents_required, None);
+        assert!(wait_agents_properties.contains_key("agent_ids"));
+        assert!(!wait_agents_properties.contains_key("ids"));
+
+        let mut list_agents = create_list_agents_tool();
+        strip_descriptions_tool(&mut list_agents);
+        let ToolSpec::Function(ResponsesApiTool {
+            parameters: list_agents_parameters,
+            ..
+        }) = list_agents
+        else {
+            panic!("expected list_agents to be a function tool");
+        };
+        let JsonSchema::Object {
+            properties: list_agents_properties,
+            required: list_agents_required,
+            ..
+        } = list_agents_parameters
+        else {
+            panic!("expected object schema for list_agents");
+        };
+        assert_eq!(list_agents_required, None);
+        assert!(list_agents_properties.contains_key("agent_id"));
+        assert!(!list_agents_properties.contains_key("creator_id"));
+
+        let mut close_agent = create_close_agent_tool();
+        strip_descriptions_tool(&mut close_agent);
+        let ToolSpec::Function(ResponsesApiTool {
+            parameters: close_agent_parameters,
+            ..
+        }) = close_agent
+        else {
+            panic!("expected close_agent to be a function tool");
+        };
+        let JsonSchema::Object {
+            properties: close_agent_properties,
+            required: close_agent_required,
+            ..
+        } = close_agent_parameters
+        else {
+            panic!("expected object schema for close_agent");
+        };
+        assert_eq!(close_agent_required, Some(vec!["agent_id".to_string()]));
+        assert!(close_agent_properties.contains_key("agent_id"));
+        assert!(!close_agent_properties.contains_key("id"));
+
+        let mut close_agents = create_close_agents_tool();
+        strip_descriptions_tool(&mut close_agents);
+        let ToolSpec::Function(ResponsesApiTool {
+            parameters: close_agents_parameters,
+            ..
+        }) = close_agents
+        else {
+            panic!("expected close_agents to be a function tool");
+        };
+        let JsonSchema::Object {
+            properties: close_agents_properties,
+            required: close_agents_required,
+            ..
+        } = close_agents_parameters
+        else {
+            panic!("expected object schema for close_agents");
+        };
+        assert_eq!(close_agents_required, Some(vec!["agent_ids".to_string()]));
+        assert!(close_agents_properties.contains_key("agent_ids"));
+        assert!(!close_agents_properties.contains_key("ids"));
     }
 
     #[test]

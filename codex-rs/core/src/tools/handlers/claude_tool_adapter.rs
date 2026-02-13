@@ -58,7 +58,7 @@ struct TaskArgs {
 
 #[derive(Debug, Deserialize)]
 struct TaskOutputArgs {
-    task_id: Option<String>,
+    agent_id: Option<String>,
     #[serde(default = "default_block")]
     block: bool,
     timeout: Option<i64>,
@@ -66,8 +66,7 @@ struct TaskOutputArgs {
 
 #[derive(Debug, Deserialize)]
 struct TaskStopArgs {
-    task_id: Option<String>,
-    shell_id: Option<String>,
+    agent_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -275,12 +274,12 @@ fn map_task_to_spawn_payload(args: TaskArgs) -> Result<JsonValue, FunctionCallEr
 }
 
 fn map_task_output_to_wait_payload(args: TaskOutputArgs) -> Result<JsonValue, FunctionCallError> {
-    let task_id = required_non_empty_text(
-        args.task_id.as_deref(),
-        "task_id must not be empty / task_id 不能为空",
+    let agent_id = required_non_empty_text(
+        args.agent_id.as_deref(),
+        "agent_id must not be empty / agent_id 不能为空",
     )?;
     let mut payload = JsonMap::new();
-    payload.insert("ids".to_string(), json!([task_id]));
+    payload.insert("agent_ids".to_string(), json!([agent_id]));
     let timeout_ms = if args.block { args.timeout } else { Some(0) };
     if let Some(timeout_ms) = timeout_ms {
         if args.block && timeout_ms < 0 {
@@ -295,14 +294,11 @@ fn map_task_output_to_wait_payload(args: TaskOutputArgs) -> Result<JsonValue, Fu
 }
 
 fn map_task_stop_to_close_payload(args: TaskStopArgs) -> Result<JsonValue, FunctionCallError> {
-    let target_id = normalize_text(args.task_id.as_deref())
-        .or_else(|| normalize_text(args.shell_id.as_deref()))
-        .ok_or_else(|| {
-            FunctionCallError::RespondToModel(
-                "task_id or shell_id must not be empty / task_id 或 shell_id 不能为空".to_string(),
-            )
-        })?;
-    Ok(json!({ "id": target_id }))
+    let agent_id = required_non_empty_text(
+        args.agent_id.as_deref(),
+        "agent_id must not be empty / agent_id 不能为空",
+    )?;
+    Ok(json!({ "agent_id": agent_id }))
 }
 
 fn map_tool_search_payload(args: ToolSearchArgs) -> Result<JsonValue, FunctionCallError> {
@@ -908,7 +904,7 @@ mod tests {
     #[test]
     fn task_output_non_blocking_maps_to_zero_timeout() {
         let payload = map_task_output_to_wait_payload(TaskOutputArgs {
-            task_id: Some("agent-1".to_string()),
+            agent_id: Some("agent-1".to_string()),
             block: false,
             timeout: Some(5000),
         })
@@ -917,7 +913,7 @@ mod tests {
         assert_eq!(
             payload,
             json!({
-                "ids": ["agent-1"],
+                "agent_ids": ["agent-1"],
                 "timeout_ms": 0,
             })
         );
@@ -1102,18 +1098,18 @@ mod tests {
     }
 
     #[test]
-    fn task_output_rejects_missing_task_id() {
+    fn task_output_rejects_missing_agent_id() {
         let err = map_task_output_to_wait_payload(TaskOutputArgs {
-            task_id: None,
+            agent_id: None,
             block: true,
             timeout: None,
         })
-        .expect_err("missing task_id should fail");
+        .expect_err("missing agent_id should fail");
 
         assert_eq!(
             err,
             FunctionCallError::RespondToModel(
-                "task_id must not be empty / task_id 不能为空".to_string()
+                "agent_id must not be empty / agent_id 不能为空".to_string()
             )
         );
     }
@@ -1121,7 +1117,7 @@ mod tests {
     #[test]
     fn task_output_rejects_negative_blocking_timeout() {
         let err = map_task_output_to_wait_payload(TaskOutputArgs {
-            task_id: Some("agent-1".to_string()),
+            agent_id: Some("agent-1".to_string()),
             block: true,
             timeout: Some(-1),
         })
@@ -1137,14 +1133,52 @@ mod tests {
     }
 
     #[test]
-    fn task_stop_accepts_shell_id_fallback() {
-        let payload = map_task_stop_to_close_payload(TaskStopArgs {
-            task_id: None,
-            shell_id: Some("agent-2".to_string()),
-        })
-        .expect("shell_id fallback should map");
+    fn task_output_rejects_legacy_task_id_argument() {
+        let args: TaskOutputArgs = parse_arguments(
+            &json!({
+                "task_id": "agent-1",
+                "block": true
+            })
+            .to_string(),
+        )
+        .expect("legacy payload should deserialize");
+        let err = map_task_output_to_wait_payload(args).expect_err("legacy task_id should fail");
 
-        assert_eq!(payload, json!({ "id": "agent-2" }));
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(
+                "agent_id must not be empty / agent_id 不能为空".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn task_stop_maps_agent_id_to_close_payload() {
+        let payload = map_task_stop_to_close_payload(TaskStopArgs {
+            agent_id: Some("agent-2".to_string()),
+        })
+        .expect("agent_id should map");
+
+        assert_eq!(payload, json!({ "agent_id": "agent-2" }));
+    }
+
+    #[test]
+    fn task_stop_rejects_legacy_shell_id_argument() {
+        let args: TaskStopArgs = parse_arguments(
+            &json!({
+                "shell_id": "agent-2"
+            })
+            .to_string(),
+        )
+        .expect("legacy payload should deserialize");
+        let err = map_task_stop_to_close_payload(args).expect_err("legacy shell_id should fail");
+
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel(
+                "agent_id must not be empty / agent_id 不能为空".to_string()
+            )
+        );
     }
 
     #[test]
@@ -1177,7 +1211,7 @@ mod tests {
             Arc::new(turn),
             TASK_OUTPUT_TOOL_NAME,
             json!({
-                "task_id": agent_id,
+                "agent_id": agent_id,
                 "block": false,
                 "timeout": 5000
             }),

@@ -384,3 +384,17 @@
 
 - 当前待办：
   - 无。
+
+## 2026-02-13 12:52:11 CST
+- 完成 T28“全工具命名统一审计收口”：collab/alias 入参统一为 `agent_id` / `agent_ids`，移除 `task_id` / `shell_id` / `id` / `ids` 的兼容入口。
+- 统一 collab 输出命名：`id -> agent_id`、`creator_id -> creator_agent_id`、`completed_ids -> completed_agent_ids`，并同步测试断言。
+- 修复批量发送链路命名漂移：`task_send_batch` 参数映射改为读取 `params.agent_id`，避免混合成功场景统计误判。
+- 已更新 `.codex/task.md`：新增并勾选 `T28`，补充里程碑 `M5.8`、依赖与命名专项验收条目。
+- 验证记录：
+  - 通过：`just fmt`。
+  - 通过：`cargo test -p codex-core`（含 `tests/all.rs` 与 `responses_headers.rs`）。
+  - 通过：`cargo test -p codex-tui --quiet`。
+  - 通过：`cargo test -p codex-tui2 --quiet`。
+
+- 当前待办：
+  - 无。

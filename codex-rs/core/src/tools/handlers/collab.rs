@@ -54,7 +54,7 @@ enum WaitWakeupReason {
 
 #[derive(Debug, Deserialize)]
 struct CloseAgentArgs {
-    id: String,
+    agent_id: String,
 }
 
 #[derive(Debug, Default)]
@@ -255,7 +255,7 @@ mod send_input {
 
     #[derive(Debug, Deserialize)]
     struct SendInputArgs {
-        id: String,
+        agent_id: String,
         items: Option<Vec<UserInput>>,
         #[serde(default)]
         interrupt: bool,
@@ -273,7 +273,7 @@ mod send_input {
         arguments: String,
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: SendInputArgs = parse_arguments(&arguments)?;
-        let receiver_thread_id = agent_id(&args.id)?;
+        let receiver_thread_id = agent_id(&args.agent_id)?;
         let input_items = parse_collab_input(args.items)?;
         let prompt = input_preview(&input_items);
         if args.interrupt {
@@ -342,7 +342,7 @@ mod resume_agent {
 
     #[derive(Debug, Deserialize)]
     struct ResumeAgentArgs {
-        id: String,
+        agent_id: String,
     }
 
     #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -357,7 +357,7 @@ mod resume_agent {
         arguments: String,
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: ResumeAgentArgs = parse_arguments(&arguments)?;
-        let receiver_thread_id = agent_id(&args.id)?;
+        let receiver_thread_id = agent_id(&args.agent_id)?;
         let child_depth = next_thread_spawn_depth(&turn.session_source);
         if exceeds_thread_spawn_depth_limit(child_depth) {
             return Err(FunctionCallError::RespondToModel(
@@ -388,7 +388,7 @@ mod resume_agent {
                 &session,
                 &turn,
                 receiver_thread_id,
-                &args.id,
+                &args.agent_id,
                 child_depth,
             )
             .await
@@ -496,8 +496,8 @@ mod wait {
 
     #[derive(Debug, Deserialize)]
     struct WaitArgs {
-        id: Option<String>,
-        ids: Option<Vec<String>>,
+        agent_id: Option<String>,
+        agent_ids: Option<Vec<String>>,
         timeout_ms: Option<i64>,
     }
 
@@ -515,18 +515,18 @@ mod wait {
         arguments: String,
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: WaitArgs = parse_arguments(&arguments)?;
-        let mut ids = args.ids.unwrap_or_default();
-        if ids.is_empty()
-            && let Some(id) = args.id
+        let mut agent_ids = args.agent_ids.unwrap_or_default();
+        if agent_ids.is_empty()
+            && let Some(agent_id) = args.agent_id
         {
-            ids.push(id);
+            agent_ids.push(agent_id);
         }
-        if ids.is_empty() {
+        if agent_ids.is_empty() {
             return Err(FunctionCallError::RespondToModel(
-                "ids must be non-empty".to_owned(),
+                "agent_ids must be non-empty".to_owned(),
             ));
         }
-        let receiver_thread_ids = ids
+        let receiver_thread_ids = agent_ids
             .iter()
             .map(|id| agent_id(id))
             .collect::<Result<Vec<_>, _>>()?;
@@ -694,21 +694,21 @@ mod wait_agents {
 
     #[derive(Debug, Deserialize)]
     struct WaitAgentsArgs {
-        ids: Option<Vec<String>>,
+        agent_ids: Option<Vec<String>>,
         mode: Option<WaitAgentsMode>,
         timeout_ms: Option<i64>,
     }
 
     #[derive(Debug, Serialize)]
     struct AgentStatusSnapshot {
-        id: String,
+        agent_id: String,
         status: AgentStatus,
     }
 
     #[derive(Debug, Serialize)]
     struct WaitAgentsResult {
         statuses: Vec<AgentStatusSnapshot>,
-        completed_ids: Vec<String>,
+        completed_agent_ids: Vec<String>,
         timed_out: bool,
         wakeup_reason: WaitWakeupReason,
     }
@@ -724,7 +724,7 @@ mod wait_agents {
             resolve_wait_timeout_ms(args.timeout_ms, turn.config.default_wait_timeout_ms)?;
         let mode = args.mode.unwrap_or(WaitAgentsMode::Any);
         let target_ids =
-            resolve_target_ids(session.as_ref(), args.ids, session.conversation_id).await?;
+            resolve_target_ids(session.as_ref(), args.agent_ids, session.conversation_id).await?;
 
         session
             .send_event(
@@ -744,12 +744,13 @@ mod wait_agents {
             .statuses
             .iter()
             .map(|snapshot| {
-                let receiver_thread_id = ThreadId::from_string(&snapshot.id).map_err(|err| {
-                    FunctionCallError::Fatal(format!(
-                        "failed to deserialize wait_agents snapshot id {}: {err:?}",
-                        snapshot.id
-                    ))
-                })?;
+                let receiver_thread_id =
+                    ThreadId::from_string(&snapshot.agent_id).map_err(|err| {
+                        FunctionCallError::Fatal(format!(
+                            "failed to deserialize wait_agents snapshot id {}: {err:?}",
+                            snapshot.agent_id
+                        ))
+                    })?;
                 Ok((receiver_thread_id, snapshot.status.clone()))
             })
             .collect::<Result<HashMap<_, _>, _>>()?;
@@ -783,15 +784,18 @@ mod wait_agents {
 
     async fn resolve_target_ids(
         session: &Session,
-        ids: Option<Vec<String>>,
+        agent_ids: Option<Vec<String>>,
         current_thread_id: ThreadId,
     ) -> Result<Vec<ThreadId>, FunctionCallError> {
-        let use_explicit_ids = ids.as_ref().is_some_and(|agent_ids| !agent_ids.is_empty());
+        let use_explicit_ids = agent_ids
+            .as_ref()
+            .is_some_and(|agent_ids| !agent_ids.is_empty());
         let mut seen = HashSet::new();
-        let parsed_ids = if let Some(ids) = ids
-            && !ids.is_empty()
+        let parsed_ids = if let Some(agent_ids) = agent_ids
+            && !agent_ids.is_empty()
         {
-            ids.into_iter()
+            agent_ids
+                .into_iter()
                 .map(|id| agent_id(&id))
                 .collect::<Result<Vec<_>, _>>()?
         } else {
@@ -846,7 +850,7 @@ mod wait_agents {
         if ids.is_empty() {
             return Ok(WaitAgentsResult {
                 statuses: Vec::new(),
-                completed_ids: Vec::new(),
+                completed_agent_ids: Vec::new(),
                 timed_out: false,
                 wakeup_reason: WaitWakeupReason::NoTargets,
             });
@@ -855,13 +859,13 @@ mod wait_agents {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms as u64);
         loop {
             let statuses = collect_statuses(session, ids).await;
-            let completed_ids = statuses
+            let completed_agent_ids = statuses
                 .iter()
                 .filter(|snapshot| is_final(&snapshot.status))
-                .map(|snapshot| snapshot.id.clone())
+                .map(|snapshot| snapshot.agent_id.clone())
                 .collect::<Vec<_>>();
-            let all_done = completed_ids.len() == statuses.len();
-            let any_done = !completed_ids.is_empty();
+            let all_done = completed_agent_ids.len() == statuses.len();
+            let any_done = !completed_agent_ids.is_empty();
             let wakeup_reason = match mode {
                 WaitAgentsMode::Any if any_done => Some(WaitWakeupReason::AnyCompleted),
                 WaitAgentsMode::All if all_done => Some(WaitWakeupReason::AllCompleted),
@@ -870,7 +874,7 @@ mod wait_agents {
             if let Some(wakeup_reason) = wakeup_reason {
                 return Ok(WaitAgentsResult {
                     statuses,
-                    completed_ids,
+                    completed_agent_ids,
                     timed_out: false,
                     wakeup_reason,
                 });
@@ -880,7 +884,7 @@ mod wait_agents {
             if now >= deadline {
                 return Ok(WaitAgentsResult {
                     statuses,
-                    completed_ids,
+                    completed_agent_ids,
                     timed_out: true,
                     wakeup_reason: WaitWakeupReason::Timeout,
                 });
@@ -895,7 +899,7 @@ mod wait_agents {
         let mut statuses = Vec::with_capacity(ids.len());
         for id in ids {
             statuses.push(AgentStatusSnapshot {
-                id: id.to_string(),
+                agent_id: id.to_string(),
                 status: session.services.agent_control.get_status(*id).await,
             });
         }
@@ -921,15 +925,15 @@ mod list_agents {
 
     #[derive(Debug, Deserialize)]
     struct ListAgentsArgs {
-        creator_id: Option<String>,
+        agent_id: Option<String>,
         statuses: Option<Vec<AgentStatusKind>>,
         include_closed: Option<bool>,
     }
 
     #[derive(Debug, Serialize)]
     struct ListAgentItem {
-        id: String,
-        creator_id: Option<String>,
+        agent_id: String,
+        creator_agent_id: Option<String>,
         name: Option<String>,
         goal: String,
         acceptance_criteria: Vec<String>,
@@ -952,7 +956,7 @@ mod list_agents {
         arguments: String,
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: ListAgentsArgs = parse_arguments(&arguments)?;
-        let creator_id = args.creator_id.as_deref().map(agent_id).transpose()?;
+        let creator_agent_id = args.agent_id.as_deref().map(agent_id).transpose()?;
         let status_filters = args
             .statuses
             .unwrap_or_default()
@@ -971,8 +975,8 @@ mod list_agents {
             if !include_closed && agent.closed {
                 continue;
             }
-            if let Some(creator_id) = creator_id
-                && agent.creator_thread_id != Some(creator_id)
+            if let Some(creator_agent_id) = creator_agent_id
+                && agent.creator_thread_id != Some(creator_agent_id)
             {
                 continue;
             }
@@ -980,8 +984,8 @@ mod list_agents {
                 continue;
             }
             items.push(ListAgentItem {
-                id: agent.agent_id.to_string(),
-                creator_id: agent.creator_thread_id.map(|id| id.to_string()),
+                agent_id: agent.agent_id.to_string(),
+                creator_agent_id: agent.creator_thread_id.map(|id| id.to_string()),
                 name: agent.label,
                 goal: agent.goal,
                 acceptance_criteria: agent.acceptance_criteria,
@@ -1021,13 +1025,13 @@ mod rename_agent {
 
     #[derive(Debug, Deserialize)]
     struct RenameAgentArgs {
-        id: String,
+        agent_id: String,
         name: String,
     }
 
     #[derive(Debug, Serialize)]
     struct RenameAgentResult {
-        id: String,
+        agent_id: String,
         name: String,
     }
 
@@ -1037,7 +1041,7 @@ mod rename_agent {
         arguments: String,
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: RenameAgentArgs = parse_arguments(&arguments)?;
-        let agent_id = agent_id(&args.id)?;
+        let agent_id = agent_id(&args.agent_id)?;
         let record = session
             .services
             .agent_control
@@ -1045,7 +1049,7 @@ mod rename_agent {
             .await
             .map_err(collab_rename_error)?;
         let content = serde_json::to_string(&RenameAgentResult {
-            id: record.agent_id.to_string(),
+            agent_id: record.agent_id.to_string(),
             name: record.label.unwrap_or_default(),
         })
         .map_err(|err| {
@@ -1074,7 +1078,7 @@ pub mod close_agent {
         arguments: String,
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: CloseAgentArgs = parse_arguments(&arguments)?;
-        let agent_id = agent_id(&args.id)?;
+        let agent_id = agent_id(&args.agent_id)?;
         session
             .send_event(
                 &turn,
@@ -1172,13 +1176,13 @@ mod close_agents {
 
     #[derive(Debug, Deserialize)]
     struct CloseAgentsArgs {
-        ids: Vec<String>,
+        agent_ids: Vec<String>,
         ignore_missing: Option<bool>,
     }
 
     #[derive(Debug, Serialize)]
     struct CloseAgentItemResult {
-        id: String,
+        agent_id: String,
         status: AgentStatus,
         closed: bool,
         error: Option<String>,
@@ -1196,15 +1200,15 @@ mod close_agents {
         arguments: String,
     ) -> Result<ToolOutput, FunctionCallError> {
         let args: CloseAgentsArgs = parse_arguments(&arguments)?;
-        if args.ids.is_empty() {
+        if args.agent_ids.is_empty() {
             return Err(FunctionCallError::RespondToModel(
-                "ids must not be empty".to_string(),
+                "agent_ids must not be empty".to_string(),
             ));
         }
         let ignore_missing = args.ignore_missing.unwrap_or(false);
         let mut seen = HashSet::new();
         let mut agent_ids = Vec::new();
-        for id in args.ids {
+        for id in args.agent_ids {
             let agent_id = agent_id(&id)?;
             if seen.insert(agent_id) {
                 agent_ids.push(agent_id);
@@ -1245,7 +1249,7 @@ mod close_agents {
                     Some(format!("agent with id {agent_id} not found"))
                 };
                 results.push(CloseAgentItemResult {
-                    id: agent_id.to_string(),
+                    agent_id: agent_id.to_string(),
                     status: AgentStatus::NotFound,
                     closed: false,
                     error,
@@ -1279,7 +1283,7 @@ mod close_agents {
                 )
                 .await;
             results.push(CloseAgentItemResult {
-                id: agent_id.to_string(),
+                agent_id: agent_id.to_string(),
                 status,
                 closed: close_result.is_ok(),
                 error: close_result
@@ -2236,7 +2240,7 @@ mod tests {
             Arc::new(turn),
             "list_agents",
             function_payload(json!({
-                "creator_id": creator_id.to_string(),
+                "agent_id": creator_id.to_string(),
                 "statuses": ["shutdown"],
                 "include_closed": true
             })),
@@ -2259,7 +2263,14 @@ mod tests {
             .and_then(serde_json::Value::as_array)
             .expect("agents array");
         assert_eq!(agents.len(), 1);
-        assert_eq!(agents[0].get("id"), Some(&json!(agent_id.to_string())));
+        assert_eq!(
+            agents[0].get("agent_id"),
+            Some(&json!(agent_id.to_string()))
+        );
+        assert_eq!(
+            agents[0].get("creator_agent_id"),
+            Some(&json!(creator_id.to_string()))
+        );
         assert_eq!(agents[0].get("name"), Some(&json!("worker-a")));
         assert_eq!(agents[0].get("status"), Some(&json!("shutdown")));
         assert_eq!(agents[0].get("closed"), Some(&json!(true)));
@@ -2310,7 +2321,7 @@ mod tests {
             session.clone(),
             turn.clone(),
             "list_agents",
-            function_payload(json!({"creator_id": creator_id.to_string()})),
+            function_payload(json!({"agent_id": creator_id.to_string()})),
         );
         let list_output = CollabHandler
             .handle(list_invocation)
@@ -2332,7 +2343,7 @@ mod tests {
             .expect("agents array");
         let agent = agents
             .iter()
-            .find(|agent| agent.get("id") == Some(&json!(agent_id.to_string())))
+            .find(|agent| agent.get("agent_id") == Some(&json!(agent_id.to_string())))
             .expect("spawned agent should be listed");
         assert_eq!(agent.get("name"), Some(&json!("worker-primary")));
         assert_eq!(agent.get("label"), None);
@@ -2383,7 +2394,7 @@ mod tests {
             turn.clone(),
             "rename_agent",
             function_payload(json!({
-                "id": agent_id.to_string(),
+                "agent_id": agent_id.to_string(),
                 "name": "worker-after"
             })),
         );
@@ -2402,14 +2413,17 @@ mod tests {
         assert_eq!(rename_success, Some(true));
         let rename_value: serde_json::Value =
             serde_json::from_str(&rename_content).expect("rename result json");
-        assert_eq!(rename_value.get("id"), Some(&json!(agent_id.to_string())));
+        assert_eq!(
+            rename_value.get("agent_id"),
+            Some(&json!(agent_id.to_string()))
+        );
         assert_eq!(rename_value.get("name"), Some(&json!("worker-after")));
 
         let list_invocation = invocation(
             session.clone(),
             turn.clone(),
             "list_agents",
-            function_payload(json!({"creator_id": creator_id.to_string()})),
+            function_payload(json!({"agent_id": creator_id.to_string()})),
         );
         let list_output = CollabHandler
             .handle(list_invocation)
@@ -2431,7 +2445,7 @@ mod tests {
             .expect("agents array");
         let agent = agents
             .iter()
-            .find(|agent| agent.get("id") == Some(&json!(agent_id.to_string())))
+            .find(|agent| agent.get("agent_id") == Some(&json!(agent_id.to_string())))
             .expect("renamed agent should be listed");
         assert_eq!(agent.get("name"), Some(&json!("worker-after")));
         assert_eq!(agent.get("label"), None);
@@ -2486,7 +2500,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "send_input",
-            function_payload(json!({"id": ThreadId::new().to_string()})),
+            function_payload(json!({"agent_id": ThreadId::new().to_string()})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("missing items should be rejected");
@@ -2505,7 +2519,7 @@ mod tests {
             Arc::new(turn),
             "send_input",
             function_payload(json!({
-                "id": ThreadId::new().to_string(),
+                "agent_id": ThreadId::new().to_string(),
                 "items": []
             })),
         );
@@ -2526,7 +2540,7 @@ mod tests {
             Arc::new(turn),
             "send_input",
             function_payload(
-                json!({"id": "not-a-uuid", "items": [{"type": "text", "text": "hi"}]}),
+                json!({"agent_id": "not-a-uuid", "items": [{"type": "text", "text": "hi"}]}),
             ),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
@@ -2549,7 +2563,7 @@ mod tests {
             Arc::new(turn),
             "send_input",
             function_payload(
-                json!({"id": agent_id.to_string(), "items": [{"type": "text", "text": "hi"}]}),
+                json!({"agent_id": agent_id.to_string(), "items": [{"type": "text", "text": "hi"}]}),
             ),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
@@ -2574,7 +2588,7 @@ mod tests {
             Arc::new(turn),
             "send_input",
             function_payload(json!({
-                "id": agent_id.to_string(),
+                "agent_id": agent_id.to_string(),
                 "items": [{"type": "text", "text": "hi"}],
                 "interrupt": true
             })),
@@ -2613,7 +2627,7 @@ mod tests {
             Arc::new(turn),
             "send_input",
             function_payload(json!({
-                "id": agent_id.to_string(),
+                "agent_id": agent_id.to_string(),
                 "items": [
                     {"type": "mention", "name": "drive", "path": "app://google_drive"},
                     {"type": "text", "text": "read the folder"}
@@ -2658,7 +2672,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "resume_agent",
-            function_payload(json!({"id": "not-a-uuid"})),
+            function_payload(json!({"agent_id": "not-a-uuid"})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("invalid id should be rejected");
@@ -2679,7 +2693,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "resume_agent",
-            function_payload(json!({"id": agent_id.to_string()})),
+            function_payload(json!({"agent_id": agent_id.to_string()})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("missing agent should be reported");
@@ -2703,7 +2717,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "resume_agent",
-            function_payload(json!({"id": agent_id.to_string()})),
+            function_payload(json!({"agent_id": agent_id.to_string()})),
         );
 
         let output = CollabHandler
@@ -2772,7 +2786,7 @@ mod tests {
             session.clone(),
             turn.clone(),
             "resume_agent",
-            function_payload(json!({"id": agent_id.to_string()})),
+            function_payload(json!({"agent_id": agent_id.to_string()})),
         );
         let output = CollabHandler
             .handle(resume_invocation)
@@ -2796,7 +2810,7 @@ mod tests {
             turn,
             "send_input",
             function_payload(
-                json!({"id": agent_id.to_string(), "items": [{"type": "text", "text": "hello"}]}),
+                json!({"agent_id": agent_id.to_string(), "items": [{"type": "text", "text": "hello"}]}),
             ),
         );
         let output = CollabHandler
@@ -2842,7 +2856,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "resume_agent",
-            function_payload(json!({"id": ThreadId::new().to_string()})),
+            function_payload(json!({"agent_id": ThreadId::new().to_string()})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("resume should fail when depth limit exceeded");
@@ -2870,7 +2884,7 @@ mod tests {
             Arc::new(turn),
             "wait",
             function_payload(json!({
-                "ids": [ThreadId::new().to_string()],
+                "agent_ids": [ThreadId::new().to_string()],
                 "timeout_ms": -1
             })),
         );
@@ -2898,7 +2912,7 @@ mod tests {
             Arc::new(turn),
             "wait",
             function_payload(json!({
-                "ids": [agent_id.to_string()],
+                "agent_ids": [agent_id.to_string()],
                 "timeout_ms": 0
             })),
         );
@@ -2940,7 +2954,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "wait",
-            function_payload(json!({"ids": ["invalid"]})),
+            function_payload(json!({"agent_ids": ["invalid"]})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("invalid id should be rejected");
@@ -2958,14 +2972,14 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "wait",
-            function_payload(json!({"ids": []})),
+            function_payload(json!({"agent_ids": []})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("empty ids should be rejected");
         };
         assert_eq!(
             err,
-            FunctionCallError::RespondToModel("ids must be non-empty".to_string())
+            FunctionCallError::RespondToModel("agent_ids must be non-empty".to_string())
         );
     }
 
@@ -2981,7 +2995,7 @@ mod tests {
             Arc::new(turn),
             "wait",
             function_payload(json!({
-                "ids": [id_a.to_string(), id_b.to_string()],
+                "agent_ids": [id_a.to_string(), id_b.to_string()],
                 "timeout_ms": 1000
             })),
         );
@@ -3026,7 +3040,7 @@ mod tests {
             Arc::new(turn),
             "wait",
             function_payload(json!({
-                "ids": [agent_id.to_string()],
+                "agent_ids": [agent_id.to_string()],
                 "timeout_ms": MIN_WAIT_TIMEOUT_MS
             })),
         );
@@ -3074,7 +3088,7 @@ mod tests {
             Arc::new(turn),
             "wait",
             function_payload(json!({
-                "ids": [agent_id.to_string()],
+                "agent_ids": [agent_id.to_string()],
                 "timeout_ms": 10
             })),
         );
@@ -3120,7 +3134,7 @@ mod tests {
             Arc::new(turn),
             "wait",
             function_payload(json!({
-                "ids": [agent_id.to_string()],
+                "agent_ids": [agent_id.to_string()],
                 "timeout_ms": 1000
             })),
         );
@@ -3164,7 +3178,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "wait",
-            function_payload(json!({"id": agent_id.to_string()})),
+            function_payload(json!({"agent_id": agent_id.to_string()})),
         );
         let output = timeout(Duration::from_secs(1), CollabHandler.handle(invocation))
             .await
@@ -3221,7 +3235,7 @@ mod tests {
             Arc::new(turn),
             "wait_agents",
             function_payload(
-                json!({"ids": [agent1.to_string(), agent2.to_string()], "mode": "any", "timeout_ms": 1000}),
+                json!({"agent_ids": [agent1.to_string(), agent2.to_string()], "mode": "any", "timeout_ms": 1000}),
             ),
         );
         let output = CollabHandler
@@ -3237,13 +3251,13 @@ mod tests {
             panic!("expected function output");
         };
         let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
-        let completed_ids = value
-            .get("completed_ids")
+        let completed_agent_ids = value
+            .get("completed_agent_ids")
             .and_then(serde_json::Value::as_array)
-            .expect("completed_ids array");
+            .expect("completed_agent_ids array");
         assert_eq!(value.get("timed_out"), Some(&json!(false)));
         assert_eq!(value.get("wakeup_reason"), Some(&json!("any_completed")));
-        assert!(completed_ids.contains(&json!(agent1.to_string())));
+        assert!(completed_agent_ids.contains(&json!(agent1.to_string())));
         assert_eq!(success, Some(true));
     }
 
@@ -3286,7 +3300,7 @@ mod tests {
             Arc::new(turn),
             "wait_agents",
             function_payload(
-                json!({"ids": [agent1.to_string(), agent2.to_string()], "mode": "all", "timeout_ms": 2000}),
+                json!({"agent_ids": [agent1.to_string(), agent2.to_string()], "mode": "all", "timeout_ms": 2000}),
             ),
         );
         let output = CollabHandler
@@ -3303,14 +3317,14 @@ mod tests {
             panic!("expected function output");
         };
         let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
-        let completed_ids = value
-            .get("completed_ids")
+        let completed_agent_ids = value
+            .get("completed_agent_ids")
             .and_then(serde_json::Value::as_array)
-            .expect("completed_ids array");
+            .expect("completed_agent_ids array");
         assert_eq!(value.get("timed_out"), Some(&json!(false)));
         assert_eq!(value.get("wakeup_reason"), Some(&json!("all_completed")));
-        assert!(completed_ids.contains(&json!(agent1.to_string())));
-        assert!(completed_ids.contains(&json!(agent2.to_string())));
+        assert!(completed_agent_ids.contains(&json!(agent1.to_string())));
+        assert!(completed_agent_ids.contains(&json!(agent2.to_string())));
         assert!(elapsed >= Duration::from_millis(50));
         assert_eq!(success, Some(true));
     }
@@ -3329,7 +3343,7 @@ mod tests {
             Arc::new(turn),
             "wait_agents",
             function_payload(
-                json!({"ids": [agent_id.to_string()], "mode": "any", "timeout_ms": 0}),
+                json!({"agent_ids": [agent_id.to_string()], "mode": "any", "timeout_ms": 0}),
             ),
         );
         let output = timeout(Duration::from_millis(50), CollabHandler.handle(invocation))
@@ -3428,7 +3442,7 @@ mod tests {
         assert_eq!(value.get("timed_out"), Some(&json!(true)));
         assert_eq!(statuses.len(), 1);
         assert_eq!(
-            statuses[0].get("id"),
+            statuses[0].get("agent_id"),
             Some(&serde_json::Value::String(running_agent_id.to_string()))
         );
         assert_eq!(success, Some(false));
@@ -3453,7 +3467,7 @@ mod tests {
             session,
             turn,
             "close_agent",
-            function_payload(json!({"id": agent_id.to_string()})),
+            function_payload(json!({"agent_id": agent_id.to_string()})),
         );
         let output = CollabHandler
             .handle(invocation)
@@ -3497,7 +3511,7 @@ mod tests {
             session,
             turn,
             "close_agent",
-            function_payload(json!({"id": missing_id.to_string()})),
+            function_payload(json!({"agent_id": missing_id.to_string()})),
         );
         let Err(err) = CollabHandler.handle(invocation).await else {
             panic!("close_agent should report missing agents");
@@ -3553,7 +3567,7 @@ mod tests {
             session.clone(),
             turn.clone(),
             "close_agent",
-            function_payload(json!({ "id": first_agent_id.to_string() })),
+            function_payload(json!({ "agent_id": first_agent_id.to_string() })),
         );
         let close_output = CollabHandler
             .handle(close_invocation)
@@ -3628,7 +3642,7 @@ mod tests {
             Arc::new(session),
             Arc::new(turn),
             "close_agent",
-            function_payload(json!({"id": parent_id.to_string()})),
+            function_payload(json!({"agent_id": parent_id.to_string()})),
         );
         let output = CollabHandler
             .handle(invocation)
@@ -3666,7 +3680,7 @@ mod tests {
             Arc::new(turn),
             "close_agents",
             function_payload(json!({
-                "ids": [agent_id.to_string(), agent_id.to_string(), missing_id.to_string()],
+                "agent_ids": [agent_id.to_string(), agent_id.to_string(), missing_id.to_string()],
                 "ignore_missing": true
             })),
         );
@@ -3688,6 +3702,12 @@ mod tests {
             .and_then(serde_json::Value::as_array)
             .expect("results array");
         assert_eq!(results.len(), 2);
+        let result_agent_ids = results
+            .iter()
+            .map(|result| result.get("agent_id").cloned())
+            .collect::<Vec<_>>();
+        assert!(result_agent_ids.contains(&Some(json!(agent_id.to_string()))));
+        assert!(result_agent_ids.contains(&Some(json!(missing_id.to_string()))));
         assert_eq!(success, Some(true));
 
         let shutdown_ops = manager
@@ -3706,7 +3726,7 @@ mod tests {
             Arc::new(turn),
             "close_agents",
             function_payload(json!({
-                "ids": [ThreadId::new().to_string()],
+                "agent_ids": [ThreadId::new().to_string()],
                 "ignore_missing": false
             })),
         );
@@ -3728,6 +3748,7 @@ mod tests {
             .and_then(serde_json::Value::as_array)
             .expect("results array");
         assert_eq!(results.len(), 1);
+        assert!(results[0].get("agent_id").is_some());
         assert!(
             results[0]
                 .get("error")
