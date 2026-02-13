@@ -102,6 +102,7 @@ impl ToolHandler for CollabHandler {
             "wait" => wait::handle(session, turn, call_id, arguments).await,
             "wait_agents" => wait_agents::handle(session, turn, call_id, arguments).await,
             "list_agents" => list_agents::handle(session, call_id, arguments).await,
+            "rename_agent" => rename_agent::handle(session, call_id, arguments).await,
             "close_agent" => close_agent::handle(session, turn, call_id, arguments).await,
             "close_agents" => close_agents::handle(session, turn, call_id, arguments).await,
             other => Err(FunctionCallError::RespondToModel(format!(
@@ -123,6 +124,7 @@ mod spawn {
     struct SpawnAgentArgs {
         items: Option<Vec<UserInput>>,
         agent_type: Option<AgentRole>,
+        name: Option<String>,
         label: Option<String>,
         acceptance_criteria: Option<Vec<String>>,
         test_commands: Option<Vec<String>>,
@@ -182,9 +184,10 @@ mod spawn {
         };
         let mut config =
             build_agent_spawn_config(session.as_ref(), turn.as_ref(), &overrides).await?;
+        let name = args.name.or(args.label);
         let metadata = AgentSpawnMetadata {
             creator_thread_id: Some(session.conversation_id),
-            label: args.label,
+            label: name,
             goal: prompt.clone(),
             acceptance_criteria: args.acceptance_criteria.unwrap_or_default(),
             test_commands: args.test_commands.unwrap_or_default(),
@@ -921,6 +924,7 @@ mod list_agents {
     struct ListAgentItem {
         id: String,
         creator_id: Option<String>,
+        name: Option<String>,
         label: Option<String>,
         goal: String,
         acceptance_criteria: Vec<String>,
@@ -970,10 +974,12 @@ mod list_agents {
             if !status_filters.is_empty() && !status_filters.contains(&status_kind(&agent.status)) {
                 continue;
             }
+            let name = agent.label;
             items.push(ListAgentItem {
                 id: agent.agent_id.to_string(),
                 creator_id: agent.creator_thread_id.map(|id| id.to_string()),
-                label: agent.label,
+                name: name.clone(),
+                label: name,
                 goal: agent.goal,
                 acceptance_criteria: agent.acceptance_criteria,
                 test_commands: agent.test_commands,
@@ -1003,6 +1009,49 @@ mod list_agents {
             AgentStatus::Shutdown => AgentStatusKind::Shutdown,
             AgentStatus::NotFound => AgentStatusKind::NotFound,
         }
+    }
+}
+
+mod rename_agent {
+    use super::*;
+    use std::sync::Arc;
+
+    #[derive(Debug, Deserialize)]
+    struct RenameAgentArgs {
+        id: String,
+        name: String,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct RenameAgentResult {
+        id: String,
+        name: String,
+    }
+
+    pub async fn handle(
+        session: Arc<Session>,
+        _call_id: String,
+        arguments: String,
+    ) -> Result<ToolOutput, FunctionCallError> {
+        let args: RenameAgentArgs = parse_arguments(&arguments)?;
+        let agent_id = agent_id(&args.id)?;
+        let record = session
+            .services
+            .agent_control
+            .rename_agent(agent_id, args.name)
+            .await
+            .map_err(collab_rename_error)?;
+        let content = serde_json::to_string(&RenameAgentResult {
+            id: record.agent_id.to_string(),
+            name: record.label.unwrap_or_default(),
+        })
+        .map_err(|err| {
+            FunctionCallError::Fatal(format!("failed to serialize rename_agent result: {err}"))
+        })?;
+        Ok(ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(content),
+            success: Some(true),
+        })
     }
 }
 
@@ -1273,6 +1322,18 @@ fn collab_agent_error(agent_id: ThreadId, err: CodexErr) -> FunctionCallError {
             FunctionCallError::RespondToModel("collab manager unavailable".to_string())
         }
         err => FunctionCallError::RespondToModel(format!("collab tool failed: {err}")),
+    }
+}
+
+fn collab_rename_error(err: CodexErr) -> FunctionCallError {
+    match err {
+        CodexErr::ThreadNotFound(id) => FunctionCallError::RespondToModel(format!(
+            "agent with id {id} not found; use list_agents to verify the id"
+        )),
+        CodexErr::UnsupportedOperation(_) => {
+            FunctionCallError::RespondToModel("collab manager unavailable".to_string())
+        }
+        err => FunctionCallError::RespondToModel(format!("rename_agent failed: {err}")),
     }
 }
 
@@ -2176,6 +2237,180 @@ mod tests {
         assert_eq!(agents[0].get("status"), Some(&json!("shutdown")));
         assert_eq!(agents[0].get("closed"), Some(&json!(true)));
         assert_eq!(success, Some(true));
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_name_alias_is_visible_in_list_agents() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        let control = manager.agent_control();
+        session.services.agent_control = control.clone();
+        let creator_id = session.conversation_id;
+        let session = Arc::new(session);
+        let turn = Arc::new(turn);
+
+        let spawn_invocation = invocation(
+            session.clone(),
+            turn.clone(),
+            "spawn_agent",
+            function_payload(json!({
+                "items": [{"type": "text", "text": "do work"}],
+                "name": "worker-primary",
+                "label": "worker-legacy"
+            })),
+        );
+        let spawn_output = CollabHandler
+            .handle(spawn_invocation)
+            .await
+            .expect("spawn should succeed");
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(spawn_content),
+            success: spawn_success,
+            ..
+        } = spawn_output
+        else {
+            panic!("expected function output");
+        };
+        assert_eq!(spawn_success, Some(true));
+        let spawn_value: serde_json::Value =
+            serde_json::from_str(&spawn_content).expect("spawn result json");
+        let agent_id = spawn_value
+            .get("agent_id")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|id| ThreadId::from_string(id).ok())
+            .expect("agent id should be present");
+
+        let list_invocation = invocation(
+            session.clone(),
+            turn.clone(),
+            "list_agents",
+            function_payload(json!({"creator_id": creator_id.to_string()})),
+        );
+        let list_output = CollabHandler
+            .handle(list_invocation)
+            .await
+            .expect("list_agents should succeed");
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
+        } = list_output
+        else {
+            panic!("expected function output");
+        };
+        assert_eq!(success, Some(true));
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        let agents = value
+            .get("agents")
+            .and_then(serde_json::Value::as_array)
+            .expect("agents array");
+        let agent = agents
+            .iter()
+            .find(|agent| agent.get("id") == Some(&json!(agent_id.to_string())))
+            .expect("spawned agent should be listed");
+        assert_eq!(agent.get("name"), Some(&json!("worker-primary")));
+        assert_eq!(agent.get("label"), Some(&json!("worker-primary")));
+
+        let _ = control.shutdown_agent(agent_id).await;
+    }
+
+    #[tokio::test]
+    async fn rename_agent_updates_name() {
+        let (mut session, turn) = make_session_and_context().await;
+        let manager = thread_manager();
+        let control = manager.agent_control();
+        session.services.agent_control = control.clone();
+        let creator_id = session.conversation_id;
+        let session = Arc::new(session);
+        let turn = Arc::new(turn);
+
+        let spawn_invocation = invocation(
+            session.clone(),
+            turn.clone(),
+            "spawn_agent",
+            function_payload(json!({
+                "items": [{"type": "text", "text": "do work"}],
+                "name": "worker-before"
+            })),
+        );
+        let spawn_output = CollabHandler
+            .handle(spawn_invocation)
+            .await
+            .expect("spawn should succeed");
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(spawn_content),
+            ..
+        } = spawn_output
+        else {
+            panic!("expected function output");
+        };
+        let spawn_value: serde_json::Value =
+            serde_json::from_str(&spawn_content).expect("spawn result json");
+        let agent_id = spawn_value
+            .get("agent_id")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|id| ThreadId::from_string(id).ok())
+            .expect("agent id should be present");
+
+        let rename_invocation = invocation(
+            session.clone(),
+            turn.clone(),
+            "rename_agent",
+            function_payload(json!({
+                "id": agent_id.to_string(),
+                "name": "worker-after"
+            })),
+        );
+        let rename_output = CollabHandler
+            .handle(rename_invocation)
+            .await
+            .expect("rename_agent should succeed");
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(rename_content),
+            success: rename_success,
+            ..
+        } = rename_output
+        else {
+            panic!("expected function output");
+        };
+        assert_eq!(rename_success, Some(true));
+        let rename_value: serde_json::Value =
+            serde_json::from_str(&rename_content).expect("rename result json");
+        assert_eq!(rename_value.get("id"), Some(&json!(agent_id.to_string())));
+        assert_eq!(rename_value.get("name"), Some(&json!("worker-after")));
+
+        let list_invocation = invocation(
+            session.clone(),
+            turn.clone(),
+            "list_agents",
+            function_payload(json!({"creator_id": creator_id.to_string()})),
+        );
+        let list_output = CollabHandler
+            .handle(list_invocation)
+            .await
+            .expect("list_agents should succeed");
+        let ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(content),
+            success,
+            ..
+        } = list_output
+        else {
+            panic!("expected function output");
+        };
+        assert_eq!(success, Some(true));
+        let value: serde_json::Value = serde_json::from_str(&content).expect("json result");
+        let agents = value
+            .get("agents")
+            .and_then(serde_json::Value::as_array)
+            .expect("agents array");
+        let agent = agents
+            .iter()
+            .find(|agent| agent.get("id") == Some(&json!(agent_id.to_string())))
+            .expect("renamed agent should be listed");
+        assert_eq!(agent.get("name"), Some(&json!("worker-after")));
+        assert_eq!(agent.get("label"), Some(&json!("worker-after")));
+
+        let _ = control.shutdown_agent(agent_id).await;
     }
 
     #[tokio::test]

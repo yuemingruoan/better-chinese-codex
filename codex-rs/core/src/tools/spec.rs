@@ -514,9 +514,19 @@ fn create_spawn_agent_parameters() -> JsonSchema {
         },
     );
     properties.insert(
+        "name".to_string(),
+        JsonSchema::String {
+            description: Some(
+                "Optional name for the spawned agent / 可选子 Agent 名称".to_string(),
+            ),
+        },
+    );
+    properties.insert(
         "label".to_string(),
         JsonSchema::String {
-            description: Some("Optional short label for the spawned agent.".to_string()),
+            description: Some(
+                "Legacy alias for name kept for compatibility / name 的兼容别名".to_string(),
+            ),
         },
     );
     properties.insert(
@@ -946,6 +956,34 @@ fn create_close_agent_tool() -> ToolSpec {
         parameters: JsonSchema::Object {
             properties,
             required: Some(vec!["id".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_rename_agent_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "id".to_string(),
+            JsonSchema::String {
+                description: Some("Agent id to rename (from spawn_agent).".to_string()),
+            },
+        ),
+        (
+            "name".to_string(),
+            JsonSchema::String {
+                description: Some("New agent name / 新的子 Agent 名称".to_string()),
+            },
+        ),
+    ]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "rename_agent".to_string(),
+        description: "Rename an existing agent by id / 按 id 重命名现有子 Agent".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["id".to_string(), "name".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
@@ -2605,6 +2643,7 @@ pub(crate) fn build_specs(
         builder.push_spec_with_parallel_support(create_wait_tool(), true);
         builder.push_spec_with_parallel_support(create_wait_agents_tool(), true);
         builder.push_spec_with_parallel_support(create_list_agents_tool(), true);
+        builder.push_spec(create_rename_agent_tool());
         builder.push_spec(create_close_agent_tool());
         builder.push_spec(create_close_agents_tool());
         builder.push_spec(create_claude_task_alias_tool());
@@ -2632,6 +2671,7 @@ pub(crate) fn build_specs(
         builder.register_handler("wait", collab_handler.clone());
         builder.register_handler("wait_agents", collab_handler.clone());
         builder.register_handler("list_agents", collab_handler.clone());
+        builder.register_handler("rename_agent", collab_handler.clone());
         builder.register_handler("close_agent", collab_handler.clone());
         builder.register_handler("close_agents", collab_handler);
         builder.register_handler("Task", claude_tool_adapter_handler.clone());
@@ -2893,6 +2933,77 @@ mod tests {
     }
 
     #[test]
+    fn test_spawn_agent_tool_schema() {
+        let mut tool = create_spawn_agent_tool();
+        strip_descriptions_tool(&mut tool);
+        let ToolSpec::Function(ResponsesApiTool {
+            name, parameters, ..
+        }) = tool
+        else {
+            panic!("expected spawn_agent to be a function tool");
+        };
+        assert_eq!(name, "spawn_agent");
+        let JsonSchema::Object {
+            properties,
+            required,
+            additional_properties,
+        } = parameters
+        else {
+            panic!("expected object schema for spawn_agent");
+        };
+        assert_eq!(required, Some(vec!["items".to_string()]));
+        assert_eq!(additional_properties, Some(false.into()));
+        for key in [
+            "items",
+            "agent_type",
+            "name",
+            "label",
+            "acceptance_criteria",
+            "test_commands",
+            "allow_nested_agents",
+            "model",
+            "reasoning_effort",
+            "reasoning_summary",
+            "approval_policy",
+            "sandbox_mode",
+        ] {
+            assert!(
+                properties.contains_key(key),
+                "spawn_agent schema should define {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_rename_agent_tool_schema() {
+        let mut tool = create_rename_agent_tool();
+        strip_descriptions_tool(&mut tool);
+        let ToolSpec::Function(ResponsesApiTool {
+            name, parameters, ..
+        }) = tool
+        else {
+            panic!("expected rename_agent to be a function tool");
+        };
+        assert_eq!(name, "rename_agent");
+        let JsonSchema::Object {
+            properties,
+            required,
+            additional_properties,
+        } = parameters
+        else {
+            panic!("expected object schema for rename_agent");
+        };
+        assert_eq!(required, Some(vec!["id".to_string(), "name".to_string()]));
+        assert_eq!(additional_properties, Some(false.into()));
+        for key in ["id", "name"] {
+            assert!(
+                properties.contains_key(key),
+                "rename_agent schema should define {key}"
+            );
+        }
+    }
+
+    #[test]
     fn test_task_batch_tool_schema() {
         let mut tool = create_task_batch_tool();
         strip_descriptions_tool(&mut tool);
@@ -2944,6 +3055,8 @@ mod tests {
         assert_eq!(params_required, &Some(vec!["items".to_string()]));
         assert_eq!(params_additional_properties, &Some(false.into()));
         assert!(params_properties.contains_key("items"));
+        assert!(params_properties.contains_key("name"));
+        assert!(params_properties.contains_key("label"));
     }
 
     #[test]
@@ -3168,6 +3281,7 @@ mod tests {
                 "wait",
                 "wait_agents",
                 "list_agents",
+                "rename_agent",
                 "close_agent",
                 "close_agents",
                 "Task",
@@ -3214,6 +3328,7 @@ mod tests {
         assert!(!find_tool(&tools, "send_input").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "task_batch").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "task_send_batch").supports_parallel_tool_calls);
+        assert!(!find_tool(&tools, "rename_agent").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "close_agent").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "close_agents").supports_parallel_tool_calls);
         assert!(!find_tool(&tools, "Task").supports_parallel_tool_calls);

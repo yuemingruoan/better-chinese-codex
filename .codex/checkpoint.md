@@ -360,3 +360,14 @@
 - 当前待办：
   - 收敛 `codex-tui` 既有编译错误后，复跑 T18/T25 相关测试并决定是否勾选。
   - 处理 `codex-rs/tui2/Cargo.toml` workspace 依赖缺口后，复跑 T19/T25 相关测试并决定是否勾选。
+
+## 2026-02-13 10:10:42 CST
+- 多 Agent 并行收口新增需求：落地子 Agent 命名/重命名能力（`spawn_agent.name` + `rename_agent` + `list_agents.name` 兼容输出）。
+- 完成 schema 与 handler 链路扩展：`spec.rs` 注册 `rename_agent`，`collab` handler 增加 `rename_agent` 分支并保持旧 `label` 兼容。
+- 按“网络能力不重构”策略完成 T17：保留原生 `web_search` 与 MCP `WebFetch` 供给路径，不改网络内核实现。
+- 已同步 `.codex/task.md`：勾选 `T1/T17/T20/T27`，并补充 T27 设计、里程碑、风险与测试条目。
+- 验证记录：
+  - 通过：`just fmt`、`cargo test -p codex-core tools::handlers::collab::tests::spawn_agent_name_alias_is_visible_in_list_agents`、`cargo test -p codex-core tools::handlers::collab::tests::rename_agent_updates_name`、`cargo test -p codex-core tools::spec::tests::test_spawn_agent_tool_schema`、`cargo test -p codex-core tools::spec::tests::test_rename_agent_tool_schema`、`cargo test -p codex-core`。
+
+- 当前待办：
+  - 无。

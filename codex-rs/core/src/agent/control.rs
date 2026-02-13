@@ -248,6 +248,15 @@ impl AgentControl {
         Ok(state.get_agent_record(agent_id).await)
     }
 
+    pub(crate) async fn rename_agent(
+        &self,
+        agent_id: ThreadId,
+        name: String,
+    ) -> CodexResult<AgentRegistryRecord> {
+        let state = self.upgrade()?;
+        state.rename_agent(agent_id, name).await
+    }
+
     async fn shutdown_agent_only(&self, agent_id: ThreadId) -> CodexResult<String> {
         let state = self.upgrade()?;
         let result = state.send_op(agent_id, Op::Shutdown {}).await;
