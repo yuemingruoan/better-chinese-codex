@@ -38,6 +38,8 @@ use std::time::Instant;
 
 use crate::bottom_pane::StatusLineItem;
 use crate::bottom_pane::StatusLineSetupView;
+use crate::i18n::tr;
+use crate::i18n::tr_args;
 use crate::status::RateLimitWindowDisplay;
 use crate::status::format_directory_display;
 use crate::status::format_tokens_compact;
@@ -892,14 +894,19 @@ impl ChatWidget {
                 .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
         {
-            let label = if invalid_items.len() == 1 {
-                "item"
+            let label_key = if invalid_items.len() == 1 {
+                "status_line_setup.invalid_label_single"
             } else {
-                "items"
+                "status_line_setup.invalid_label_plural"
             };
-            let message = format!(
-                "Ignored invalid status line {label}: {}.",
-                proper_join(invalid_items.as_slice())
+            let invalid_items = proper_join(invalid_items.as_slice());
+            let message = tr_args(
+                self.config.language,
+                "status_line_setup.invalid_warning",
+                &[
+                    ("label", tr(self.config.language, label_key)),
+                    ("items", invalid_items.as_str()),
+                ],
             );
             self.on_warning(message);
         }
@@ -4296,6 +4303,7 @@ impl ChatWidget {
         let view = StatusLineSetupView::new(
             self.config.tui_status_line.as_deref(),
             self.app_event_tx.clone(),
+            self.config.language,
         );
         self.bottom_pane.show_view(Box::new(view));
     }

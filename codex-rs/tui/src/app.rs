@@ -22,6 +22,7 @@ use crate::history_cell;
 use crate::history_cell::HistoryCell;
 #[cfg(not(debug_assertions))]
 use crate::history_cell::UpdateAvailableHistoryCell;
+use crate::i18n::tr_args;
 use crate::model_migration::ModelMigrationOutcome;
 use crate::model_migration::migration_copy_for_models;
 use crate::model_migration::run_model_migration_prompt;
@@ -2350,8 +2351,12 @@ impl App {
                     }
                     Err(err) => {
                         tracing::error!(error = %err, "failed to persist status line items; keeping previous selection");
-                        self.chat_widget
-                            .add_error_message(format!("Failed to save status line items: {err}"));
+                        let error = err.to_string();
+                        self.chat_widget.add_error_message(tr_args(
+                            self.config.language,
+                            "status_line_setup.save_failed",
+                            &[("error", error.as_str())],
+                        ));
                     }
                 }
             }

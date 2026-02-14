@@ -32,7 +32,9 @@ use crate::bottom_pane::CancellationEvent;
 use crate::bottom_pane::bottom_pane_view::BottomPaneView;
 use crate::bottom_pane::multi_select_picker::MultiSelectItem;
 use crate::bottom_pane::multi_select_picker::MultiSelectPicker;
+use crate::i18n::tr;
 use crate::render::renderable::Renderable;
+use codex_protocol::config_types::Language;
 
 /// Available items that can be displayed in the status line.
 ///
@@ -94,35 +96,94 @@ pub(crate) enum StatusLineItem {
 }
 
 impl StatusLineItem {
-    /// User-visible description shown in the popup.
-    pub(crate) fn description(&self) -> &'static str {
+    /// User-visible label shown in the popup.
+    pub(crate) fn display_name(&self, language: Language) -> &'static str {
         match self {
-            StatusLineItem::ModelName => "Current model name",
-            StatusLineItem::ModelWithReasoning => "Current model name with reasoning level",
-            StatusLineItem::CurrentDir => "Current working directory",
-            StatusLineItem::ProjectRoot => "Project root directory (omitted when unavailable)",
-            StatusLineItem::GitBranch => "Current Git branch (omitted when unavailable)",
+            StatusLineItem::ModelName => tr(language, "status_line_setup.item_name.model_name"),
+            StatusLineItem::ModelWithReasoning => {
+                tr(language, "status_line_setup.item_name.model_with_reasoning")
+            }
+            StatusLineItem::CurrentDir => tr(language, "status_line_setup.item_name.current_dir"),
+            StatusLineItem::ProjectRoot => tr(language, "status_line_setup.item_name.project_root"),
+            StatusLineItem::GitBranch => tr(language, "status_line_setup.item_name.git_branch"),
             StatusLineItem::ContextRemaining => {
-                "Percentage of context window remaining (omitted when unknown)"
+                tr(language, "status_line_setup.item_name.context_remaining")
             }
-            StatusLineItem::ContextUsed => {
-                "Percentage of context window used (omitted when unknown)"
-            }
+            StatusLineItem::ContextUsed => tr(language, "status_line_setup.item_name.context_used"),
             StatusLineItem::FiveHourLimit => {
-                "Remaining usage on 5-hour usage limit (omitted when unavailable)"
+                tr(language, "status_line_setup.item_name.five_hour_limit")
             }
-            StatusLineItem::WeeklyLimit => {
-                "Remaining usage on weekly usage limit (omitted when unavailable)"
+            StatusLineItem::WeeklyLimit => tr(language, "status_line_setup.item_name.weekly_limit"),
+            StatusLineItem::CodexVersion => {
+                tr(language, "status_line_setup.item_name.codex_version")
             }
-            StatusLineItem::CodexVersion => "Codex application version",
             StatusLineItem::ContextWindowSize => {
-                "Total context window size in tokens (omitted when unknown)"
+                tr(language, "status_line_setup.item_name.context_window_size")
             }
-            StatusLineItem::UsedTokens => "Total tokens used in session (omitted when zero)",
-            StatusLineItem::TotalInputTokens => "Total input tokens used in session",
-            StatusLineItem::TotalOutputTokens => "Total output tokens used in session",
+            StatusLineItem::UsedTokens => tr(language, "status_line_setup.item_name.used_tokens"),
+            StatusLineItem::TotalInputTokens => {
+                tr(language, "status_line_setup.item_name.total_input_tokens")
+            }
+            StatusLineItem::TotalOutputTokens => {
+                tr(language, "status_line_setup.item_name.total_output_tokens")
+            }
+            StatusLineItem::SessionId => tr(language, "status_line_setup.item_name.session_id"),
+        }
+    }
+
+    /// User-visible description shown in the popup.
+    pub(crate) fn description(&self, language: Language) -> &'static str {
+        match self {
+            StatusLineItem::ModelName => {
+                tr(language, "status_line_setup.item_description.model_name")
+            }
+            StatusLineItem::ModelWithReasoning => tr(
+                language,
+                "status_line_setup.item_description.model_with_reasoning",
+            ),
+            StatusLineItem::CurrentDir => {
+                tr(language, "status_line_setup.item_description.current_dir")
+            }
+            StatusLineItem::ProjectRoot => {
+                tr(language, "status_line_setup.item_description.project_root")
+            }
+            StatusLineItem::GitBranch => {
+                tr(language, "status_line_setup.item_description.git_branch")
+            }
+            StatusLineItem::ContextRemaining => tr(
+                language,
+                "status_line_setup.item_description.context_remaining",
+            ),
+            StatusLineItem::ContextUsed => {
+                tr(language, "status_line_setup.item_description.context_used")
+            }
+            StatusLineItem::FiveHourLimit => tr(
+                language,
+                "status_line_setup.item_description.five_hour_limit",
+            ),
+            StatusLineItem::WeeklyLimit => {
+                tr(language, "status_line_setup.item_description.weekly_limit")
+            }
+            StatusLineItem::CodexVersion => {
+                tr(language, "status_line_setup.item_description.codex_version")
+            }
+            StatusLineItem::ContextWindowSize => tr(
+                language,
+                "status_line_setup.item_description.context_window_size",
+            ),
+            StatusLineItem::UsedTokens => {
+                tr(language, "status_line_setup.item_description.used_tokens")
+            }
+            StatusLineItem::TotalInputTokens => tr(
+                language,
+                "status_line_setup.item_description.total_input_tokens",
+            ),
+            StatusLineItem::TotalOutputTokens => tr(
+                language,
+                "status_line_setup.item_description.total_output_tokens",
+            ),
             StatusLineItem::SessionId => {
-                "Current session identifier (omitted until session starts)"
+                tr(language, "status_line_setup.item_description.session_id")
             }
         }
     }
@@ -131,22 +192,30 @@ impl StatusLineItem {
     ///
     /// These are placeholder values used to show users what each item looks
     /// like in the status line before they confirm their selection.
-    pub(crate) fn render(&self) -> &'static str {
+    pub(crate) fn render(&self, language: Language) -> &'static str {
         match self {
             StatusLineItem::ModelName => "gpt-5.2-codex",
             StatusLineItem::ModelWithReasoning => "gpt-5.2-codex medium",
             StatusLineItem::CurrentDir => "~/project/path",
             StatusLineItem::ProjectRoot => "~/project",
             StatusLineItem::GitBranch => "feat/awesome-feature",
-            StatusLineItem::ContextRemaining => "18% left",
-            StatusLineItem::ContextUsed => "82% used",
+            StatusLineItem::ContextRemaining => {
+                tr(language, "status_line_setup.preview.context_remaining")
+            }
+            StatusLineItem::ContextUsed => tr(language, "status_line_setup.preview.context_used"),
             StatusLineItem::FiveHourLimit => "5h 100%",
-            StatusLineItem::WeeklyLimit => "weekly 98%",
+            StatusLineItem::WeeklyLimit => tr(language, "status_line_setup.preview.weekly_limit"),
             StatusLineItem::CodexVersion => "v0.93.0",
-            StatusLineItem::ContextWindowSize => "258K window",
-            StatusLineItem::UsedTokens => "27.3K used",
-            StatusLineItem::TotalInputTokens => "17,588 in",
-            StatusLineItem::TotalOutputTokens => "265 out",
+            StatusLineItem::ContextWindowSize => {
+                tr(language, "status_line_setup.preview.context_window_size")
+            }
+            StatusLineItem::UsedTokens => tr(language, "status_line_setup.preview.used_tokens"),
+            StatusLineItem::TotalInputTokens => {
+                tr(language, "status_line_setup.preview.total_input_tokens")
+            }
+            StatusLineItem::TotalOutputTokens => {
+                tr(language, "status_line_setup.preview.total_output_tokens")
+            }
             StatusLineItem::SessionId => "019c19bd-ceb6-73b0-adc8-8ec0397b85cf",
         }
     }
@@ -175,7 +244,11 @@ impl StatusLineSetupView {
     ///
     /// Items from `status_line_items` are shown first (in order) and marked as
     /// enabled. Remaining items are appended and marked as disabled.
-    pub(crate) fn new(status_line_items: Option<&[String]>, app_event_tx: AppEventSender) -> Self {
+    pub(crate) fn new(
+        status_line_items: Option<&[String]>,
+        app_event_tx: AppEventSender,
+        language: Language,
+    ) -> Self {
         let mut used_ids = HashSet::new();
         let mut items = Vec::new();
 
@@ -188,7 +261,7 @@ impl StatusLineSetupView {
                 if !used_ids.insert(item_id.clone()) {
                     continue;
                 }
-                items.push(Self::status_line_select_item(item, true));
+                items.push(Self::status_line_select_item(item, true, language));
             }
         }
 
@@ -197,27 +270,26 @@ impl StatusLineSetupView {
             if used_ids.contains(&item_id) {
                 continue;
             }
-            items.push(Self::status_line_select_item(item, false));
+            items.push(Self::status_line_select_item(item, false, language));
         }
+
+        let preview_language = language;
 
         Self {
             picker: MultiSelectPicker::builder(
-                "Configure Status Line".to_string(),
-                Some("Select which items to display in the status line.".to_string()),
+                tr(language, "status_line_setup.title").to_string(),
+                Some(tr(language, "status_line_setup.subtitle").to_string()),
                 app_event_tx,
             )
-            .instructions(vec![
-                "Use ↑↓ to navigate, ←→ to move, space to select, enter to confirm, esc to cancel."
-                    .into(),
-            ])
+            .instructions(vec![tr(language, "status_line_setup.instructions").into()])
             .items(items)
             .enable_ordering()
-            .on_preview(|items| {
+            .on_preview(move |items| {
                 let preview = items
                     .iter()
                     .filter(|item| item.enabled)
                     .filter_map(|item| item.id.parse::<StatusLineItem>().ok())
-                    .map(|item| item.render())
+                    .map(|item| item.render(preview_language))
                     .collect::<Vec<_>>()
                     .join(" · ");
                 if preview.is_empty() {
@@ -242,11 +314,15 @@ impl StatusLineSetupView {
     }
 
     /// Converts a [`StatusLineItem`] into a [`MultiSelectItem`] for the picker.
-    fn status_line_select_item(item: StatusLineItem, enabled: bool) -> MultiSelectItem {
+    fn status_line_select_item(
+        item: StatusLineItem,
+        enabled: bool,
+        language: Language,
+    ) -> MultiSelectItem {
         MultiSelectItem {
             id: item.to_string(),
-            name: item.to_string(),
-            description: Some(item.description().to_string()),
+            name: item.display_name(language).to_string(),
+            description: Some(item.description(language).to_string()),
             enabled,
         }
     }

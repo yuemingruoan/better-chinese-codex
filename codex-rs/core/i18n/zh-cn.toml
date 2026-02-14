@@ -38,6 +38,58 @@ collab = "选择协作模式"
 agent = "选择代理"
 logout = "注销 Codex 登录"
 
+[status_line_setup]
+title = "配置状态栏"
+subtitle = "选择要在状态栏中显示的项目。"
+instructions = "使用 ↑↓ 导航，←→ 调整顺序，空格选择，Enter 确认，Esc 取消。"
+invalid_label_single = "项"
+invalid_label_plural = "项"
+invalid_warning = "已忽略无效的状态栏${label}：${items}。"
+save_failed = "保存状态栏项目失败：${error}"
+
+[status_line_setup.item_name]
+model_name = "模型"
+model_with_reasoning = "模型 + 推理"
+current_dir = "当前目录"
+project_root = "项目根目录"
+git_branch = "Git 分支"
+context_remaining = "上下文剩余"
+context_used = "上下文已用"
+five_hour_limit = "5 小时额度"
+weekly_limit = "周额度"
+codex_version = "Codex 版本"
+context_window_size = "上下文窗口"
+used_tokens = "已用令牌"
+total_input_tokens = "输入令牌"
+total_output_tokens = "输出令牌"
+session_id = "会话 ID"
+
+[status_line_setup.item_description]
+model_name = "当前模型名称"
+model_with_reasoning = "当前模型名称（含推理强度）"
+current_dir = "当前工作目录"
+project_root = "项目根目录（不可用时省略）"
+git_branch = "当前 Git 分支（不可用时省略）"
+context_remaining = "上下文窗口剩余百分比（未知时省略）"
+context_used = "上下文窗口已用百分比（未知时省略）"
+five_hour_limit = "5 小时额度剩余（不可用时省略）"
+weekly_limit = "周额度剩余（不可用时省略）"
+codex_version = "Codex 应用版本"
+context_window_size = "上下文窗口总令牌数（未知时省略）"
+used_tokens = "会话已用总令牌数（为 0 时省略）"
+total_input_tokens = "会话已用输入令牌总数"
+total_output_tokens = "会话已用输出令牌总数"
+session_id = "当前会话标识（会话开始前省略）"
+
+[status_line_setup.preview]
+context_remaining = "剩余 18%"
+context_used = "已用 82%"
+weekly_limit = "每周 98%"
+context_window_size = "258K 窗口"
+used_tokens = "已用 27.3K"
+total_input_tokens = "输入 17,588"
+total_output_tokens = "输出 265"
+
 [tooltips]
 items = [
   "对话变长时可使用 /compact 总结历史，释放上下文。",
