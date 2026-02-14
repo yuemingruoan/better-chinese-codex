@@ -266,6 +266,9 @@
             "steer": {
               "type": "boolean"
             },
+            "tui2": {
+              "type": "boolean"
+            },
             "undo": {
               "type": "boolean"
             },
@@ -1350,6 +1353,9 @@
           "type": "boolean"
         },
         "steer": {
+          "type": "boolean"
+        },
+        "tui2": {
           "type": "boolean"
         },
         "undo": {
