@@ -238,11 +238,12 @@ fn resolve_cell_index(
     };
 
     if let (Some(index_from_id), Some(cell_number)) = (index_from_id, cell_number)
-        && index_from_id != cell_number {
-            return Err(FunctionCallError::RespondToModel(format!(
-                "cell_id and cell_number point to different cells ({index_from_id} vs {cell_number}) / cell_id 与 cell_number 指向的单元不一致（{index_from_id} vs {cell_number}）"
-            )));
-        }
+        && index_from_id != cell_number
+    {
+        return Err(FunctionCallError::RespondToModel(format!(
+            "cell_id and cell_number point to different cells ({index_from_id} vs {cell_number}) / cell_id 与 cell_number 指向的单元不一致（{index_from_id} vs {cell_number}）"
+        )));
+    }
 
     let mut selected_index = index_from_id.or(cell_number);
     if selected_index.is_none() && edit_mode == NotebookEditMode::Insert {
