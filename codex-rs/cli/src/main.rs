@@ -26,7 +26,9 @@ use codex_tui::AppExitInfo;
 use codex_tui::Cli as TuiCli;
 use codex_tui::ExitReason;
 use codex_tui::update_action::UpdateAction;
+#[cfg(not(windows))]
 use codex_tui2 as tui2;
+#[cfg(not(windows))]
 use codex_utils_absolute_path::AbsolutePathBuf;
 use owo_colors::OwoColorize;
 use std::io::IsTerminal;
@@ -47,9 +49,13 @@ use codex_core::config::Config;
 use codex_core::config::ConfigOverrides;
 use codex_core::config::edit::ConfigEditsBuilder;
 use codex_core::config::find_codex_home;
+#[cfg(not(windows))]
 use codex_core::config::load_config_as_toml_with_cli_overrides;
+#[cfg(not(windows))]
 use codex_core::features::Feature;
+#[cfg(not(windows))]
 use codex_core::features::FeatureOverrides;
+#[cfg(not(windows))]
 use codex_core::features::Features;
 use codex_core::features::Stage;
 use codex_core::features::is_known_feature_key;
@@ -888,12 +894,13 @@ async fn run_interactive_tui(
         }
     }
 
+    #[cfg(not(windows))]
     if is_tui2_enabled(&interactive).await? {
         let result = tui2::run_main(interactive.into(), codex_linux_sandbox_exe).await?;
-        Ok(result.into())
-    } else {
-        codex_tui::run_main(interactive, codex_linux_sandbox_exe).await
+        return Ok(result.into());
     }
+
+    codex_tui::run_main(interactive, codex_linux_sandbox_exe).await
 }
 
 /// Returns `Ok(true)` when the resolved configuration enables the `tui2` feature flag.
@@ -901,6 +908,7 @@ async fn run_interactive_tui(
 /// This performs a lightweight config load (honoring the same precedence as the lower-level TUI
 /// bootstrap: `$CODEX_HOME`, config.toml, profile, cwd, and CLI `-c` overrides) solely to decide
 /// which TUI frontend to launch. The full configuration is still loaded later by the selected TUI.
+#[cfg(not(windows))]
 async fn is_tui2_enabled(cli: &TuiCli) -> std::io::Result<bool> {
     let raw_overrides = cli.config_overrides.raw_overrides.clone();
     let overrides_cli = codex_common::CliConfigOverrides { raw_overrides };
