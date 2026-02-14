@@ -17,6 +17,7 @@ logout = "log out of Codex"
 mcp = "list configured MCP tools"
 mention = "mention a file"
 model = "choose what model and reasoning effort to use"
+spec = "configure built-in request specs"
 new = "start a new chat during a conversation"
 ps = "list background terminals"
 resume = "resume a saved chat"
@@ -31,10 +32,63 @@ rename = "rename the current thread"
 permissions = "manage approval permissions"
 apps = "manage connected apps"
 debug_config = "show the effective configuration"
+statusline = "configure which items appear in the status line"
 personality = "customize how Codex communicates"
 plan = "switch to plan mode"
 collab = "choose a collaboration mode"
 agent = "select an agent"
+
+[status_line_setup]
+title = "Configure Status Line"
+subtitle = "Select which items to display in the status line."
+instructions = "Use ↑↓ to navigate, ←→ to move, space to select, enter to confirm, esc to cancel."
+invalid_label_single = "item"
+invalid_label_plural = "items"
+invalid_warning = "Ignored invalid status line ${label}: ${items}."
+save_failed = "Failed to save status line items: ${error}"
+
+[status_line_setup.item_name]
+model_name = "Model"
+model_with_reasoning = "Model + reasoning"
+current_dir = "Current dir"
+project_root = "Project root"
+git_branch = "Git branch"
+context_remaining = "Context remaining"
+context_used = "Context used"
+five_hour_limit = "5h limit"
+weekly_limit = "Weekly limit"
+codex_version = "Codex version"
+context_window_size = "Context window"
+used_tokens = "Used tokens"
+total_input_tokens = "Input tokens"
+total_output_tokens = "Output tokens"
+session_id = "Session ID"
+
+[status_line_setup.item_description]
+model_name = "Current model name"
+model_with_reasoning = "Current model name with reasoning level"
+current_dir = "Current working directory"
+project_root = "Project root directory (omitted when unavailable)"
+git_branch = "Current Git branch (omitted when unavailable)"
+context_remaining = "Percentage of context window remaining (omitted when unknown)"
+context_used = "Percentage of context window used (omitted when unknown)"
+five_hour_limit = "Remaining usage on 5-hour usage limit (omitted when unavailable)"
+weekly_limit = "Remaining usage on weekly usage limit (omitted when unavailable)"
+codex_version = "Codex application version"
+context_window_size = "Total context window size in tokens (omitted when unknown)"
+used_tokens = "Total tokens used in session (omitted when zero)"
+total_input_tokens = "Total input tokens used in session"
+total_output_tokens = "Total output tokens used in session"
+session_id = "Current session identifier (omitted until session starts)"
+
+[status_line_setup.preview]
+context_remaining = "18% left"
+context_used = "82% used"
+weekly_limit = "weekly 98%"
+context_window_size = "258K window"
+used_tokens = "27.3K used"
+total_input_tokens = "17,588 in"
+total_output_tokens = "265 out"
 
 [tooltips]
 items = [
@@ -110,6 +164,10 @@ Commit & Pull Request Guidelines
 
 (Optional) Add other sections if relevant, such as Security & Configuration Tips, Architecture Overview, or Agent-Specific Instructions.
 '''
+
+spec.parallel_priority = '''Parallel Priority is enabled for this session.
+
+When planning and executing work, prefer independent tasks that can run concurrently. Split work into minimal verifiable increments, avoid unnecessary sequential blocking, and keep shared-state edits explicit and coordinated.'''
 
 sdd_plan = '''You are a senior development planner. Based on the "Requirement description", first determine whether the information is sufficient:
 - Before asking the user, **you must read relevant project code/docs** to clarify context; only ask when the code cannot confirm it or there are multiple plausible interpretations.
@@ -520,6 +578,13 @@ profile_suffix = " for ${profile} profile"
 save_default_failed = "Failed to save default model: ${error}"
 save_profile_failed = "Failed to save model for profile `${profile}`: ${error}"
 
+[app.spec.parallel_priority]
+disabled = "Parallel Priority disabled."
+enabled = "Parallel Priority enabled."
+profile_suffix = " for ${profile} profile"
+save_default_failed = "Failed to save Parallel Priority preference: ${error}"
+save_profile_failed = "Failed to save Parallel Priority for profile `${profile}`: ${error}"
+
 [app.model_migration]
 save_pref_failed = "Failed to save model migration prompt preference: ${error}"
 
@@ -631,6 +696,14 @@ continue_remember_desc = "Enable full access and remember this choice"
 chinese_desc = "Use Simplified Chinese for UI and prompts"
 english_desc = "Use English for UI and prompts"
 title = "Select language"
+
+[chatwidget.spec_popup]
+parallel_priority_off = "Disable Parallel Priority"
+parallel_priority_off_desc = "Do not inject the Parallel Priority guidance into model requests."
+parallel_priority_on = "Enable Parallel Priority"
+parallel_priority_on_desc = "Inject built-in guidance so the agent prefers parallelizable work when possible."
+subtitle = "This setting is embedded in requests and does not create .codex/spec files."
+title = "Spec: Parallel Priority"
 
 [chatwidget.mcp]
 starting_server_single = "Booting MCP server: ${server}"

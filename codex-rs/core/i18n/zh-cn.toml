@@ -16,6 +16,7 @@ lang = "切换界面语言"
 mcp = "列出已配置的 MCP 工具"
 mention = "在消息中提及文件"
 model = "选择模型及推理强度"
+spec = "配置内置请求规范"
 new = "在对话中开始新的聊天"
 ps = "列出后台终端"
 resume = "恢复已保存的会话"
@@ -30,11 +31,64 @@ rename = "重命名当前会话"
 permissions = "管理审批权限"
 apps = "管理已连接的应用"
 debug_config = "显示当前生效配置"
+statusline = "配置状态栏显示项"
 personality = "自定义 Codex 的交流风格"
 plan = "切换到计划模式"
 collab = "选择协作模式"
 agent = "选择代理"
 logout = "注销 Codex 登录"
+
+[status_line_setup]
+title = "配置状态栏"
+subtitle = "选择要在状态栏中显示的项目。"
+instructions = "使用 ↑↓ 导航，←→ 调整顺序，空格选择，Enter 确认，Esc 取消。"
+invalid_label_single = "项"
+invalid_label_plural = "项"
+invalid_warning = "已忽略无效的状态栏${label}：${items}。"
+save_failed = "保存状态栏项目失败：${error}"
+
+[status_line_setup.item_name]
+model_name = "模型"
+model_with_reasoning = "模型 + 推理"
+current_dir = "当前目录"
+project_root = "项目根目录"
+git_branch = "Git 分支"
+context_remaining = "上下文剩余"
+context_used = "上下文已用"
+five_hour_limit = "5 小时额度"
+weekly_limit = "周额度"
+codex_version = "Codex 版本"
+context_window_size = "上下文窗口"
+used_tokens = "已用令牌"
+total_input_tokens = "输入令牌"
+total_output_tokens = "输出令牌"
+session_id = "会话 ID"
+
+[status_line_setup.item_description]
+model_name = "当前模型名称"
+model_with_reasoning = "当前模型名称（含推理强度）"
+current_dir = "当前工作目录"
+project_root = "项目根目录（不可用时省略）"
+git_branch = "当前 Git 分支（不可用时省略）"
+context_remaining = "上下文窗口剩余百分比（未知时省略）"
+context_used = "上下文窗口已用百分比（未知时省略）"
+five_hour_limit = "5 小时额度剩余（不可用时省略）"
+weekly_limit = "周额度剩余（不可用时省略）"
+codex_version = "Codex 应用版本"
+context_window_size = "上下文窗口总令牌数（未知时省略）"
+used_tokens = "会话已用总令牌数（为 0 时省略）"
+total_input_tokens = "会话已用输入令牌总数"
+total_output_tokens = "会话已用输出令牌总数"
+session_id = "当前会话标识（会话开始前省略）"
+
+[status_line_setup.preview]
+context_remaining = "剩余 18%"
+context_used = "已用 82%"
+weekly_limit = "每周 98%"
+context_window_size = "258K 窗口"
+used_tokens = "已用 27.3K"
+total_input_tokens = "输入 17,588"
+total_output_tokens = "输出 265"
 
 [tooltips]
 items = [
@@ -107,6 +161,10 @@ init = '''请生成一个名为 AGENTS.md 的文件，为本仓库贡献者提�
 
 （可选）根据实际情况补充其他章节，如安全与配置提示、架构概览、面向代理的特别说明等。
 '''
+
+spec.parallel_priority = '''本会话已启用 Parallel Priority。
+
+在规划与执行任务时，优先识别并组织可并行推进的独立工作。将任务拆分为最小可验证增量，避免不必要的串行阻塞；涉及共享状态时，明确标注依赖与同步点。'''
 
 sdd_plan = '''你是资深开发规划师。请根据“需求描述”先判断信息是否充分：  
 - 在向用户提问前，**必须先阅读项目内相关代码/文档**以澄清上下文；仅当代码中无法确认或存在多个合理语义时才提问。  
@@ -516,6 +574,13 @@ profile_suffix = "（配置档：${profile}）"
 save_default_failed = "保存默认模型失败：${error}"
 save_profile_failed = "为配置档 `${profile}` 保存模型失败：${error}"
 
+[app.spec.parallel_priority]
+disabled = "已关闭 Parallel Priority。"
+enabled = "已开启 Parallel Priority。"
+profile_suffix = "（配置档：${profile}）"
+save_default_failed = "保存 Parallel Priority 偏好失败：${error}"
+save_profile_failed = "为配置档 `${profile}` 保存 Parallel Priority 失败：${error}"
+
 [app.model_migration]
 save_pref_failed = "保存模型迁移提示偏好失败：${error}"
 
@@ -627,6 +692,14 @@ continue_remember_desc = "启用完全访问并记住该选择"
 chinese_desc = "界面与提示使用简体中文"
 english_desc = "界面与提示使用英语"
 title = "选择语言"
+
+[chatwidget.spec_popup]
+parallel_priority_off = "关闭 Parallel Priority"
+parallel_priority_off_desc = "不在模型请求中注入 Parallel Priority 规范提示词。"
+parallel_priority_on = "开启 Parallel Priority"
+parallel_priority_on_desc = "注入内置规范提示词，让代理在可行时优先组织可并行执行的工作。"
+subtitle = "该设置会直接随请求携带，不会创建 .codex/spec 文件。"
+title = "规范：Parallel Priority"
 
 [chatwidget.mcp]
 starting_server_single = "正在启动 MCP 服务器：${server}"

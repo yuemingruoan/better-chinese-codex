@@ -16,6 +16,7 @@ pub enum SlashCommand {
     // more frequently used commands should be listed first.
     Model,
     Lang,
+    Spec,
     Approvals,
     #[strum(serialize = "setup-elevated-sandbox")]
     ElevateSandbox,
@@ -67,6 +68,7 @@ impl SlashCommand {
             }
             SlashCommand::Model => tr(language, "slash_command.description.model"),
             SlashCommand::Lang => tr(language, "slash_command.description.lang"),
+            SlashCommand::Spec => tr(language, "slash_command.description.spec"),
             SlashCommand::Approvals => tr(language, "slash_command.description.approvals"),
             SlashCommand::ElevateSandbox => {
                 tr(language, "slash_command.description.elevate_sandbox")
@@ -96,6 +98,7 @@ impl SlashCommand {
             | SlashCommand::SddDevelopParallels
             | SlashCommand::Model
             | SlashCommand::Lang
+            | SlashCommand::Spec
             | SlashCommand::Approvals
             | SlashCommand::ElevateSandbox
             | SlashCommand::Review
@@ -128,4 +131,20 @@ pub fn built_in_slash_commands() -> Vec<(&'static str, SlashCommand)> {
         .filter(|command| command.is_visible())
         .map(|c| (c.command(), c))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SlashCommand;
+    use super::built_in_slash_commands;
+
+    #[test]
+    fn spec_command_is_available() {
+        let commands = built_in_slash_commands();
+        assert!(
+            commands
+                .iter()
+                .any(|(name, command)| *name == "spec" && *command == SlashCommand::Spec)
+        );
+    }
 }
